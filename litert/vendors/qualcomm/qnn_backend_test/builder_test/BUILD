@@ -21,3 +21,20 @@ cc_test(
         "@qairt//:qnn_lib_headers",
     ],
 )
+
+
+cc_test(
+    name = "reduce_test",
+    srcs = [
+        "reduce_test.cc",
+    ],
+    deps = [
+        "//litert/vendors/qualcomm/core:common",
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/builders:reduce_op_builder",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/qnn_backend_test:test_utils",
+        "@com_google_googletest//:gtest_main",
+        "@qairt//:qnn_lib_headers",
+    ],
+)

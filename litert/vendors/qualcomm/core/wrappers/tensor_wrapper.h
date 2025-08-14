@@ -13,12 +13,12 @@
 #include <variant>
 #include <vector>
 
+#include "QnnTypes.h"            // from @qairt
 #include "absl/strings/match.h"  // from @com_google_absl
-#include "absl/types/span.h"  // from @com_google_absl
+#include "absl/types/span.h"     // from @com_google_absl
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/utils/miscs.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
-#include "QnnTypes.h"  // from @qairt
 
 namespace qnn {
 static const char* kDumpSuffix = "_dump";
@@ -270,6 +270,14 @@ class TensorWrapper final {
           qnn_tensor_.v2.dataType != QNN_DATATYPE_UFIXED_POINT_32) {
         QNN_LOG_ERROR(
             "Cannot set tensor data, setting std::uint32_t data on QNN data "
+            "type %d.",
+            qnn_tensor_.v2.dataType);
+        return false;
+      }
+    } else if constexpr (std::is_same_v<T, bool>) {
+      if (qnn_tensor_.v2.dataType != QNN_DATATYPE_BOOL_8) {
+        QNN_LOG_ERROR(
+            "Cannot set tensor data, setting bool data on QNN data "
             "type %d.",
             qnn_tensor_.v2.dataType);
         return false;
