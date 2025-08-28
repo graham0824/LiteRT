@@ -288,8 +288,14 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
     return qnn_manager.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
-
+  int cnt = 0;
   for (const auto& op : graph.Ops()) {
+    if (cnt >= 1 && cnt <= 6) {
+      LITERT_LOG(LITERT_WARNING, "[Embedding Gemma] Skip id: %d = %d", cnt, op.Code());
+      cnt++;
+      continue;
+    }
+    cnt++;
     // default constructed, won't add tensor to QNN
     ::qnn::TensorPool tensor_pool;
     std::vector<::qnn::TensorWrapperRef> input_tensors;

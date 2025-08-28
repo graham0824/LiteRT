@@ -39,6 +39,7 @@ std::vector<OpWrapper> BuildRmsNormOp(
   std::vector<OpWrapper> res;
 
   auto& rms_norm_op = CreateOpWrapper(res, QNN_OP_RMS_NORM);
+  printf("RMS %d\n", inputs.size());
   for (const auto& input : inputs) {
     rms_norm_op.AddInputTensor(input);
   }
