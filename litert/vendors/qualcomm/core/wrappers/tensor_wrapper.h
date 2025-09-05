@@ -189,6 +189,17 @@ class TensorWrapper final {
     return GetTensorType() == QNN_TENSOR_TYPE_STATIC;
   }
 
+  void ChangeScale() {
+    const auto& q_param =
+        std::get<ScaleOffsetQuantizeParamsWrapper>(GetQuantParams());
+    if (q_param.GetScale() > 2) {
+      QNN_LOG_WARNING("Hack scale from %f to 1.", q_param.GetScale());
+      quantize_params_.emplace<ScaleOffsetQuantizeParamsWrapper>(
+          (double)1.0, q_param.GetZeroPoint());
+    }
+    UpdateQnnQuantParams();
+  }
+
   template <typename T>
   bool SetTensorData(absl::Span<const T> data) {
     if (!IsSubgraphInput() && !IsTensorStatic()) {

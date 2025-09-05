@@ -47,6 +47,7 @@ std::vector<OpWrapper> BuildDequantizeOp(
   }
 
   auto& quantize_op = CreateOpWrapper(res, qnn_op);
+  inputs[0].get().ChangeScale();
   quantize_op.AddInputTensor(inputs[0]);
   quantize_op.AddOutputTensor(outputs[0]);
 

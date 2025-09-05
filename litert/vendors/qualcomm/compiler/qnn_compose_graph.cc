@@ -621,8 +621,8 @@ LiteRtStatus ConvertOp(const bool use_htp_preferences,
       }
       if (info->name == CompositeOptions::kRmsNorm) {
         // TODO(yunandrew): Support custom epsilon for RMS Norm.
-        // float epsilon = 9.99999997E-7;
-        float epsilon = 2E-5;
+        float epsilon = 9.99999997E-7;
+        // float epsilon = 2E-5;
         op_wrappers = ::qnn::BuildRmsNormOp(tensor_pool, input_tensors,
                                             output_tensors, epsilon);
       }
