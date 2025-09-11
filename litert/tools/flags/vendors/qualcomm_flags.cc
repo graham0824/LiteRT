@@ -256,6 +256,14 @@ std::string AbslUnparseFlag(LiteRtQualcommOptionsOptimizationLevel options) {
   }
 }
 
+ABSL_FLAG(bool, qualcomm_use_conv_hmx, false,
+          "Whether to use HMX for convolution operation with short depth "
+          "and/or unsymmetrice weights.");
+
+ABSL_FLAG(bool, qualcomm_use_fold_relu, false,
+          "Whether to fold relu to convolution operation if the convolution "
+          "operation is followed by relu.");
+
 // NOLINTEND(*alien-types*)
 
 namespace litert::qualcomm {
@@ -304,6 +312,12 @@ Expected<QualcommOptions> QualcommOptionsFromFlags() {
   const auto optimization_level =
       absl::GetFlag(FLAGS_qualcomm_optimization_level);
   opts.SetOptimizationLevel(optimization_level);
+
+  const auto use_conv_hmx = absl::GetFlag(FLAGS_qualcomm_use_conv_hmx);
+  opts.SetUseConvHMX(use_conv_hmx);
+
+  const auto use_fold_relu = absl::GetFlag(FLAGS_qualcomm_use_fold_relu);
+  opts.SetUseFoldReLU(use_fold_relu);
 
   return opts;
 }

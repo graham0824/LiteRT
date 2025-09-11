@@ -245,6 +245,40 @@ TEST(LiteRtQualcommOptionsTest, DumpTensorIds) {
   LiteRtDestroyOpaqueOptions(options);
 }
 
+TEST(LiteRtQualcommOptionsTest, UseConvHMX) {
+  LiteRtOpaqueOptions options;
+  LITERT_ASSERT_OK(LiteRtQualcommOptionsCreate(&options));
+
+  LiteRtQualcommOptions qualcomm_options;
+  LITERT_ASSERT_OK(LiteRtQualcommOptionsGet(options, &qualcomm_options));
+
+  LITERT_ASSERT_OK(LiteRtQualcommOptionsSetUseConvHMX(qualcomm_options, true));
+
+  bool use_conv_hmx;
+  LITERT_ASSERT_OK(
+      LiteRtQualcommOptionsGetUseConvHMX(qualcomm_options, &use_conv_hmx));
+  EXPECT_TRUE(use_conv_hmx);
+
+  LiteRtDestroyOpaqueOptions(options);
+}
+
+TEST(LiteRtQualcommOptionsTest, UseFoldReLU) {
+  LiteRtOpaqueOptions options;
+  LITERT_ASSERT_OK(LiteRtQualcommOptionsCreate(&options));
+
+  LiteRtQualcommOptions qualcomm_options;
+  LITERT_ASSERT_OK(LiteRtQualcommOptionsGet(options, &qualcomm_options));
+
+  LITERT_ASSERT_OK(LiteRtQualcommOptionsSetUseFoldReLU(qualcomm_options, true));
+
+  bool use_fold_relu;
+  LITERT_ASSERT_OK(
+      LiteRtQualcommOptionsGetUseFoldReLU(qualcomm_options, &use_fold_relu));
+  EXPECT_TRUE(use_fold_relu);
+
+  LiteRtDestroyOpaqueOptions(options);
+}
+
 TEST(QualcommOptionsTest, CppApi) {
   auto options = QualcommOptions::Create();
   ASSERT_TRUE(options);
@@ -298,6 +332,14 @@ TEST(QualcommOptionsTest, CppApi) {
   EXPECT_EQ(options->GetOptimizationLevel(), kHtpOptimizeForInferenceO3);
   options->SetOptimizationLevel(kHtpOptimizeForPrepare);
   EXPECT_EQ(options->GetOptimizationLevel(), kHtpOptimizeForPrepare);
+
+  EXPECT_FALSE(options->GetUseConvHMX());
+  options->SetUseConvHMX(true);
+  EXPECT_TRUE(options->GetUseConvHMX());
+
+  EXPECT_FALSE(options->GetUseFoldReLU());
+  options->SetUseFoldReLU(true);
+  EXPECT_TRUE(options->GetUseFoldReLU());
 }
 
 TEST(QualcommOptionsTest, FindFromChain) {

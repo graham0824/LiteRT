@@ -109,6 +109,24 @@ LiteRtStatus LiteRtQualcommOptionsSetDumpTensorIds(
 LiteRtStatus LiteRtQualcommOptionsGetDumpTensorIds(
     LiteRtQualcommOptions options, int32_t** ids, uint32_t* number_of_ids);
 
+// Run Convolution operations with short depth and/or unsymmetric weights using
+// HMX instructions.
+
+LiteRtStatus LiteRtQualcommOptionsSetUseConvHMX(LiteRtQualcommOptions options,
+                                                bool use_conv_hmx);
+
+LiteRtStatus LiteRtQualcommOptionsGetUseConvHMX(LiteRtQualcommOptions options,
+                                                bool* use_conv_hmx);
+
+// For any graph where a Convolution or Convolution like operation is followed
+// by Relu or ReluMinMax, the relu is folded into the Convolution operation.
+
+LiteRtStatus LiteRtQualcommOptionsSetUseFoldReLU(LiteRtQualcommOptions options,
+                                                 bool use_fold_relu);
+
+LiteRtStatus LiteRtQualcommOptionsGetUseFoldReLU(LiteRtQualcommOptions options,
+                                                 bool* use_fold_relu);
+
 // DISPATCH OPTIONS ////////////////////////////////////////////////////////////
 
 // htp_performance_mode

@@ -62,6 +62,12 @@ class Options {
   void SetEnableWeightSharing(const bool enable_weight_sharing);
   bool GetEnableWeightSharing() const;
 
+  void SetUseConvHMX(bool use_conv_hmx);
+  bool GetUseConvHMX() const;
+
+  void SetUseFoldReLU(bool use_fold_relu);
+  bool GetUseFoldReLU() const;
+
   void SetHtpPerformanceMode(const HtpPerformanceMode htp_performance_mode);
   HtpPerformanceMode GetHtpPerformanceMode() const;
 
@@ -89,6 +95,8 @@ class Options {
   bool use_htp_preference_ = false;
   bool use_qint16_as_quint16_ = false;
   bool enable_weight_sharing_ = false;
+  bool use_conv_hmx_ = false;
+  bool use_fold_relu_ = false;
   HtpPerformanceMode htp_performance_mode_ = HtpPerformanceMode::kDefault;
   std::vector<std::int32_t> dump_tensor_ids_;
   std::string ir_json_dir_;
