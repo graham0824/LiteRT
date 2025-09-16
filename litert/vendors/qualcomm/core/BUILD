@@ -20,6 +20,7 @@ cc_library(
     srcs = ["tensor_pool.cc"],
     hdrs = ["tensor_pool.h"],
     deps = [
+        "@com_google_absl//absl/types:span",
         "//litert/vendors/qualcomm/core/utils:log",
         "//litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",

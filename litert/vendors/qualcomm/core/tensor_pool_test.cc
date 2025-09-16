@@ -3,15 +3,16 @@
 
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
 
+#include <gtest/gtest.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include "QnnTypes.h"  // from @qairt
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
-#include "QnnTypes.h"  // from @qairt
 
 namespace qnn {
 
@@ -169,6 +170,24 @@ TEST(TensorPoolConvertStaticTensorTest, NarrowTypeConversionInt32) {
   ASSERT_EQ(tensor_data.size(), converted_data->size());
   for (size_t i = 0; i < tensor_data.size(); ++i) {
     ASSERT_EQ(tensor_data[i], (*converted_data)[i]);
+  }
+}
+
+TEST(TensorPoolConvertStaticTensorTest, CreateStatictensorByValue) {
+  TensorPool tensor_pool;
+
+  ScaleOffsetQuantizeParamsWrapper q_param(2, -5);  // offset = 5
+
+  std::vector<std::int8_t> data = {6, 6, 6};
+
+  TensorWrapper* tensor_wrapper = tensor_pool.CreateStaticTensorWithValue(
+      QNN_DATATYPE_SFIXED_POINT_8, q_param, {1, 1, 3}, 2);
+  ASSERT_NE(tensor_wrapper, nullptr);
+  const auto tensor_data = tensor_wrapper->GetStaticTensorData<std::int8_t>();
+
+  EXPECT_TRUE(tensor_data.has_value());
+  for (size_t i = 0; i < data.size(); i++) {
+    EXPECT_EQ((*tensor_data)[i], data[i]);
   }
 }
 

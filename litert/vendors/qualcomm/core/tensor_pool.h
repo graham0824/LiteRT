@@ -13,10 +13,11 @@
 #include <utility>
 #include <vector>
 
+#include "QnnTypes.h"         // from @qairt
+#include "absl/types/span.h"  // from @com_google_absl
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
-#include "QnnTypes.h"  // from @qairt
 
 namespace qnn {
 static const char* kQnnSuffix = "_qnn";
@@ -51,6 +52,11 @@ class TensorPool {
       const QuantizeParamsWrapperVariant& quant_params,
       const std::vector<std::uint32_t>& dimentions, std::uint32_t bytes,
       const void* data);
+
+  TensorWrapper* CreateStaticTensorWithValue(
+      Qnn_DataType_t data_type,
+      const QuantizeParamsWrapperVariant& quant_params,
+      const std::vector<std::uint32_t>& dimentions, float fill_value);
 
   TensorWrapper& CreateStaticTensorWithSuffix(
       Qnn_DataType_t data_type,
