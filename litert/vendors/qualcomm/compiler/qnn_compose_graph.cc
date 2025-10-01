@@ -24,11 +24,13 @@
 #include <string>
 #include <vector>
 
+#include "QnnCommon.h"                     // from @qairt
+#include "QnnTypes.h"                      // from @qairt
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/container/flat_hash_set.h"  // from @com_google_absl
-#include "absl/strings/str_cat.h"  // from @com_google_absl
-#include "absl/strings/string_view.h"  // from @com_google_absl
-#include "absl/types/span.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"          // from @com_google_absl
+#include "absl/strings/string_view.h"      // from @com_google_absl
+#include "absl/types/span.h"               // from @com_google_absl
 #include "litert/c/litert_common.h"
 #include "litert/c/litert_logging.h"
 #include "litert/c/litert_model_types.h"
@@ -95,8 +97,6 @@
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "litert/vendors/qualcomm/qnn_manager.h"
-#include "QnnCommon.h"  // from @qairt
-#include "QnnTypes.h"  // from @qairt
 
 namespace litert::qnn {
 namespace {
@@ -1138,6 +1138,9 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   GraphToGraphTransform(g2g_option, graph_op_wrappers, tensor_pool,
                         [api = qnn.Api(), backend = qnn.BackendHandle()](
                             ::qnn::OpWrapper& op) -> bool {
+                          if (op.GetOpCode() == ::qnn::QnnOpCode::kReduceMin) {
+                            return true;
+                          }
                           return QNN_SUCCESS == api->backendValidateOpConfig(
                                                     backend, op.GetOpConfig());
                         });

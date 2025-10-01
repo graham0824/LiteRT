@@ -80,4 +80,12 @@ std::vector<OpWrapper> BuildReduceMaxOp(
                        QNN_OP_REDUCE_MAX_PARAM_KEEP_DIMS);
 }
 
+std::vector<OpWrapper> BuildReduceMinOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
+  return BuildReduceOp(tensor_pool, inputs, outputs, keep_dims,
+                       QNN_OP_REDUCE_MIN, QNN_OP_REDUCE_MIN_PARAM_AXES,
+                       QNN_OP_REDUCE_MIN_PARAM_KEEP_DIMS);
+}
+
 }  // namespace qnn
