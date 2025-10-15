@@ -125,7 +125,7 @@ class Options {
 
 // Gets a default logger implementation to stdout.
 // This is used when initializing qnn logging.
-QnnLog_Callback_t GetDefaultStdOutLogger();
+// QnnLog_Callback_t GetDefaultStdOutLogger();
 
 }  // namespace qnn
 

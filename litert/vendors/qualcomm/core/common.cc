@@ -15,42 +15,6 @@
 #include "QnnLog.h"  // from @qairt
 
 namespace qnn {
-namespace {
-
-void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
-                         uint64_t timestamp, va_list argp) {
-  const char* levelStr = "";
-  switch (level) {
-    case QNN_LOG_LEVEL_ERROR:
-      levelStr = " ERROR ";
-      break;
-    case QNN_LOG_LEVEL_WARN:
-      levelStr = "WARNING";
-      break;
-    case QNN_LOG_LEVEL_INFO:
-      levelStr = "  INFO ";
-      break;
-    case QNN_LOG_LEVEL_DEBUG:
-      levelStr = " DEBUG ";
-      break;
-    case QNN_LOG_LEVEL_VERBOSE:
-      levelStr = "VERBOSE";
-      break;
-    case QNN_LOG_LEVEL_MAX:
-      levelStr = "UNKNOWN";
-      break;
-  }
-  char buffer1[256];
-  char buffer2[256];
-  double ms = timestamp;
-  snprintf(buffer1, sizeof(buffer1), "%8.1fms [%-7s] ", ms, levelStr);
-  buffer1[sizeof(buffer1) - 1] = 0;
-  vsnprintf(buffer2, sizeof(buffer2), fmt, argp);
-  buffer2[sizeof(buffer1) - 2] = 0;
-  printf("%s %s", buffer1, buffer2);
-}
-
-}  // namespace
 
 void Options::SetLogLevel(LogLevel log_level) { log_level_ = log_level; }
 
@@ -161,6 +125,6 @@ OptimizationLevel: %d\n";  // NOLINT
                          vtcm_size_, num_hvx_threads_, optimization_level_);
 }
 
-QnnLog_Callback_t GetDefaultStdOutLogger() { return DefaultStdOutLogger; }
+// QnnLog_Callback_t GetDefaultStdOutLogger() { return DefaultStdOutLogger; }
 
 }  // namespace qnn

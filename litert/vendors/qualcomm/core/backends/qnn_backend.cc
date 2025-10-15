@@ -51,6 +51,42 @@ QnnDevice_CoreInfo_t& QnnBackend::AllocateDeviceCoreInfo() {
   back = QNN_DEVICE_CORE_INFO_INIT;
   return back;
 }
+
+void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
+                         uint64_t timestamp, va_list argp) {
+  const char* levelStr = "";
+  switch (level) {
+    case QNN_LOG_LEVEL_ERROR:
+      levelStr = " ERROR ";
+      break;
+    case QNN_LOG_LEVEL_WARN:
+      levelStr = "WARNING";
+      break;
+    case QNN_LOG_LEVEL_INFO:
+      levelStr = "  INFO ";
+      break;
+    case QNN_LOG_LEVEL_DEBUG:
+      levelStr = " DEBUG ";
+      break;
+    case QNN_LOG_LEVEL_VERBOSE:
+      levelStr = "VERBOSE";
+      break;
+    case QNN_LOG_LEVEL_MAX:
+      levelStr = "UNKNOWN";
+      break;
+  }
+  char buffer1[256];
+  char buffer2[256];
+  double ms = timestamp;
+  snprintf(buffer1, sizeof(buffer1), "%8.1fms [%-7s] ", ms, levelStr);
+  buffer1[sizeof(buffer1) - 1] = 0;
+  vsnprintf(buffer2, sizeof(buffer2), fmt, argp);
+  buffer2[sizeof(buffer1) - 2] = 0;
+  QNN_LOG_INFO("%s %s", buffer1, buffer2);
+}
+
+QnnLog_Callback_t GetDefaultStdOutLogger() { return DefaultStdOutLogger; }
+
 QnnBackend::QnnLogHandle QnnBackend::CreateLogHandle(
     ::qnn::LogLevel log_level) {
   if (log_level != ::qnn::LogLevel::kOff) {

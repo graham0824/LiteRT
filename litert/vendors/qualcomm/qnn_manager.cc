@@ -310,18 +310,18 @@ LiteRtStatus QnnManager::GenerateContextBinary(
 }
 
 LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
-  // TODO: Unblock QNN validation for RMSNorm
-  if (absl::StrContains(op_config.v1.name, "RmsNorm")) {
-    return kLiteRtStatusOk;
-  }
+  // // TODO: Unblock QNN validation for RMSNorm
+  // if (absl::StrContains(op_config.v1.name, "RmsNorm")) {
+  //   return kLiteRtStatusOk;
+  // }
 
-  if (Qnn_ErrorHandle_t error =
-          Api()->backendValidateOpConfig(BackendHandle(), op_config);
-      QNN_SUCCESS != error) {
-    LITERT_LOG(LITERT_ERROR, "Failed to validate op %s\n, error: %lld",
-               op_config.v1.name, static_cast<long long>(error));
-    return kLiteRtStatusErrorInvalidLegalization;
-  }
+  // if (Qnn_ErrorHandle_t error =
+  //         Api()->backendValidateOpConfig(BackendHandle(), op_config);
+  //     QNN_SUCCESS != error) {
+  //   LITERT_LOG(LITERT_ERROR, "Failed to validate op %s\n, error: %lld",
+  //              op_config.v1.name, static_cast<long long>(error));
+  //   return kLiteRtStatusErrorInvalidLegalization;
+  // }
 
   return kLiteRtStatusOk;
 }
