@@ -18,13 +18,15 @@ if(TARGET cpuinfo OR cpuinfo_POPULATED)
 endif()
 
 include(OverridableFetchContent)
-
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 OverridableFetchContent_Declare(
   cpuinfo
-  GIT_REPOSITORY https://github.com/pytorch/cpuinfo
+  # GIT_REPOSITORY https://github.com/pytorch/cpuinfo
+  URL ${LITERT_TOOLS_DEP}/cpuinfo
   # Sync with tensorflow/workspace2.bzl
-  GIT_TAG 8a9210069b5a37dd89ed118a783945502a30a4ae
-  GIT_PROGRESS TRUE
+  # GIT_TAG 8a9210069b5a37dd89ed118a783945502a30a4ae
+  # GIT_PROGRESS TRUE
+  LICENSE_URL ${LITERT_TOOLS_DEP}/cpuinfo/LICENSE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/cpuinfo"
 )
 OverridableFetchContent_GetProperties(cpuinfo)
