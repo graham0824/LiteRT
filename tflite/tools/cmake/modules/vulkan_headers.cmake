@@ -18,13 +18,16 @@ if(TARGET vulkan_headers OR vulkan_headers_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   vulkan_headers
-  GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers
+  # GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers
+  URL ${LITERT_TOOLS_DEP}/vulkan_headers
   # Sync with tensorflow/third_party/vulkan_headers/workspace.bzl
-  GIT_TAG 32c07c0c5334aea069e518206d75e002ccd85389
-  GIT_PROGRESS TRUE
+  # GIT_TAG 32c07c0c5334aea069e518206d75e002ccd85389
+  # GIT_PROGRESS TRUE
+  LICENSE_URL ${LITERT_TOOLS_DEP}/vulkan_headers/LICENSE.txt
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/vulkan_headers"
 )

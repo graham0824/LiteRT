@@ -18,21 +18,23 @@ if(TARGET eigen OR eigen_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  URL ${LITERT_TOOLS_DEP}/eigen
   # Sync with tensorflow/third_party/eigen3/workspace.bzl
-  GIT_TAG 70d8d99d0df9fd967b135efd8d12ed20fc48d007
+  # GIT_TAG 70d8d99d0df9fd967b135efd8d12ed20fc48d007
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17770
   # GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  # GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/eigen"
-  LICENSE_FILE "COPYING.MPL2"
+  LICENSE_URL "${LITERT_TOOLS_DEP}/eigen/COPYING.MPL2"
+  # LICENSE_FILE "COPYING.MPL2"
 )
 OverridableFetchContent_GetProperties(eigen)
 if(NOT eigen_POPULATED)
