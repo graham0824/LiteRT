@@ -13,6 +13,7 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 3.20)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 project(LiteRT VERSION 1.4.0 LANGUAGES CXX C)
 
 function(_litert_overlay_converter_sources TF_SRC_ROOT)
@@ -131,7 +132,7 @@ if(NOT EXISTS "${TFLITE_BUILD_DIR}/libtensorflow-lite.a")
               message(STATUS "Reusing host flatc from ${TFLITE_HOST_TOOLS_DIR}")
             else()
               file(MAKE_DIRECTORY "${_root_host_flatc_dir}")
-              file(WRITE "${_root_host_flatc_dir}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.16)\nproject(HostFlatc LANGUAGES C CXX)\ninclude(FetchContent)\nFetchContent_Declare(flatbuffers GIT_REPOSITORY https://github.com/google/flatbuffers.git GIT_TAG v25.9.23)\nset(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\nFetchContent_MakeAvailable(flatbuffers)\n")
+              file(WRITE "${_root_host_flatc_dir}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.16)\nproject(HostFlatc LANGUAGES C CXX)\ninclude(FetchContent)\nFetchContent_Declare(flatbuffers URL "${LITERT_TOOLS_DEP}/flatbuffers")\nset(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\nFetchContent_MakeAvailable(flatbuffers)\n")
               execute_process(
                 COMMAND ${CMAKE_COMMAND} -S . -B . -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++
                 WORKING_DIRECTORY "${_root_host_flatc_dir}"

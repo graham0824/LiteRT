@@ -136,6 +136,7 @@ target_link_libraries(run_model
         litert_runtime
         tensorflow-lite
         litert_tool_flags_google_tensor
+        litert_tool_flags_intel_openvino
         litert_tool_flags_mediatek
         litert_tool_flags_qualcomm
         absl::flags
@@ -195,6 +196,7 @@ target_link_libraries(apply_plugin_main
         litert_tool_flags_apply_plugin
         litert_tool_flags_common
         litert_tool_flags_google_tensor
+        litert_tool_flags_intel_openvino
         litert_tool_flags_mediatek
         litert_tool_flags_qualcomm
         litert_tool_display

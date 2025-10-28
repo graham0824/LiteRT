@@ -18,13 +18,16 @@ if(TARGET opencl_headers OR opencl_headers_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   opencl_headers
-  GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-Headers
+  # GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-Headers
+  URL ${LITERT_TOOLS_DEP}/OpenCL-Headers
   # Sync with tensorflow/third_party/opencl_headers/workspace.bzl
-  GIT_TAG dcd5bede6859d26833cd85f0d6bbcee7382dc9b3
-  GIT_PROGRESS TRUE
+  # GIT_TAG dcd5bede6859d26833cd85f0d6bbcee7382dc9b3
+  # GIT_PROGRESS TRUE
+  LICENSE_URL "${LITERT_TOOLS_DEP}/OpenCL-Headers/LICENSE"
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/opencl_headers"
 )

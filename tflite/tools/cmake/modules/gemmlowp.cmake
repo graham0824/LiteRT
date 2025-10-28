@@ -18,18 +18,21 @@ if(TARGET gemmlowp OR gemmlowp_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   gemmlowp
-  GIT_REPOSITORY https://github.com/google/gemmlowp
+  # GIT_REPOSITORY https://github.com/google/gemmlowp
+  URL ${LITERT_TOOLS_DEP}/gemmlowp
   # Sync with tensorflow/third_party/gemmlowp/workspace.bzl
-  GIT_TAG 16e8662c34917be0065110bfcd9cc27d30f52fdf
+  # GIT_TAG 16e8662c34917be0065110bfcd9cc27d30f52fdf
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17770
   # GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  # GIT_PROGRESS TRUE
+  LICENSE_URL "${LITERT_TOOLS_DEP}/gemmlowp/LICENSE"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/gemmlowp"
 )
 

@@ -19,13 +19,15 @@ if(TARGET fp16_headers OR fp16_headers_POPULATED OR TFLITE_ENABLE_XNNPACK)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   fp16_headers
-  GIT_REPOSITORY https://github.com/Maratyszcza/FP16
+  # GIT_REPOSITORY https://github.com/Maratyszcza/FP16
+  URL ${LITERT_TOOLS_DEP}/fp16_headers
   # Sync with https://github.com/google/XNNPACK/blob/master/cmake/DownloadFP16.cmake
-  GIT_TAG 0a92994d729ff76a58f692d3028ca1b64b145d91
-  GIT_PROGRESS TRUE
+  # GIT_TAG 0a92994d729ff76a58f692d3028ca1b64b145d91
+  # GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/fp16_headers"
 )

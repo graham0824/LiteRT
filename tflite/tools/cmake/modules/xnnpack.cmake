@@ -18,13 +18,16 @@ if(TARGET xnnpack OR xnnpack_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   xnnpack
-  GIT_REPOSITORY https://github.com/google/XNNPACK
+  # GIT_REPOSITORY https://github.com/google/XNNPACK
+  URL ${LITERT_TOOLS_DEP}/XNNPACK
   # Sync with tensorflow/workspace2.bzl
-  GIT_TAG 0360bf046f6f33e05da7d58c8e0cb7ac3974457a
-  GIT_PROGRESS TRUE
+  # GIT_TAG 0360bf046f6f33e05da7d58c8e0cb7ac3974457a
+  # GIT_PROGRESS TRUE
+  LICENSE_URL ${LITERT_TOOLS_DEP}/XNNPACK/LICENSE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/xnnpack"
 )

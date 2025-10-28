@@ -18,9 +18,12 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.5 FATAL_ERROR)
 PROJECT(pthreadpool-download NONE)
 
 INCLUDE(ExternalProject)
+
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 ExternalProject_Add(pthreadpool
-  URL https://github.com/google/pthreadpool/archive/75b23a57b4e5ad206e8f69b698b5f1df04cf3d32.zip
-  URL_HASH SHA256=bb468cf1c14951f48c802de905631993fd9bcf395f997187e1e0165ffb88668d
+  # URL https://github.com/google/pthreadpool/archive/75b23a57b4e5ad206e8f69b698b5f1df04cf3d32.zip
+  URL ${LITERT_TOOLS_DEP}/pthreadpool/pthreadpool-75b23a57b4e5ad206e8f69b698b5f1df04cf3d32
+  # URL_HASH SHA256=bb468cf1c14951f48c802de905631993fd9bcf395f997187e1e0165ffb88668d
   SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source"
   BINARY_DIR "${CMAKE_BINARY_DIR}/pthreadpool"
   CONFIGURE_COMMAND ""
