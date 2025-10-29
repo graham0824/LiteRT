@@ -18,13 +18,16 @@ if(TARGET ruy OR ruy_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   ruy
-  GIT_REPOSITORY https://github.com/google/ruy
+  # GIT_REPOSITORY https://github.com/google/ruy
+  URL ${LITERT_TOOLS_DEP}/ruy
   # Sync with tensorflow/third_party/ruy/workspace.bzl
-  GIT_TAG 3286a34cc8de6149ac6844107dfdffac91531e72
-  GIT_PROGRESS TRUE
+  # GIT_TAG 3286a34cc8de6149ac6844107dfdffac91531e72
+  # GIT_PROGRESS TRUE
+  LICENSE_URL ${LITERT_TOOLS_DEP}/ruy/LICENSE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
 )
 OverridableFetchContent_GetProperties(ruy)

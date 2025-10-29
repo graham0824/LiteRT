@@ -13,6 +13,7 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 3.20)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 project(LiteRT VERSION 1.4.0 LANGUAGES CXX C)
 
 function(_litert_overlay_converter_sources TF_SRC_ROOT)
@@ -63,11 +64,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Options
-option(LITERT_BUILD_SHARED_LIBS "Build shared libraries" OFF)
+option(LITERT_BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(LITERT_BUILD_TOOLS "Build LiteRT tools" ON)
 option(LITERT_BUILD_TESTS "Build LiteRT tests" OFF)
 option(LITERT_AUTO_BUILD_TFLITE "Automatically build TFLite if not found" ON)
-option(LITERT_ENABLE_GPU "Enable GPU acceleration support" ON)
+option(LITERT_ENABLE_GPU "Enable GPU acceleration support" OFF)
 option(LITERT_ENABLE_NPU "Enable NPU acceleration support" ON)
 
 set(LITERT_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/include")
@@ -94,7 +95,7 @@ include_directories(${LITERT_GENERATED_INCLUDE_DIR})
 # Find TFLite package - we depend on it being built first
 set(TFLITE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/tflite_build" CACHE PATH "Path to TFLite build directory")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tflite" CACHE PATH "Path to TFLite source directory")
-
+add_compile_definitions(ABSL_FLAGS_STRIP_NAMES=0)
 # Check if TFLite has been built
 if(NOT EXISTS "${TFLITE_BUILD_DIR}/libtensorflow-lite.a")
     if(LITERT_AUTO_BUILD_TFLITE)
@@ -119,6 +120,7 @@ if(NOT EXISTS "${TFLITE_BUILD_DIR}/libtensorflow-lite.a")
           if(DEFINED ANDROID_PLATFORM)
             list(APPEND _tflite_extra_args -DANDROID_PLATFORM=${ANDROID_PLATFORM})
           endif()
+          add_compile_definitions(ABSL_FLAGS_STRIP_NAMES=0)
           list(APPEND _tflite_extra_args -DCMAKE_SYSTEM_NAME=Android)
           list(APPEND _tflite_extra_args -DTFLITE_ENABLE_GPU=ON)
 
@@ -130,7 +132,7 @@ if(NOT EXISTS "${TFLITE_BUILD_DIR}/libtensorflow-lite.a")
               message(STATUS "Reusing host flatc from ${TFLITE_HOST_TOOLS_DIR}")
             else()
               file(MAKE_DIRECTORY "${_root_host_flatc_dir}")
-              file(WRITE "${_root_host_flatc_dir}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.16)\nproject(HostFlatc LANGUAGES C CXX)\ninclude(FetchContent)\nFetchContent_Declare(flatbuffers GIT_REPOSITORY https://github.com/google/flatbuffers.git GIT_TAG v25.9.23)\nset(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\nFetchContent_MakeAvailable(flatbuffers)\n")
+              file(WRITE "${_root_host_flatc_dir}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.16)\nproject(HostFlatc LANGUAGES C CXX)\ninclude(FetchContent)\nFetchContent_Declare(flatbuffers URL "${LITERT_TOOLS_DEP}/flatbuffers")\nset(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\nFetchContent_MakeAvailable(flatbuffers)\n")
               execute_process(
                 COMMAND ${CMAKE_COMMAND} -S . -B . -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++
                 WORKING_DIRECTORY "${_root_host_flatc_dir}"

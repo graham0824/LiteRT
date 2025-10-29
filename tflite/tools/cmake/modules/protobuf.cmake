@@ -14,13 +14,16 @@
 # limitations under the License.
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   protobuf
-  GIT_REPOSITORY https://github.com/protocolbuffers/protobuf
+  # GIT_REPOSITORY https://github.com/protocolbuffers/protobuf
+  URL ${LITERT_TOOLS_DEP}/protobuf
   # Sync with tensorflow/third_party/protobuf/protobuf.patch
-  GIT_TAG 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66
-  GIT_PROGRESS TRUE
+  # GIT_TAG 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66
+  # GIT_PROGRESS TRUE
+  LICENSE_URL ${LITERT_TOOLS_DEP}/protobuf/LICENSE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/protobuf"
 )

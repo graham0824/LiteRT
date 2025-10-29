@@ -19,14 +19,19 @@ if(TARGET absl_base OR abseil-cpp_POPULATED)
 endif()
 
 include(OverridableFetchContent)
-
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
+set(OVERRIDABLE_FETCH_CONTENT_LICENSE_CHECK OFF)
 OverridableFetchContent_Declare(
   abseil-cpp
-  GIT_REPOSITORY https://github.com/abseil/abseil-cpp
+  URL "${LITERT_TOOLS_DEP}/abseil-cpp"
+  
+  # GIT_REPOSITORY https://github.com/abseil/abseil-cpp
   # Sync with tensorflow/third_party/absl/workspace.bzl
-  GIT_TAG 987c57f325f7fa8472fa84e1f885f7534d391b0d
-  GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  # GIT_TAG 987c57f325f7fa8472fa84e1f885f7534d391b0d
+  # GIT_SHALLOW TRUE
+  # GIT_PROGRESS TRUE
+  # LICENSE_FILE "${LITERT_TOOLS_DEP}/abseil-cpp/LICENSE"
+  # LICENSE_URL "${LITERT_TOOLS_DEP}/abseil-cpp/LICENSE"
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/abseil-cpp"
 )

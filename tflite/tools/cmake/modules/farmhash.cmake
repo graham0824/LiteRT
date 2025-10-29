@@ -18,18 +18,20 @@ if(TARGET farmhash OR farmhash_POPULATED)
 endif()
 
 include(OverridableFetchContent)
-
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 OverridableFetchContent_Declare(
   farmhash
-  GIT_REPOSITORY https://github.com/google/farmhash
+  # GIT_REPOSITORY https://github.com/google/farmhash
+  URL ${LITERT_TOOLS_DEP}/farmhash
   # Sync with tensorflow/third_party/farmhash/workspace.bzl
-  GIT_TAG 0d859a811870d10f53a594927d0d0b97573ad06d
+  # GIT_TAG 0d859a811870d10f53a594927d0d0b97573ad06d
   # It's not currently possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17770
   # GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  # GIT_PROGRESS TRUE
+  LICENSE_URL "${LITERT_TOOLS_DEP}/farmhash/COPYING"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/farmhash"
 )
 OverridableFetchContent_GetProperties(farmhash)

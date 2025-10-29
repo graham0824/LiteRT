@@ -18,17 +18,20 @@ if(TARGET flatbuffers OR flatbuffers_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   flatbuffers
-  GIT_REPOSITORY https://github.com/google/flatbuffers
+  # GIT_REPOSITORY https://github.com/google/flatbuffers
+  URL ${LITERT_TOOLS_DEP}/flatbuffers
   # Keep in sync with tensorflow/third_party/flatbuffers/workspace.bzl
-  GIT_TAG v25.9.23
+  # GIT_TAG v25.9.23
   # NOTE: b/340264458 - `GIT_SHALLOW TRUE` works for tag name only,
   # so if you change the `GIT_TAG` above to a hash rather than a tag name,
   # you need to also change the line below to `GIT_SHALLOW FALSE`.
-  GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  # GIT_SHALLOW TRUE
+  # GIT_PROGRESS TRUE
+  LICENSE_URL "${LITERT_TOOLS_DEP}/flatbuffers/LICENSE"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
 )
 
