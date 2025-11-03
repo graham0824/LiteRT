@@ -90,7 +90,7 @@ constexpr absl::string_view kLiteRtDir = "litert";
 constexpr absl::string_view kInternalPrefx = "third_party/odml/litert";
 
 std::string GetTestFilePath(absl::string_view filename) {
-  static constexpr absl::string_view kTestDataDir = "test/testdata/";
+  static constexpr absl::string_view kTestDataDir = "/local/mnt/workspace/chuntl/liteRT/qti/testdata/";
   if constexpr (!IsOss()) {
     return internal::Join(
         {kBaseDir, kInternalPrefx, kLiteRtDir, kTestDataDir, filename});
