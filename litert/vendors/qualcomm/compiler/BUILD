@@ -53,6 +53,7 @@ litert_dynamic_lib(
     ],
     deps = [
         ":qnn_compose_graph",
+        ":transformations",
         "//litert/c:litert_runtime_c_api_shared_lib",
         "//litert/c/internal:litert_logging",
         "//litert/cc:litert_element_type",
@@ -245,5 +246,21 @@ litert_lib(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@qairt//:qnn_lib_headers",
+    ],
+)
+
+
+cc_library(
+    name = "transformations",
+    srcs = ["transformations.cc"],
+    hdrs = ["transformations.h"],
+    deps = [
+        "//litert/core/model",
+        "//litert/core/util:flatbuffer_tools",
+        "//litert/c:litert_runtime_c_api_shared_lib",
+            "//litert/cc/dynamic_runtime:litert_builder",
+        "//litert/cc/dynamic_runtime:litert_extended_model",
+        # "//litert/c:litert_builder",
+        # "//litert/cc/internal:litert_extended_model",
     ],
 )
