@@ -71,3 +71,21 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "ir_pool",
+    hdrs = ["ir_pool.h"],
+    deps = [],
+)
+
+cc_test(
+    name = "ir_pool_test",
+    srcs = [
+        "ir_pool_test.cc",
+    ],
+    deps = [
+        "//litert/vendors/qualcomm/core:ir_pool",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
