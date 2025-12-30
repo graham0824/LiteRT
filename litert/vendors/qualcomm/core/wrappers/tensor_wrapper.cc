@@ -372,4 +372,222 @@ TensorWrapper::TensorWrapper(const Qnn_Tensor_t& qnn_tensor)
   }
 }
 
+// Currently we want to avoid modifying builder implementation details,
+// so we construct the TensorWrapper in place using its constructor.
+// TODO(Alen): Implement full setter/getter support in TensorWrapper and switch
+// builder functions to use those APIs instead.
+
+bool CreateInputTensorWithSuffix(
+    TensorWrapper& dst, std::string name, Qnn_DataType_t data_type,
+    const QuantizeParamsWrapperVariant& quant_params,
+    const std::vector<std::uint32_t>& dimensions, std::string_view suffix) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_APP_WRITE,
+                           data_type, quant_params, dimensions);
+  return true;
+}
+
+bool CreateOutpuTensorWithSuffix(
+    TensorWrapper& dst, std::string name, Qnn_DataType_t data_type,
+    const QuantizeParamsWrapperVariant& quant_params,
+    const std::vector<std::uint32_t>& dimensions, std::string_view suffix) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_APP_READ, data_type,
+                           quant_params, dimensions);
+  return true;
+}
+
+bool CreateNativeTensor(TensorWrapper& dst, std::string name,
+                        Qnn_DataType_t data_type,
+                        const QuantizeParamsWrapperVariant& quant_params,
+                        const std::vector<std::uint32_t>& dimensions) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_NATIVE, data_type,
+                           quant_params, dimensions);
+  return true;
+}
+
+bool CreateNativeTensorWithSuffix(
+    TensorWrapper& dst, std::string name, Qnn_DataType_t data_type,
+    const QuantizeParamsWrapperVariant& quant_params,
+    const std::vector<std::uint32_t>& dimensions, std::string_view suffix) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_NATIVE, data_type,
+                           quant_params, dimensions);
+  return true;
+}
+
+bool CreateStaticTensor(TensorWrapper& dst, std::string name,
+                        Qnn_DataType_t data_type,
+                        const QuantizeParamsWrapperVariant& quant_params,
+                        const std::vector<std::uint32_t>& dimensions,
+                        std::uint32_t bytes, const void* data) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_STATIC, data_type,
+                           quant_params, dimensions, bytes, data, true);
+  return true;
+}
+
+bool CreateStaticTensorWithSuffix(
+    TensorWrapper& dst, std::string name, Qnn_DataType_t data_type,
+    const QuantizeParamsWrapperVariant& quant_params,
+    const std::vector<std::uint32_t>& dimensions, std::string_view suffix,
+    std::uint32_t bytes, const void* data, bool copy_data) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_STATIC, data_type,
+                           quant_params, dimensions, bytes, data, copy_data);
+  return true;
+}
+
+bool CloneNativeTensorFrom(TensorWrapper& dst, std::string name,
+                           const TensorWrapper& src) {
+  new (&dst)
+      TensorWrapper(std::move(name), QNN_TENSOR_TYPE_NATIVE, src.GetDataType(),
+                    src.GetQuantParams(), src.GetDims());
+  return true;
+}
+
+bool CloneNativeTensorFrom(TensorWrapper& dst, std::string name,
+                           const TensorWrapper& src,
+                           const std::vector<std::uint32_t>& dimensions) {
+  new (&dst) TensorWrapper(std::move(name), QNN_TENSOR_TYPE_NATIVE,
+                           src.GetDataType(), src.GetQuantParams(), dimensions);
+  return true;
+}
+
+bool CloneStaticTensorFrom(TensorWrapper& dst, std::string name,
+                           const TensorWrapper& src, Qnn_DataType_t data_type) {
+  new (&dst) TensorWrapper(
+      std::move(name), QNN_TENSOR_TYPE_STATIC, data_type, src.GetQuantParams(),
+      src.GetDims(), src.GetTensorBytes(), src.GetClientBufferData(), true);
+  return true;
+}
+
+bool CloneStaticTensorFrom(TensorWrapper& dst, std::string name,
+                           const TensorWrapper& src,
+                           const std::vector<std::uint32_t>& dimensions) {
+  new (&dst)
+      TensorWrapper(std::move(name), QNN_TENSOR_TYPE_STATIC, src.GetDataType(),
+                    src.GetQuantParams(), dimensions, src.GetTensorBytes(),
+                    src.GetClientBufferData(), true);
+  return true;
+}
+
+bool CreateStaticTensorWithValue(
+    TensorWrapper& dst, std::string name, Qnn_DataType_t data_type,
+    const QuantizeParamsWrapperVariant& quant_params,
+    const std::vector<std::uint32_t>& dimensions, float fill_value) {
+  std::uint32_t num_data_element = std::accumulate(
+      dimensions.begin(), dimensions.end(), 1, std::multiplies<>());
+  const std::uint32_t data_bytes =
+      num_data_element * GetDataTypeSize(data_type);
+
+  using TensorDataVariant =
+      std::variant<std::vector<std::int8_t>, std::vector<std::uint8_t>,
+                   std::vector<std::int16_t>, std::vector<std::uint16_t>,
+                   std::vector<std::int32_t>, std::vector<std::uint32_t>,
+                   std::vector<float>>;
+
+  TensorDataVariant tensor_data;
+  const void* data_ptr;
+  if (std::holds_alternative<UndefinedQuantizeParamsWrapper>(quant_params)) {
+    switch (data_type) {
+      case Qnn_DataType_t::QNN_DATATYPE_INT_32: {
+        if (fill_value < std::numeric_limits<std::int32_t>::min() ||
+            fill_value > std::numeric_limits<std::int32_t>::max()) {
+          QNN_LOG_ERROR(
+              "Fill value out of range when CreateStaticTensorWithValue.");
+        }
+        tensor_data = std::vector<std::int32_t>(num_data_element, fill_value);
+        data_ptr = std::get<std::vector<std::int32_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_UINT_32: {
+        if (fill_value < std::numeric_limits<std::uint32_t>::min() ||
+            fill_value > std::numeric_limits<std::uint32_t>::max()) {
+          QNN_LOG_ERROR(
+              "Fill value out of range when CreateStaticTensorWithValue.");
+        }
+        tensor_data = std::vector<std::uint32_t>(num_data_element, fill_value);
+        data_ptr = std::get<std::vector<std::uint32_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_FLOAT_32: {
+        tensor_data = std::vector<float>(num_data_element, fill_value);
+        data_ptr = std::get<std::vector<float>>(tensor_data).data();
+        break;
+      }
+      default: {
+        QNN_LOG_ERROR(
+            "Unsupported QNN data type when CreateStaticTensorWithValue.");
+        return false;
+      }
+    }
+  } else if (std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
+                 quant_params)) {
+    std::int32_t zero_point =
+        std::get<ScaleOffsetQuantizeParamsWrapper>(quant_params).GetZeroPoint();
+    float scale =
+        std::get<ScaleOffsetQuantizeParamsWrapper>(quant_params).GetScale();
+    switch (data_type) {
+      case Qnn_DataType_t::QNN_DATATYPE_SFIXED_POINT_8: {
+        std::int8_t pad_const_value =
+            Quantize<std::int8_t>(fill_value, scale, zero_point);
+        tensor_data =
+            std::vector<std::int8_t>(num_data_element, pad_const_value);
+        data_ptr = std::get<std::vector<std::int8_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_UFIXED_POINT_8: {
+        std::uint8_t pad_const_value =
+            Quantize<std::uint8_t>(fill_value, scale, zero_point);
+        tensor_data =
+            std::vector<std::uint8_t>(num_data_element, pad_const_value);
+        data_ptr = std::get<std::vector<std::uint8_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_SFIXED_POINT_16: {
+        std::int16_t pad_const_value =
+            Quantize<std::int16_t>(fill_value, scale, zero_point);
+        tensor_data =
+            std::vector<std::int16_t>(num_data_element, pad_const_value);
+        data_ptr = std::get<std::vector<std::int16_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_UFIXED_POINT_16: {
+        std::uint16_t pad_const_value =
+            Quantize<std::uint16_t>(fill_value, scale, zero_point);
+        tensor_data =
+            std::vector<std::uint16_t>(num_data_element, pad_const_value);
+        data_ptr = std::get<std::vector<std::uint16_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_SFIXED_POINT_32: {
+        std::int32_t pad_const_value =
+            Quantize<std::int32_t>(fill_value, scale, zero_point);
+        tensor_data =
+            std::vector<std::int32_t>(num_data_element, pad_const_value);
+        data_ptr = std::get<std::vector<std::int32_t>>(tensor_data).data();
+        break;
+      }
+      case Qnn_DataType_t::QNN_DATATYPE_UFIXED_POINT_32: {
+        std::uint32_t pad_const_value =
+            Quantize<std::uint32_t>(fill_value, scale, zero_point);
+        tensor_data =
+            std::vector<std::uint32_t>(num_data_element, pad_const_value);
+        data_ptr = std::get<std::vector<std::uint32_t>>(tensor_data).data();
+        break;
+      }
+      default: {
+        QNN_LOG_ERROR(
+            "Unsupported QNN data type when CreateStaticTensorWithValue.");
+        return false;
+      }
+    }
+  } else {
+    QNN_LOG_ERROR(
+        "Unsupported quantization encoding when CreateStaticTensorWithValue.");
+    return false;
+  }
+
+  new (&dst)
+      TensorWrapper(std::move(name), QNN_TENSOR_TYPE_STATIC, data_type,
+                    quant_params, dimensions, data_bytes, data_ptr, true);
+  return true;
+}
+
 }  // namespace qnn
