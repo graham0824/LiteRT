@@ -91,7 +91,7 @@ class TensorPool {
 namespace {
 
 template <typename Src, typename Dst>
-bool FillData(const TensorWrapper& src_tensor, std::vector<Dst>& dst_data) {
+bool TempFillData(const TensorWrapper& src_tensor, std::vector<Dst>& dst_data) {
   const auto src_data = src_tensor.GetTensorData<Src>();
   if (!src_data.has_value()) {
     QNN_LOG_ERROR("Failed to get static tensor data when filling data.");
@@ -128,33 +128,33 @@ TensorWrapper* TensorPool::ConvertStaticTensorFrom(
   bool fill_result = true;
   if (const auto src_data_type = src_tensor.GetDataType();
       src_data_type == QNN_DATATYPE_BOOL_8) {
-    fill_result = FillData<bool, T>(src_tensor, dst_data);
+    fill_result = TempFillData<bool, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_INT_8 ||
              src_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
-    fill_result = FillData<std::int8_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::int8_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_UINT_8 ||
              src_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
-    fill_result = FillData<std::uint8_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::uint8_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_INT_16 ||
              src_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
-    fill_result = FillData<std::int16_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::int16_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_UINT_16 ||
              src_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
-    fill_result = FillData<std::uint16_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::uint16_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_INT_32 ||
              src_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
-    fill_result = FillData<std::int32_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::int32_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_UINT_32 ||
              src_data_type == QNN_DATATYPE_UFIXED_POINT_32) {
-    fill_result = FillData<std::uint32_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::uint32_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_INT_64) {
-    fill_result = FillData<std::int64_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::int64_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_UINT_64) {
-    fill_result = FillData<std::uint64_t, T>(src_tensor, dst_data);
+    fill_result = TempFillData<std::uint64_t, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_FLOAT_32) {
-    fill_result = FillData<float, T>(src_tensor, dst_data);
+    fill_result = TempFillData<float, T>(src_tensor, dst_data);
   } else if (src_data_type == QNN_DATATYPE_FLOAT_64) {
-    fill_result = FillData<double, T>(src_tensor, dst_data);
+    fill_result = TempFillData<double, T>(src_tensor, dst_data);
   } else {
     QNN_LOG_ERROR("Unsupported QNN type for conversion.");
     fill_result = false;

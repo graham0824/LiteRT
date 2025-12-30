@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -22,7 +22,8 @@ constexpr size_t kAxisIndex = 0;
 }  // namespace
 
 std::vector<OpWrapper> BuildSplitOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs,
     const std::uint32_t num_splits) {
   std::vector<OpWrapper> res;
@@ -51,9 +52,11 @@ std::vector<OpWrapper> BuildSplitOp(
   for (int i = 1; i < num_splits; i++) {
     split_indice.emplace_back(static_cast<std::uint32_t>(i * slice_size));
   }
-  TensorWrapper& split_indice_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, axis_tensor.GetQuantParams(), {num_splits - 1},
-      sizeof(std::uint32_t) * split_indice.size(), split_indice.data());
+  TensorWrapper& split_indice_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(split_indice_tensor, "", QNN_DATATYPE_UINT_32,
+                     axis_tensor.GetQuantParams(), {num_splits - 1},
+                     sizeof(std::uint32_t) * split_indice.size(),
+                     split_indice.data());
 
   auto& split_op = CreateOpWrapper(res, QNN_OP_SPLIT);
   split_op.AddInputTensor(input_tensor);

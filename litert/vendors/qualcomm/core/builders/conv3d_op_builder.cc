@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -35,7 +35,8 @@ constexpr size_t kFilterWidthIndex = 2;
 }  // namespace
 
 std::vector<OpWrapper> BuildConv3dOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const std::uint32_t stride_d,
     const std::uint32_t stride_h, const std::uint32_t stride_w,
     const std::uint32_t dilation_d, const std::uint32_t dilation_h,
@@ -56,18 +57,22 @@ std::vector<OpWrapper> BuildConv3dOp(
   // stride param
   const std::array<std::uint32_t, 3> stride_data{stride_d, stride_h, stride_w};
   const std::vector<std::uint32_t> stride_shape{3};
-  auto& stride_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, stride_shape,
-      sizeof(stride_data[0]) * stride_data.size(), stride_data.data());
+  auto& stride_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(stride_tensor, "", QNN_DATATYPE_UINT_32,
+                     QuantizeParamsWrapperVariant{}, stride_shape,
+                     sizeof(stride_data[0]) * stride_data.size(),
+                     stride_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_3D_PARAM_STRIDE, stride_tensor);
 
   // dilation param
   const std::array<std::uint32_t, 3> dilation_data{dilation_d, dilation_h,
                                                    dilation_w};
   const std::vector<std::uint32_t> dilation_shape{3};
-  auto& dilation_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, dilation_shape,
-      sizeof(dilation_data[0]) * dilation_data.size(), dilation_data.data());
+  auto& dilation_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(dilation_tensor, "", QNN_DATATYPE_UINT_32,
+                     QuantizeParamsWrapperVariant{}, dilation_shape,
+                     sizeof(dilation_data[0]) * dilation_data.size(),
+                     dilation_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_3D_PARAM_DILATION, dilation_tensor);
 
   // padding param
@@ -87,9 +92,11 @@ std::vector<OpWrapper> BuildConv3dOp(
       padding_before_depth, padding_after_depth,  padding_before_height,
       padding_after_height, padding_before_width, padding_after_width};
   const std::vector<std::uint32_t> padding_shape{3, 2};
-  auto& padding_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, padding_shape,
-      sizeof(padding_data[0]) * padding_data.size(), padding_data.data());
+  auto& padding_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(padding_tensor, "", QNN_DATATYPE_UINT_32,
+                     QuantizeParamsWrapperVariant{}, padding_shape,
+                     sizeof(padding_data[0]) * padding_data.size(),
+                     padding_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_3D_PARAM_PAD_AMOUNT, padding_tensor);
 
   const std::vector<uint32_t>& input_dims = input_tensor.GetDims();

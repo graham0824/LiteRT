@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "QnnOpDef.h"  // from @qairt
@@ -31,7 +30,7 @@ namespace qnn {
 static constexpr int kInputIndex = 0;
 
 std::vector<OpWrapper> BuildL2NormOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, float epsilon) {
   std::vector<OpWrapper> res;
 

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -25,7 +25,8 @@ constexpr int kOutputIdx = 0;
 }  // namespace
 
 std::vector<OpWrapper> BuildDynamicUpdateSliceOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
   // Dynamic Update Slice:
@@ -79,14 +80,15 @@ std::vector<OpWrapper> BuildDynamicUpdateSliceOp(
   reduce_sum_op.AddInputTensor(indices_tensor);
 
   std::vector<uint32_t> axis_data = {0};
-  TensorWrapper& axis_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, {1},
-      sizeof(std::uint32_t), axis_data.data());
+  TensorWrapper& axis_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(axis_tensor, "", QNN_DATATYPE_UINT_32,
+                     QuantizeParamsWrapperVariant{}, {1}, sizeof(std::uint32_t),
+                     axis_data.data());
   reduce_sum_op.AddTensorParam(QNN_OP_REDUCE_SUM_PARAM_AXES, axis_tensor);
 
   // create intermediate tensor
-  TensorWrapper& one_dim_index =
-      tensor_pool.CloneNativeTensorFrom(indices_tensor, {1});
+  TensorWrapper& one_dim_index = tensor_pool.Emplace();
+  CloneNativeTensorFrom(one_dim_index, "", indices_tensor, {1});
   reduce_sum_op.AddOutputTensor(one_dim_index);
 
   // ElementwiseNotEqual
@@ -102,24 +104,26 @@ std::vector<OpWrapper> BuildDynamicUpdateSliceOp(
   std::iota(table_data.begin(), table_data.end(), 0);
 
   // create static table tensor
-  TensorWrapper& static_table = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, QuantizeParamsWrapperVariant{}, static_table_dims,
-      table_size * sizeof(std::int32_t), table_data.data());
+  TensorWrapper& static_table = tensor_pool.Emplace();
+  CreateStaticTensor(static_table, "", QNN_DATATYPE_INT_32,
+                     QuantizeParamsWrapperVariant{}, static_table_dims,
+                     table_size * sizeof(std::int32_t), table_data.data());
 
   OpWrapper& not_equal_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_NOT_EQUAL);
   not_equal_op.AddInputTensor(static_table);
   not_equal_op.AddInputTensor(one_dim_index);
 
-  TensorWrapper& not_equal_out = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_BOOL_8, QuantizeParamsWrapperVariant{}, static_table_dims);
+  TensorWrapper& not_equal_out = tensor_pool.Emplace();
+  CreateNativeTensor(not_equal_out, "", QNN_DATATYPE_BOOL_8,
+                     QuantizeParamsWrapperVariant{}, static_table_dims);
   not_equal_op.AddOutputTensor(not_equal_out);
 
   // reshape not equal output to [N, 1, 1]
   OpWrapper& reshape_op = CreateOpWrapper(res, QNN_OP_RESHAPE);
 
   reshape_op.AddInputTensor(not_equal_out);
-  TensorWrapper& reshape_out =
-      tensor_pool.CloneNativeTensorFrom(not_equal_out, {table_size, 1, 1});
+  TensorWrapper& reshape_out = tensor_pool.Emplace();
+  CloneNativeTensorFrom(reshape_out, "", not_equal_out, {table_size, 1, 1});
   reshape_op.AddOutputTensor(reshape_out);
 
   // Select

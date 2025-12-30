@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -27,7 +27,8 @@ constexpr size_t kOutputIndex = 0;
 
 }  // namespace
 std::vector<OpWrapper> BuildLeakyReluOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const float alpha) {
   std::vector<OpWrapper> res;
 
@@ -38,8 +39,9 @@ std::vector<OpWrapper> BuildLeakyReluOp(
   TensorWrapper* alpha_tensor = nullptr;
   if (std::holds_alternative<UndefinedQuantizeParamsWrapper>(
           input_tensor.GetQuantParams())) {
-    alpha_tensor = tensor_pool.CreateStaticTensorWithValue(
-        input_tensor.GetDataType(), input_tensor.GetQuantParams(), {1}, alpha);
+    alpha_tensor = &(tensor_pool.Emplace());
+    CreateStaticTensorWithValue(*alpha_tensor, "", input_tensor.GetDataType(),
+                                input_tensor.GetQuantParams(), {1}, alpha);
   } else if (std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
                  input_tensor.GetQuantParams())) {
     QuantizeParamsWrapperVariant quant_param;
@@ -51,8 +53,10 @@ std::vector<OpWrapper> BuildLeakyReluOp(
       case QNN_DATATYPE_SFIXED_POINT_8:
       case QNN_DATATYPE_UFIXED_POINT_16:
       case QNN_DATATYPE_SFIXED_POINT_16: {
-        alpha_tensor = tensor_pool.CreateStaticTensorWithValue(
-            input_tensor.GetDataType(), quant_param, {1}, alpha);
+        alpha_tensor = &(tensor_pool.Emplace());
+        CreateStaticTensorWithValue(*alpha_tensor, "",
+                                    input_tensor.GetDataType(), quant_param,
+                                    {1}, alpha);
         break;
       }
       default:

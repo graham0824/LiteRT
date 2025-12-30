@@ -11,7 +11,7 @@
 #include "QnnOpDef.h"
 #include "absl/types/span.h"  // from @com_google_absl
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -26,7 +26,8 @@ constexpr size_t kOutputIndex = 0;
 }  // namespace
 
 std::vector<OpWrapper> BuildScatterNdOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
@@ -51,15 +52,18 @@ std::vector<OpWrapper> BuildScatterNdOp(
 
   if (data_dims.empty()) return {};
 
-  TensorWrapper* data_tensor = tensor_pool.CreateStaticTensorWithValue(
-      updates_tensor.GetDataType(), updates_tensor.GetQuantParams(), data_dims,
-      0);
-
-  if (data_tensor == nullptr) {
+  TensorWrapper local_data_tensor;
+  if (!CreateStaticTensorWithValue(
+          local_data_tensor, "", updates_tensor.GetDataType(),
+          updates_tensor.GetQuantParams(), data_dims, 0)) {
     QNN_LOG_ERROR("Failed to create data tensor for scatterNd op.");
     return res;
   }
-  scatter_nd_op.AddInputTensor(*data_tensor);
+
+  TensorWrapper& data_tensor =
+      tensor_pool.Emplace(std::move(local_data_tensor));
+
+  scatter_nd_op.AddInputTensor(data_tensor);
   scatter_nd_op.AddInputTensor(indices_tensor);
   scatter_nd_op.AddInputTensor(updates_tensor);
 

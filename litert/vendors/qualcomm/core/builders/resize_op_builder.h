@@ -6,19 +6,18 @@
 
 #include <vector>
 
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 
 std::vector<OpWrapper> BuildResizeBilinearOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const bool align_corners,
     const bool half_pixel_centers);
 
 std::vector<OpWrapper> BuildResizeNearestOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const bool align_corners,
     const bool half_pixel_centers);
 

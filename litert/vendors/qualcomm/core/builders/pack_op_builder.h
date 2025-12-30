@@ -7,14 +7,12 @@
 #include <cstdint>
 #include <vector>
 
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 
-std::vector<OpWrapper> BuildPackOp(TensorPool& tensor_pool,
-                                   const std::vector<TensorWrapperRef>& inputs,
+std::vector<OpWrapper> BuildPackOp(const std::vector<TensorWrapperRef>& inputs,
                                    const std::vector<TensorWrapperRef>& outputs,
                                    const int32_t axis);
 

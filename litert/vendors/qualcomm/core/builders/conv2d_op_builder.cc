@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -33,7 +33,8 @@ constexpr size_t kChannelIndex = 3;
 }  // namespace
 
 std::vector<OpWrapper> BuildConv2dOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const std::uint32_t stride_h,
     const std::uint32_t stride_w, const std::uint32_t dilation_h,
     const std::uint32_t dilation_w, const PaddingType padding_type) {
@@ -54,7 +55,7 @@ std::vector<OpWrapper> BuildConv2dOp(
   }
 
   size_t filter_bytes = filter_tensor.GetTensorBytes();
-  TensorWrapper* transposed_filter_tensor = nullptr;
+  TensorWrapper& transposed_filter_tensor = tensor_pool.Emplace();
   if (filter_tensor.IsTensorStatic() &&
       filter_tensor.GetDataType() ==
           Qnn_DataType_t::QNN_DATATYPE_SFIXED_POINT_8) {
@@ -62,9 +63,11 @@ std::vector<OpWrapper> BuildConv2dOp(
     std::vector<int8_t> transpose_weight_int8;
     TransposeFromOHWIToHWIO(filter_data.value(), filters_dims,
                             transpose_weight_int8);
-    transposed_filter_tensor = &(tensor_pool.CreateStaticTensor(
-        filter_tensor.GetDataType(), filter_quant_params, permute_dims,
-        filter_bytes, transpose_weight_int8.data()));
+
+    CreateStaticTensor(transposed_filter_tensor, "",
+                       filter_tensor.GetDataType(), filter_quant_params,
+                       permute_dims, filter_bytes,
+                       transpose_weight_int8.data());
   } else if (filter_tensor.IsTensorStatic() &&
              filter_tensor.GetDataType() ==
                  Qnn_DataType_t::QNN_DATATYPE_UFIXED_POINT_8) {
@@ -72,24 +75,27 @@ std::vector<OpWrapper> BuildConv2dOp(
     std::vector<uint8_t> transpose_weight_uint8;
     TransposeFromOHWIToHWIO(filter_data.value(), filters_dims,
                             transpose_weight_uint8);
-    transposed_filter_tensor = &(tensor_pool.CreateStaticTensor(
-        filter_tensor.GetDataType(), filter_quant_params, permute_dims,
-        filter_bytes, transpose_weight_uint8.data()));
+    CreateStaticTensor(transposed_filter_tensor, "",
+                       filter_tensor.GetDataType(), filter_quant_params,
+                       permute_dims, filter_bytes,
+                       transpose_weight_uint8.data());
   } else {
-    transposed_filter_tensor =
-        &(tensor_pool.CloneNativeTensorFrom(filter_tensor, permute_dims));
+    CloneNativeTensorFrom(transposed_filter_tensor, "", filter_tensor,
+                          permute_dims);
 
     const std::vector<std::uint32_t> permute_shape{4};
     const std::array<std::uint32_t, 4> permute_data{kHeightIndex, kWidthIndex,
                                                     kChannelIndex, kBatchIndex};
-    auto& permute_tensor = tensor_pool.CreateStaticTensor(
-        QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, permute_shape,
+    auto& permute_tensor = tensor_pool.Emplace();
+    CreateStaticTensor(
+        permute_tensor, "", QNN_DATATYPE_UINT_32,
+        QuantizeParamsWrapperVariant{}, permute_shape,
         sizeof(decltype(permute_data)::value_type) * permute_data.size(),
         permute_data.data());
 
     OpWrapper& transpose_op = CreateOpWrapper(res, QNN_OP_TRANSPOSE);
     transpose_op.AddInputTensor(filter_tensor);
-    transpose_op.AddOutputTensor(*transposed_filter_tensor);
+    transpose_op.AddOutputTensor(transposed_filter_tensor);
     transpose_op.AddTensorParam(QNN_OP_TRANSPOSE_PARAM_PERM, permute_tensor);
   }
 
@@ -97,7 +103,7 @@ std::vector<OpWrapper> BuildConv2dOp(
   OpWrapper& conv_op = CreateOpWrapper(res, QNN_OP_CONV_2D);
   TensorWrapper& input_tensor = inputs[kInputIndex];
   conv_op.AddInputTensor(input_tensor);
-  conv_op.AddInputTensor(*transposed_filter_tensor);
+  conv_op.AddInputTensor(transposed_filter_tensor);
   if (inputs.size() - 1 >= kBiasIndex) {
     TensorWrapper& bias_tensor = inputs[kBiasIndex];
     // QNN only support per-tensor quant for bias,
@@ -111,8 +117,10 @@ std::vector<OpWrapper> BuildConv2dOp(
   // stride param
   const std::array<std::uint32_t, 2> stride_data{stride_h, stride_w};
   const std::vector<std::uint32_t> stride_shape{2};
-  auto& stride_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, stride_shape,
+  auto& stride_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      stride_tensor, "", QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{},
+      stride_shape,
       sizeof(decltype(stride_data)::value_type) * stride_data.size(),
       stride_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_2D_PARAM_STRIDE, stride_tensor);
@@ -120,8 +128,10 @@ std::vector<OpWrapper> BuildConv2dOp(
   // dilation param
   const std::array<std::uint32_t, 2> dilation_data{dilation_h, dilation_w};
   const std::vector<std::uint32_t> dilation_shape{2};
-  auto& dilation_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, dilation_shape,
+  auto& dilation_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      dilation_tensor, "", QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{},
+      dilation_shape,
       sizeof(decltype(dilation_data)::value_type) * dilation_data.size(),
       dilation_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_2D_PARAM_DILATION, dilation_tensor);
@@ -139,8 +149,10 @@ std::vector<OpWrapper> BuildConv2dOp(
       padding_before_height, padding_after_height, padding_before_width,
       padding_after_width};
   const std::vector<std::uint32_t> padding_shape{2, 2};
-  auto& padding_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, padding_shape,
+  auto& padding_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      padding_tensor, "", QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{},
+      padding_shape,
       sizeof(decltype(padding_data)::value_type) * padding_data.size(),
       padding_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_2D_PARAM_PAD_AMOUNT, padding_tensor);

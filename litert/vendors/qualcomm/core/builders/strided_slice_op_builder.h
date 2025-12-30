@@ -7,14 +7,15 @@
 #include <cstdint>
 #include <vector>
 
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 
 namespace qnn {
 
 std::vector<OpWrapper> BuildStridedSliceOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const std::int32_t begin_mask,
     const std::int32_t end_mask, const std::int32_t ellipsis_mask,
     const std::int32_t shrink_axis_mask, const std::int32_t new_axis_mask,

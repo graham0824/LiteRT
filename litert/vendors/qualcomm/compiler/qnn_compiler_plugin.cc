@@ -51,7 +51,7 @@
 #include "litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "litert/vendors/qualcomm/core/common.h"
 #include "litert/vendors/qualcomm/core/schema/soc_table.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/miscs.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -289,21 +289,22 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 
   for (const auto& op : graph.Ops()) {
     // default constructed, won't add tensor to QNN
-    ::qnn::TensorPool tensor_pool;
+    ::qnn::IrPool<::qnn::TensorWrapper> tensor_pool;
+
     std::vector<::qnn::TensorWrapperRef> input_tensors;
     for (const auto& input : op.Inputs()) {
-      ::qnn::TensorWrapper* res{nullptr};
+      auto& res = tensor_pool.Emplace();
       LITERT_RETURN_IF_ERROR(
-          litert::qnn::ConvertTensor(input, tensor_pool, res));
-      input_tensors.emplace_back(*res);
+          litert::qnn::ConvertTensor(input, res));
+      input_tensors.emplace_back(res);
     }
 
     std::vector<::qnn::TensorWrapperRef> output_tensors;
     for (const auto& output : op.Outputs()) {
-      ::qnn::TensorWrapper* res{nullptr};
+      auto& res = tensor_pool.Emplace();
       LITERT_RETURN_IF_ERROR(
-          litert::qnn::ConvertTensor(output, tensor_pool, res));
-      output_tensors.emplace_back(*res);
+          litert::qnn::ConvertTensor(output, res));
+        output_tensors.emplace_back(res);
     }
 
     std::vector<::qnn::OpWrapper> op_wrappers;
@@ -312,8 +313,9 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
         input_tensors, output_tensors, op_wrappers));
 
     if (compiler_plugin->Options().GetUseQint16AsQuint16()) {
-      tensor_pool.ForEach([](::qnn::TensorWrapper& tensor_wrapper) {
-        tensor_wrapper.ConvertQint16ToQuint16();
+      auto references = tensor_pool.GetReferences();
+      std::for_each(references.begin(), references.end(), [](::qnn::TensorWrapper* tensor) {
+        tensor->ConvertQint16ToQuint16();
       });
     }
 

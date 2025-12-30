@@ -26,7 +26,8 @@ constexpr std::int32_t kDefaultMask = 0;
 }  // namespace
 
 std::vector<OpWrapper> BuildStridedSliceOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const std::int32_t begin_mask,
     const std::int32_t end_mask, const std::int32_t ellipsis_mask,
     const std::int32_t shrink_axis_mask, const std::int32_t new_axis_mask,
@@ -92,8 +93,9 @@ std::vector<OpWrapper> BuildStridedSliceOp(
     range_data.emplace_back(stride);
   }
 
-  auto& range_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, {}, {input_rank, 3},
+  auto& range_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      range_tensor, "", QNN_DATATYPE_INT_32, {}, {input_rank, 3},
       sizeof(decltype(range_data)::value_type) * range_data.size(),
       range_data.data());
 

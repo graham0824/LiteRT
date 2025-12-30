@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -18,7 +18,8 @@
 namespace qnn {
 
 std::vector<OpWrapper> BuildReverseOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
@@ -80,9 +81,10 @@ std::vector<OpWrapper> BuildReverseOp(
   ranges[axis_value * range_num_elements + 1] = -1;
   ranges[axis_value * range_num_elements + 2] = -1;
 
-  const TensorWrapper& range_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, {}, {input_rank, range_num_elements},
-      sizeof(ranges[0]) * ranges.size(), ranges.data());
+  TensorWrapper& range_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(range_tensor, "", QNN_DATATYPE_INT_32, {},
+                     {input_rank, range_num_elements},
+                     sizeof(ranges[0]) * ranges.size(), ranges.data());
 
   auto& slice_op = CreateOpWrapper(res, QNN_OP_STRIDED_SLICE);
   slice_op.AddTensorParam(QNN_OP_STRIDED_SLICE_PARAM_RANGES, range_tensor);

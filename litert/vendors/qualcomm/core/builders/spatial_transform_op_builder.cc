@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -23,7 +23,8 @@ constexpr size_t kInputIndex = 0;
 constexpr size_t kOutputIndex = 0;
 
 std::vector<OpWrapper> BuildSpatialTransformOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const char* op_type,
     const char* block_param, const std::uint32_t block_size) {
   std::vector<OpWrapper> res;
@@ -33,9 +34,10 @@ std::vector<OpWrapper> BuildSpatialTransformOp(
   spatial_transform_op.AddOutputTensor(outputs[kOutputIndex]);
   const std::array<std::uint32_t, 2> block_data = {block_size, block_size};
   const std::vector<std::uint32_t> block_dims{2};
-  auto& block_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, block_dims,
-      sizeof(decltype(block_dims)::value_type) * block_dims.size(),
+  auto& block_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      block_tensor, "", QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{},
+      block_dims, sizeof(decltype(block_dims)::value_type) * block_dims.size(),
       block_data.data());
   spatial_transform_op.AddTensorParam(block_param, block_tensor);
 
@@ -44,7 +46,8 @@ std::vector<OpWrapper> BuildSpatialTransformOp(
 }  // namespace
 
 std::vector<OpWrapper> BuildDepthToSpaceOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs,
     const std::uint32_t block_size) {
   return BuildSpatialTransformOp(
@@ -53,7 +56,8 @@ std::vector<OpWrapper> BuildDepthToSpaceOp(
 }
 
 std::vector<OpWrapper> BuildSpaceToDepthOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs,
     const std::uint32_t block_size) {
   return BuildSpatialTransformOp(

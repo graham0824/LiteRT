@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -34,7 +34,8 @@ static constexpr int kInputIndex = 0;
 static constexpr int kGammaIndex = 1;
 
 std::vector<OpWrapper> BuildRmsNormOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const float epsilon) {
   std::vector<OpWrapper> res;
 
@@ -46,20 +47,22 @@ std::vector<OpWrapper> BuildRmsNormOp(
   // Constructs axis param tensor.
   std::vector<std::uint32_t> axis_data;
   axis_data.emplace_back(inputs[kInputIndex].get().GetRank() - 1);
-  TensorWrapper& axis_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, inputs[kInputIndex].get().GetQuantParams(), {1},
-      sizeof(std::uint32_t) * axis_data.size(), axis_data.data());
+  TensorWrapper& axis_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(axis_tensor, "", QNN_DATATYPE_UINT_32,
+                     inputs[kInputIndex].get().GetQuantParams(), {1},
+                     sizeof(std::uint32_t) * axis_data.size(),
+                     axis_data.data());
 
+  TensorWrapper& beta_tensor = tensor_pool.Emplace();
   if (inputs[kGammaIndex].get().GetDataType() == QNN_DATATYPE_FLOAT_32) {
     // Construct float beta static all 0 tensor.
     std::vector<float> beta_data(
         inputs[kGammaIndex].get().GetTensorNumElements(), 0);
-    TensorWrapper& beta_tensor = tensor_pool.CreateStaticTensor(
-        inputs[kGammaIndex].get().GetDataType(),
-        inputs[kGammaIndex].get().GetQuantParams(),
-        inputs[kGammaIndex].get().GetDims(), sizeof(float) * beta_data.size(),
-        beta_data.data());
-    rms_norm_op.AddInputTensor(beta_tensor);
+    CreateStaticTensor(beta_tensor, "", inputs[kGammaIndex].get().GetDataType(),
+                       inputs[kGammaIndex].get().GetQuantParams(),
+                       inputs[kGammaIndex].get().GetDims(),
+                       sizeof(float) * beta_data.size(), beta_data.data());
+
   } else {
     // Construct uint8_t beta static all 0 tensor.
     std::vector<uint8_t> beta_data(
@@ -68,12 +71,11 @@ std::vector<OpWrapper> BuildRmsNormOp(
     // Offset needs to be 0, scale does not matter since data is 0
     ScaleOffsetQuantizeParamsWrapper q_param(0.00001, 0);
 
-    TensorWrapper& beta_tensor = tensor_pool.CreateStaticTensor(
-        QNN_DATATYPE_UFIXED_POINT_8, q_param,
-        inputs[kGammaIndex].get().GetDims(), sizeof(uint8_t) * beta_data.size(),
-        beta_data.data());
-    rms_norm_op.AddInputTensor(beta_tensor);
+    CreateStaticTensor(beta_tensor, "", QNN_DATATYPE_UFIXED_POINT_8, q_param,
+                       inputs[kGammaIndex].get().GetDims(),
+                       sizeof(uint8_t) * beta_data.size(), beta_data.data());
   }
+  rms_norm_op.AddInputTensor(beta_tensor);
 
   rms_norm_op.AddScalarParam<float>(QNN_OP_RMS_NORM_PARAM_EPSILON, epsilon);
   rms_norm_op.AddTensorParam(QNN_OP_RMS_NORM_PARAM_AXES, axis_tensor);

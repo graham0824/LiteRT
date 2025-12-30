@@ -24,7 +24,7 @@
 #include "litert/cc/internal/litert_extended_model.h"
 #include "litert/cc/litert_element_type.h"
 #include "litert/vendors/qualcomm/core/common.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "litert/vendors/qualcomm/qnn_manager.h"
@@ -37,14 +37,14 @@ LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
                              const bool is_quantized, Qnn_DataType_t& qnn_type);
 
 LiteRtStatus ConvertTensor(
-    const litert::Tensor& litert_tensor, ::qnn::TensorPool& tensor_pool,
-    ::qnn::TensorWrapper*& tensor_wrapper,
+    const litert::Tensor& litert_tensor,
+    ::qnn::TensorWrapper& tensor_wrapper,
     const absl::flat_hash_set<std::int32_t>& ids_to_dump = {},
     bool is_tensor_read_and_write = false);
 
 LiteRtStatus ConvertOp(const bool use_htp_preferences,
                        const litert::Op& litert_op,
-                       ::qnn::TensorPool& tensor_pool,
+                       ::qnn::IrPool<::qnn::TensorWrapper>& tensor_pool,
                        std::vector<::qnn::TensorWrapperRef>& input_tensors,
                        std::vector<::qnn::TensorWrapperRef>& output_tensors,
                        std::vector<::qnn::OpWrapper>& op_wrappers);

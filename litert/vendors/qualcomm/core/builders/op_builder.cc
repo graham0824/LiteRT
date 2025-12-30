@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/op_code.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -233,7 +233,8 @@ OpWrapper& CreateSimpleActivationOp(std::vector<OpWrapper>& ops,
 }
 
 TensorWrapper& CreateFusedActivationInputTensor(
-    TensorPool& tensor_pool, const uint32_t fused_activation_function,
+    IrPool<TensorWrapper>& tensor_pool,
+    const uint32_t fused_activation_function,
     std::vector<TensorWrapperRef>& output_tensors) {
   if (fused_activation_function == FusedActivationNone) {
     return output_tensors[0];
@@ -246,7 +247,9 @@ TensorWrapper& CreateFusedActivationInputTensor(
         fused_activation_function);
   }
 
-  return tensor_pool.CloneNativeTensorFrom(output_tensors[0]);
+  auto& res = tensor_pool.Emplace();
+  CloneNativeTensorFrom(res, "", output_tensors[0]);
+  return res;
 }
 
 void AddFusedActivationNode(std::vector<OpWrapper>& res,

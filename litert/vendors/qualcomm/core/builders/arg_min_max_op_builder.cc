@@ -41,7 +41,7 @@ bool GetAxis(std::uint32_t& axis, const TensorWrapper& axis_tensor,
 }
 
 std::vector<OpWrapper> BuildArgOpImpl(
-    const char* op_type, const char* axis_param, TensorPool& tensor_pool,
+    const char* op_type, const char* axis_param,
     const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   const TensorWrapper& axis_tensor = inputs[kAxisIndex];
@@ -70,17 +70,17 @@ std::vector<OpWrapper> BuildArgOpImpl(
 }  // namespace
 
 std::vector<OpWrapper> BuildArgMaxOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
-  return BuildArgOpImpl(QNN_OP_ARGMAX, QNN_OP_ARGMAX_PARAM_AXIS, tensor_pool,
-                        inputs, outputs);
+  return BuildArgOpImpl(QNN_OP_ARGMAX, QNN_OP_ARGMAX_PARAM_AXIS, inputs,
+                        outputs);
 }
 
 std::vector<OpWrapper> BuildArgMinOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
-  return BuildArgOpImpl(QNN_OP_ARGMIN, QNN_OP_ARGMIN_PARAM_AXIS, tensor_pool,
-                        inputs, outputs);
+  return BuildArgOpImpl(QNN_OP_ARGMIN, QNN_OP_ARGMIN_PARAM_AXIS, inputs,
+                        outputs);
 }
 
 }  // namespace qnn

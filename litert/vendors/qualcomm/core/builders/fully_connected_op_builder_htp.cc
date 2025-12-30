@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -22,7 +22,8 @@
 namespace qnn {
 
 std::vector<OpWrapper> BuildFullyConnectedOpHtp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const bool keep_num_dims) {
   std::vector<OpWrapper> res;
   QNN_LOG_INFO("[FullyConnected Optimization] FC -> CONV2D");
@@ -50,8 +51,8 @@ std::vector<OpWrapper> BuildFullyConnectedOpHtp(
   reshape_op_1.AddInputTensor(input_tensor);
   std::vector<uint32_t> conv_input_dims = input_tensor.GetDims();
   conv_input_dims.insert(conv_input_dims.begin() + 1, 1);
-  qnn::TensorWrapper& conv_input_tensor =
-      tensor_pool.CloneNativeTensorFrom(input_tensor, conv_input_dims);
+  qnn::TensorWrapper& conv_input_tensor = tensor_pool.Emplace();
+  CloneNativeTensorFrom(conv_input_tensor, "", input_tensor, conv_input_dims);
   reshape_op_1.AddOutputTensor(conv_input_tensor);
   // Conv2D Input, Weight, and Output
   OpWrapper& conv_op = CreateOpWrapper(res, QNN_OP_CONV_2D);
@@ -69,58 +70,65 @@ std::vector<OpWrapper> BuildFullyConnectedOpHtp(
   size_t weight_bytes = weight_tensor.GetTensorBytes();
   const std::vector<std::uint32_t> transpose_dim{weight_tensor.GetDim(0), 1, 1,
                                                  weight_tensor.GetDim(1)};
-  TensorWrapper* weight;
+  TensorWrapper local_weight;
   if (weight_tensor.GetDataType() == QNN_DATATYPE_SFIXED_POINT_8) {
     std::vector<std::int8_t> conv_weight;
     auto fc_weight = weight_tensor.GetTensorData<std::int8_t>();
     TransposeFromOHWIToHWIO(fc_weight.value(), transpose_dim, conv_weight);
-    weight = &(tensor_pool.CreateStaticTensor(
-        weight_tensor.GetDataType(), quant_params, weight_dims, weight_bytes,
-        conv_weight.data()));
+    CreateStaticTensor(local_weight, "", weight_tensor.GetDataType(),
+                       quant_params, weight_dims, weight_bytes,
+                       conv_weight.data());
   } else if (weight_tensor.GetDataType() == QNN_DATATYPE_SFIXED_POINT_16) {
     std::vector<std::int16_t> conv_weight;
     auto fc_weight = weight_tensor.GetTensorData<std::int16_t>();
     TransposeFromOHWIToHWIO(fc_weight.value(), transpose_dim, conv_weight);
-    weight = &(tensor_pool.CreateStaticTensor(
-        weight_tensor.GetDataType(), quant_params, weight_dims, weight_bytes,
-        conv_weight.data()));
+    CreateStaticTensor(local_weight, "", weight_tensor.GetDataType(),
+                       quant_params, weight_dims, weight_bytes,
+                       conv_weight.data());
   } else if (weight_tensor.GetDataType() == QNN_DATATYPE_UFIXED_POINT_16) {
     std::vector<std::uint16_t> conv_weight;
     auto fc_weight = weight_tensor.GetTensorData<std::uint16_t>();
     TransposeFromOHWIToHWIO(fc_weight.value(), transpose_dim, conv_weight);
-    weight = &(tensor_pool.CreateStaticTensor(
-        weight_tensor.GetDataType(), quant_params, weight_dims, weight_bytes,
-        conv_weight.data()));
+    CreateStaticTensor(local_weight, "", weight_tensor.GetDataType(),
+                       quant_params, weight_dims, weight_bytes,
+                       conv_weight.data());
   } else if (weight_tensor.GetDataType() == QNN_DATATYPE_FLOAT_32) {
     std::vector<float> conv_weight;
     auto fc_weight = weight_tensor.GetTensorData<float>();
     TransposeFromOHWIToHWIO(fc_weight.value(), transpose_dim, conv_weight);
-    weight = &(tensor_pool.CreateStaticTensor(
-        weight_tensor.GetDataType(), quant_params, weight_dims, weight_bytes,
-        conv_weight.data()));
+    CreateStaticTensor(local_weight, "", weight_tensor.GetDataType(),
+                       quant_params, weight_dims, weight_bytes,
+                       conv_weight.data());
   } else {
     QNN_LOG_INFO(
         "[FullyConnected Optimization] FAILURE: Upsupported Weight Datatype");
     return {};
   }
-  conv_op.AddInputTensor(*weight);
-  qnn::TensorWrapper& conv_out = tensor_pool.CloneNativeTensorFrom(
-      output_tensor, {conv_input_dims[0], conv_input_dims[1],
-                      conv_input_dims[2], weight_dims[3]});
+  TensorWrapper& weight = tensor_pool.Emplace(std::move(local_weight));
+
+  conv_op.AddInputTensor(weight);
+  qnn::TensorWrapper& conv_out = tensor_pool.Emplace();
+  CloneNativeTensorFrom(conv_out, "", output_tensor,
+                        {conv_input_dims[0], conv_input_dims[1],
+                         conv_input_dims[2], weight_dims[3]});
   conv_op.AddOutputTensor(conv_out);
   // Conv2D Stride
   const std::array<std::uint32_t, 2> stride_data{1, 1};
   const std::vector<std::uint32_t> stride_shape{2};
-  auto& stride_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, stride_shape,
-      sizeof(std::uint32_t) * stride_data.size(), stride_data.data());
+  auto& stride_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(stride_tensor, "", QNN_DATATYPE_UINT_32,
+                     QuantizeParamsWrapperVariant{}, stride_shape,
+                     sizeof(std::uint32_t) * stride_data.size(),
+                     stride_data.data());
   conv_op.AddTensorParam(QNN_OP_DEPTH_WISE_CONV_2D_PARAM_STRIDE, stride_tensor);
   // Conv2D Padding
   const std::array<std::uint32_t, 4> padding_data = {0, 0, 0, 0};
   const std::vector<std::uint32_t> padding_shape{2, 2};
-  auto& padding_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, QuantizeParamsWrapperVariant{}, padding_shape,
-      sizeof(std::uint32_t) * padding_data.size(), padding_data.data());
+  auto& padding_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(padding_tensor, "", QNN_DATATYPE_UINT_32,
+                     QuantizeParamsWrapperVariant{}, padding_shape,
+                     sizeof(std::uint32_t) * padding_data.size(),
+                     padding_data.data());
   conv_op.AddTensorParam(QNN_OP_CONV_2D_PARAM_PAD_AMOUNT, padding_tensor);
 
   // Reshape

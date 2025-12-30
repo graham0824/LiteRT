@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -21,7 +21,8 @@
 namespace qnn {
 
 std::vector<OpWrapper> BuildReduceOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims,
     const char* op_type, const char* axes_param, const char* keep_dims_param) {
   std::vector<OpWrapper> res;
@@ -51,8 +52,10 @@ std::vector<OpWrapper> BuildReduceOp(
       adjusted_axis_data.emplace_back(adjusted_axis);
     }
   }
-  TensorWrapper& adjusted_axis_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, axis_tensor.GetQuantParams(),
+  TensorWrapper& adjusted_axis_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      adjusted_axis_tensor, "", QNN_DATATYPE_UINT_32,
+      axis_tensor.GetQuantParams(),
       {static_cast<const std::uint32_t>(adjusted_axis_data.size())},
       sizeof(std::uint32_t) * adjusted_axis_data.size(),
       adjusted_axis_data.data());
@@ -67,7 +70,8 @@ std::vector<OpWrapper> BuildReduceOp(
 }
 
 std::vector<OpWrapper> BuildReduceSumOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
   return BuildReduceOp(tensor_pool, inputs, outputs, keep_dims,
                        QNN_OP_REDUCE_SUM, QNN_OP_REDUCE_SUM_PARAM_AXES,
@@ -75,7 +79,8 @@ std::vector<OpWrapper> BuildReduceSumOp(
 }
 
 std::vector<OpWrapper> BuildReduceMeanOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
   return BuildReduceOp(tensor_pool, inputs, outputs, keep_dims,
                        QNN_OP_REDUCE_MEAN, QNN_OP_REDUCE_MEAN_PARAM_AXES,
@@ -83,7 +88,8 @@ std::vector<OpWrapper> BuildReduceMeanOp(
 }
 
 std::vector<OpWrapper> BuildReduceMaxOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
   return BuildReduceOp(tensor_pool, inputs, outputs, keep_dims,
                        QNN_OP_REDUCE_MAX, QNN_OP_REDUCE_MAX_PARAM_AXES,
@@ -91,7 +97,8 @@ std::vector<OpWrapper> BuildReduceMaxOp(
 }
 
 std::vector<OpWrapper> BuildReduceMinOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
   return BuildReduceOp(tensor_pool, inputs, outputs, keep_dims,
                        QNN_OP_REDUCE_MIN, QNN_OP_REDUCE_MIN_PARAM_AXES,
@@ -99,16 +106,18 @@ std::vector<OpWrapper> BuildReduceMinOp(
 }
 
 std::vector<OpWrapper> BuildReduceAnyOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
   std::vector<OpWrapper> res;
 
-  auto& reduce_max_input = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_UFIXED_POINT_8, QuantizeParamsWrapperVariant{},
-      inputs[0].get().GetDims());
-  auto& reduce_max_output = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_UFIXED_POINT_8, QuantizeParamsWrapperVariant{},
-      outputs[0].get().GetDims());
+  auto& reduce_max_input = tensor_pool.Emplace();
+  CreateNativeTensor(reduce_max_input, "", QNN_DATATYPE_UFIXED_POINT_8,
+                     QuantizeParamsWrapperVariant{}, inputs[0].get().GetDims());
+  auto& reduce_max_output = tensor_pool.Emplace();
+  CreateNativeTensor(reduce_max_output, "", QNN_DATATYPE_UFIXED_POINT_8,
+                     QuantizeParamsWrapperVariant{},
+                     outputs[0].get().GetDims());
 
   auto& cast_to_uint8_op = CreateOpWrapper(res, QNN_OP_CAST);
   cast_to_uint8_op.AddInputTensor(inputs[0]);
@@ -128,16 +137,18 @@ std::vector<OpWrapper> BuildReduceAnyOp(
 }
 
 std::vector<OpWrapper> BuildReduceAllOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {
   std::vector<OpWrapper> res;
 
-  auto& reduce_min_input = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_UFIXED_POINT_8, QuantizeParamsWrapperVariant{},
-      inputs[0].get().GetDims());
-  auto& reduce_min_output = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_UFIXED_POINT_8, QuantizeParamsWrapperVariant{},
-      outputs[0].get().GetDims());
+  auto& reduce_min_input = tensor_pool.Emplace();
+  CreateNativeTensor(reduce_min_input, "", QNN_DATATYPE_UFIXED_POINT_8,
+                     QuantizeParamsWrapperVariant{}, inputs[0].get().GetDims());
+  auto& reduce_min_output = tensor_pool.Emplace();
+  CreateNativeTensor(reduce_min_output, "", QNN_DATATYPE_UFIXED_POINT_8,
+                     QuantizeParamsWrapperVariant{},
+                     outputs[0].get().GetDims());
 
   auto& cast_to_uint8_op = CreateOpWrapper(res, QNN_OP_CAST);
   cast_to_uint8_op.AddInputTensor(inputs[0]);

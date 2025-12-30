@@ -34,7 +34,6 @@ cc_test(
         "tensor_pool_test.cc",
     ],
     deps = [
-        ":tensor_pool",
         "//litert/vendors/qualcomm/core/utils:miscs",
         "//litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",

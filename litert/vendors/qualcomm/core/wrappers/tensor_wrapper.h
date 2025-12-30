@@ -88,7 +88,7 @@ void TransposeFromOHWIToHWIO(absl::Span<const T> weight_data,
 }
 
 class TensorWrapper final {
-  friend class TensorPool;
+  // friend class TensorPool;
 
  public:
   explicit TensorWrapper();
@@ -125,6 +125,11 @@ class TensorWrapper final {
   const Qnn_Tensor_t& GetQnnTensor() const { return qnn_tensor_; }
 
   std::string GetName() const { return qnn_tensor_.v1.name; }
+
+  void SetName(std::string name) {
+    name_ = std::move(name);
+    qnn_tensor_.v2.name = name_.c_str();
+  }
 
   std::uint32_t GetRank() const;
 

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -22,7 +22,8 @@ constexpr int kOutputIdx = 0;
 }  // namespace
 
 std::vector<OpWrapper> BuildEmbeddingLookupOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
@@ -48,9 +49,10 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
       int16_data.emplace_back(static_cast<std::int16_t>((*int8_data)[i]));
     }
 
-    TensorWrapper& int16_table_tensor = tensor_pool.CreateStaticTensor(
-        output_tensor.GetDataType(), table_tensor.GetQuantParams(),
-        table_tensor.GetDims(),
+    TensorWrapper& int16_table_tensor = tensor_pool.Emplace();
+    CreateStaticTensor(
+        int16_table_tensor, "", output_tensor.GetDataType(),
+        table_tensor.GetQuantParams(), table_tensor.GetDims(),
         sizeof(decltype(int16_data)::value_type) * int16_data.size(),
         reinterpret_cast<void*>(int16_data.data()));
 

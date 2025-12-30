@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -28,7 +28,7 @@ constexpr size_t kOutputIndex = 0;
 
 }  // namespace
 
-std::vector<OpWrapper> BuildPadOp(TensorPool& tensor_pool,
+std::vector<OpWrapper> BuildPadOp(IrPool<TensorWrapper>& tensor_pool,
                                   const std::vector<TensorWrapperRef>& inputs,
                                   const std::vector<TensorWrapperRef>& outputs,
                                   const std::uint32_t scheme_value) {
@@ -39,19 +39,22 @@ std::vector<OpWrapper> BuildPadOp(TensorPool& tensor_pool,
     return res;
   }
 
-  auto* converted_pad_tensor =
-      tensor_pool.ConvertStaticTensorFrom<std::uint32_t>(pad_tensor);
-  if (converted_pad_tensor == nullptr) {
+  TensorWrapper local_converted_pad_tensor;
+  if (!ConvertStaticTensorFrom<std::uint32_t>(local_converted_pad_tensor, "",
+                                              pad_tensor)) {
     QNN_LOG_ERROR("Failed to convert uint32 pad amount tensor.")
     return res;
   }
+
+  TensorWrapper& converted_pad_tensor =
+      tensor_pool.Emplace(std::move(local_converted_pad_tensor));
 
   OpWrapper& pad_op = CreateOpWrapper(res, QNN_OP_PAD);
   TensorWrapper& input_tensor = inputs[kInputIndex];
   pad_op.AddInputTensor(input_tensor);
   pad_op.AddOutputTensor(outputs[kOutputIndex]);
   pad_op.AddScalarParam<std::uint32_t>(QNN_OP_PAD_PARAM_SCHEME, scheme_value);
-  pad_op.AddTensorParam(QNN_OP_PAD_PARAM_PAD_AMOUNT, *converted_pad_tensor);
+  pad_op.AddTensorParam(QNN_OP_PAD_PARAM_PAD_AMOUNT, converted_pad_tensor);
 
   if (input_tensor.IsQuant8() || input_tensor.IsQuant16()) {
     std::int32_t pad_const_value = 0;
@@ -103,13 +106,15 @@ std::vector<OpWrapper> BuildPadOp(TensorPool& tensor_pool,
 }
 
 std::vector<OpWrapper> BuildConstantPadOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   return BuildPadOp(tensor_pool, inputs, outputs, QNN_OP_PAD_SCHEME_CONSTANT);
 }
 
 std::vector<OpWrapper> BuildMirrorPadOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const std::uint32_t mode) {
   std::uint32_t scheme_value = QNN_OP_PAD_SCHEME_CONSTANT;
   // get scheme if mirror pad

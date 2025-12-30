@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -24,7 +24,8 @@ constexpr int kBiasIdx = 2;
 }
 
 std::vector<OpWrapper> BuildFullyConnectedOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const bool keep_num_dims) {
   std::vector<OpWrapper> res;
   OpWrapper& fully_connected_op = CreateOpWrapper(res, QNN_OP_FULLY_CONNECTED);
@@ -49,9 +50,10 @@ std::vector<OpWrapper> BuildFullyConnectedOp(
       for (size_t i = 0; i < num_elements; ++i) {
         converted_data[i] = static_cast<int32_t>((*original_data)[i]);
       }
-      auto& converted_bias_tensor = tensor_pool.CreateStaticTensor(
-          QNN_DATATYPE_SFIXED_POINT_32, bias_tensor.GetQuantParams(),
-          bias_tensor.GetDims(),
+      auto& converted_bias_tensor = tensor_pool.Emplace();
+      CreateStaticTensor(
+          converted_bias_tensor, "", QNN_DATATYPE_SFIXED_POINT_32,
+          bias_tensor.GetQuantParams(), bias_tensor.GetDims(),
           num_elements * sizeof(decltype(converted_data)::value_type),
           converted_data.data());
 
@@ -75,8 +77,9 @@ std::vector<OpWrapper> BuildFullyConnectedOp(
     // by QNN.
     const std::uint32_t batch_size = input_size / num_input_elem;
     // QNN output should always be rank 2
-    qnn::TensorWrapper& fully_connected_out = tensor_pool.CloneNativeTensorFrom(
-        output_tensor, {batch_size, num_units});
+    qnn::TensorWrapper& fully_connected_out = tensor_pool.Emplace();
+    CloneNativeTensorFrom(fully_connected_out, "", output_tensor,
+                          {batch_size, num_units});
 
     fully_connected_op.AddOutputTensor(fully_connected_out);
 

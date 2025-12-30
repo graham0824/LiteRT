@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -18,7 +18,8 @@
 namespace qnn {
 
 std::vector<OpWrapper> BuildTileOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
@@ -44,18 +45,21 @@ std::vector<OpWrapper> BuildTileOp(
     for (size_t i = 0; i < data_len; ++i) {
       uint32_data.emplace_back(static_cast<std::uint32_t>((*int64_data)[i]));
     }
-    TensorWrapper& uint32_multiples_tensor = tensor_pool.CreateStaticTensor(
-        QNN_DATATYPE_UINT_32, multiples_tensor.GetQuantParams(),
-        multiples_tensor.GetDims(),
+    TensorWrapper& uint32_multiples_tensor = tensor_pool.Emplace();
+    CreateStaticTensor(
+        uint32_multiples_tensor, "", QNN_DATATYPE_UINT_32,
+        multiples_tensor.GetQuantParams(), multiples_tensor.GetDims(),
         sizeof(decltype(uint32_data)::value_type) * uint32_data.size(),
         reinterpret_cast<void*>(uint32_data.data()));
 
     tile_op.AddTensorParam(QNN_OP_TILE_PARAM_MULTIPLES,
                            uint32_multiples_tensor);
   } else if (multiples_tensor.GetDataType() == QNN_DATATYPE_INT_32) {
+    TensorWrapper& cloned_multiples_tensor = tensor_pool.Emplace();
+    CloneStaticTensorFrom(cloned_multiples_tensor, "", multiples_tensor,
+                          QNN_DATATYPE_UINT_32);
     tile_op.AddTensorParam(QNN_OP_TILE_PARAM_MULTIPLES,
-                           tensor_pool.CloneStaticTensorFrom(
-                               multiples_tensor, QNN_DATATYPE_UINT_32));
+                           cloned_multiples_tensor);
   } else {
     QNN_LOG_ERROR("Unsupported data type for multiples param.");
     return {};

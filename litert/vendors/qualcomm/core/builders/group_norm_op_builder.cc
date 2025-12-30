@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "QnnOpDef.h"  // from @qairt
@@ -29,7 +28,7 @@
 namespace qnn {
 
 std::vector<OpWrapper> BuildGroupNormOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const float epsilon,
     const uint32_t num_groups) {
   std::vector<OpWrapper> res;
@@ -42,10 +41,9 @@ std::vector<OpWrapper> BuildGroupNormOp(
 
   group_norm_op.AddScalarParam<float>(QNN_OP_GROUP_NORM_PARAM_EPSILON, epsilon);
   group_norm_op.AddScalarParam<uint32_t>(QNN_OP_GROUP_NORM_PARAM_GROUP,
-                                              num_groups);
+                                         num_groups);
 
   return res;
 }
 
 }  // namespace qnn
-

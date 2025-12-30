@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -24,7 +24,8 @@ constexpr int kRangeNumElements = 3;
 }  // namespace
 
 std::vector<OpWrapper> BuildSliceOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
@@ -59,8 +60,9 @@ std::vector<OpWrapper> BuildSliceOp(
     }
     range_data.emplace_back(kDefaultStrideValue);
   }
-  TensorWrapper& range_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, begin_tensor.GetQuantParams(),
+  TensorWrapper& range_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(
+      range_tensor, "", QNN_DATATYPE_INT_32, begin_tensor.GetQuantParams(),
       {input_rank, kRangeNumElements}, sizeof(std::int32_t) * range_data.size(),
       range_data.data());
 

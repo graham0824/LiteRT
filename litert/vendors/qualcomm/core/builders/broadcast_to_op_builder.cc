@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
@@ -54,7 +54,7 @@ std::vector<std::uint32_t> GetStaticTensorDimention(
 
 template <typename T>
 inline TensorWrapper& CreateStaticTensor(
-    TensorPool& tensor_pool, const TensorWrapper& input,
+    IrPool<TensorWrapper>& tensor_pool, const TensorWrapper& input,
     const std::vector<std::uint32_t>& static_dims) {
   std::uint32_t static_size = std::accumulate(
       static_dims.begin(), static_dims.end(), 1, std::multiplies<>());
@@ -67,14 +67,16 @@ inline TensorWrapper& CreateStaticTensor(
     static_value = input_quant_param.GetZeroPoint();
   }
   std::vector<T> static_data(static_size, static_value);
-  return tensor_pool.CreateStaticTensor(input.GetDataType(), quant_param,
-                                        static_dims, sizeof(T) * static_size,
-                                        static_data.data());
+  auto& res = tensor_pool.Emplace();
+  CreateStaticTensor(res, "", input.GetDataType(), quant_param, static_dims,
+                     sizeof(T) * static_size, static_data.data());
+  return res;
 }
 }  // namespace
 
 std::vector<OpWrapper> BuildBroadcastToOp(
-    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    IrPool<TensorWrapper>& tensor_pool,
+    const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
