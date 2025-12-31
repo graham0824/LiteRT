@@ -7,8 +7,8 @@
 #include <functional>
 #include <vector>
 
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/op_code.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/transformation/embedding_gemma.h"
 #include "litert/vendors/qualcomm/core/transformation/mask.h"
 #include "litert/vendors/qualcomm/core/transformation/matmul_convert.h"
@@ -60,10 +60,10 @@ int GetPatternStartIndex(size_t start_index, const std::vector<OpWrapper>& ops,
 // and returns the size of the skippable indices for the next index check.
 typedef size_t (*G2GTransform)(
     std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size);
+    std::vector<OpWrapper>& ops, size_t start_index,
+    IrPool<TensorWrapper>& tensor_pool, size_t pattern_size);
 void Transform(std::function<bool(OpWrapper&)> validate_op_config,
-               std::vector<OpWrapper>& ops, TensorPool& tensor_pool,
+               std::vector<OpWrapper>& ops, IrPool<TensorWrapper>& tensor_pool,
                const std::vector<QnnOpCode>& pattern_ops,
                G2GTransform custom_transform) {
   auto bad_match_table = CreateBadMatchTable(pattern_ops);
@@ -86,7 +86,8 @@ void Transform(std::function<bool(OpWrapper&)> validate_op_config,
 
 // TODO (jiunkaiy): Add more G2G transformation.
 void GraphToGraphTransform(const G2GConfig g2g_option,
-                           std::vector<OpWrapper>& ops, TensorPool& tensor_pool,
+                           std::vector<OpWrapper>& ops,
+                           IrPool<TensorWrapper>& tensor_pool,
                            std::function<bool(OpWrapper&)> validate_op_config) {
   if (g2g_option == G2GConfig::kOff) {
     return;

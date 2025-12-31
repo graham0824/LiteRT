@@ -8,13 +8,13 @@
 #include <functional>
 #include <vector>
 
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 
 namespace qnn {
 size_t TransformQuantizeInMask(
     std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    std::vector<OpWrapper>& ops, size_t start_index, IrPool<TensorWrapper>& tensor_pool,
     size_t pattern_size);
 }  // namespace qnn
 #endif  // ODML_LITERT_LITERT_VENDORS_QUALCOMM_CORE_TRANSFORMATION_MASK_H_

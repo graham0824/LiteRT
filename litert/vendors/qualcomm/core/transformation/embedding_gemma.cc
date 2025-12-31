@@ -16,7 +16,7 @@
 #include "litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/split_op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -45,17 +45,16 @@ OpWrapper& EmplaceOpWithIO(
   return ret;
 }
 
-TensorWrapper& BuildSingleSHA(std::vector<OpWrapper>& new_ops,
-                              TensorPool& tensor_pool, TensorWrapper& sha_input,
-                              TensorWrapper& mask_input,
-                              const OpWrapper& mul_op,
-                              const OpWrapper& matmul_op1,
-                              const OpWrapper& add_op,
-                              const OpWrapper& softmax_op,
-                              const OpWrapper& matmul_op2, size_t num_heads) {
+TensorWrapper& BuildSingleSHA(
+    std::vector<OpWrapper>& new_ops, IrPool<TensorWrapper>& tensor_pool,
+    TensorWrapper& sha_input, TensorWrapper& mask_input,
+    const OpWrapper& mul_op, const OpWrapper& matmul_op1,
+    const OpWrapper& add_op, const OpWrapper& softmax_op,
+    const OpWrapper& matmul_op2, size_t num_heads) {
   // Mul
-  auto& mul_output = tensor_pool.CloneNativeTensorFrom(
-      mul_op.GetOutputTensor(0), sha_input.GetDims());
+  auto& mul_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(mul_output, "", mul_op.GetOutputTensor(0),
+                        sha_input.GetDims());
 
   EmplaceOpWithIO(new_ops, mul_op, {sha_input, std::nullopt}, {mul_output});
 
@@ -63,47 +62,50 @@ TensorWrapper& BuildSingleSHA(std::vector<OpWrapper>& new_ops,
   const auto& matmul_op1_output = matmul_op1.GetOutputTensor(0);
   std::vector<uint32_t> new_matmul1_output_dim = matmul_op1_output.GetDims();
   new_matmul1_output_dim[2] /= num_heads;
-  auto& new_matmul1_output = tensor_pool.CloneNativeTensorFrom(
-      matmul_op1_output, new_matmul1_output_dim);
+  auto& new_matmul1_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(new_matmul1_output, "", matmul_op1_output,
+                        new_matmul1_output_dim);
   EmplaceOpWithIO(new_ops, matmul_op1, {mul_output, std::nullopt},
                   {new_matmul1_output});
 
   // Add
-  auto& new_add_output = tensor_pool.CloneNativeTensorFrom(
-      add_op.GetOutputTensor(0), new_matmul1_output_dim);
+  auto& new_add_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(new_add_output, "", add_op.GetOutputTensor(0),
+                        new_matmul1_output_dim);
   EmplaceOpWithIO(new_ops, add_op, {new_matmul1_output, mask_input},
                   {new_add_output});
 
   // Softmax
-  auto& softmax_output = tensor_pool.CloneNativeTensorFrom(
-      softmax_op.GetOutputTensor(0), new_add_output.GetDims());
+  auto& softmax_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(softmax_output, "", softmax_op.GetOutputTensor(0),
+                        new_add_output.GetDims());
   EmplaceOpWithIO(new_ops, softmax_op, {new_add_output}, {softmax_output});
 
   // MatMul 2
   auto matmul_op2_out_dim = matmul_op2.GetOutputTensor(0).GetDims();
   matmul_op2_out_dim[2] /= num_heads;
-  auto& new_matmul2_output = tensor_pool.CloneNativeTensorFrom(
-      matmul_op2.GetOutputTensor(0), matmul_op2_out_dim);
+  auto& new_matmul2_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(new_matmul2_output, "", matmul_op2.GetOutputTensor(0),
+                        matmul_op2_out_dim);
   EmplaceOpWithIO(new_ops, matmul_op2, {softmax_output, std::nullopt},
                   {new_matmul2_output});
   return new_matmul2_output;
 }
 
 // TODO (chunhsue-qti): add namespace to each new op
-std::vector<OpWrapper> MHA2SHA(TensorPool& tensor_pool, const OpWrapper& mul_op,
-                               const OpWrapper& tranpose_op1,
-                               const OpWrapper& matmul_op1,
-                               const OpWrapper& add_op,
-                               const OpWrapper& softmax_op,
-                               const OpWrapper& matmul_op2,
-                               const TensorWrapper& pattern_input,
-                               const TensorWrapper& pattern_output) {
+std::vector<OpWrapper> MHA2SHA(
+    IrPool<TensorWrapper>& tensor_pool, const OpWrapper& mul_op,
+    const OpWrapper& tranpose_op1, const OpWrapper& matmul_op1,
+    const OpWrapper& add_op, const OpWrapper& softmax_op,
+    const OpWrapper& matmul_op2, const TensorWrapper& pattern_input,
+    const TensorWrapper& pattern_output) {
   std::vector<OpWrapper> new_ops;
 
   // Transpose
   auto transpose_out_dims = tranpose_op1.GetOutputTensor(0).GetDims();
-  auto& transpose_output =
-      tensor_pool.CloneNativeTensorFrom(pattern_input, transpose_out_dims);
+  auto& transpose_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(transpose_output, "", pattern_input,
+                        transpose_out_dims);
   auto& new_transpose1 = EmplaceOpWithIO(
       new_ops, tranpose_op1, {const_cast<::qnn::TensorWrapper&>(pattern_input)},
       {transpose_output});
@@ -116,17 +118,18 @@ std::vector<OpWrapper> MHA2SHA(TensorPool& tensor_pool, const OpWrapper& mul_op,
   for (size_t i = 0; i < num_heads; i++) {
     auto sha_input_dims = mha_input.GetDims();  // split_out_dims
     sha_input_dims[1] /= num_heads;
-    auto& split_output =
-        tensor_pool.CloneNativeTensorFrom(mha_input, sha_input_dims);
+    auto& split_output = tensor_pool.Emplace();
+    CloneNativeTensorFrom(split_output, "", mha_input, sha_input_dims);
     sha_inputs.emplace_back(split_output);
   }
 
   // split from mul
   const std::array<int32_t, 1> split_axis_data{1};
-  auto& split_axis = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, {}, {split_axis_data.size()},
-      split_axis_data.size() * sizeof(split_axis_data[0]),
-      split_axis_data.data());
+  auto& split_axis = tensor_pool.Emplace();
+  CreateStaticTensor(split_axis, "", QNN_DATATYPE_INT_32, {},
+                     {split_axis_data.size()},
+                     split_axis_data.size() * sizeof(split_axis_data[0]),
+                     split_axis_data.data());
   auto split_op = BuildSplitOp(
       tensor_pool, {split_axis, const_cast<TensorWrapper&>(mha_input)},
       sha_inputs, num_heads);
@@ -140,14 +143,17 @@ std::vector<OpWrapper> MHA2SHA(TensorPool& tensor_pool, const OpWrapper& mul_op,
   for (size_t i = 0; i < num_heads; i++) {
     auto new_mask_input_dims = mask_input.GetDims();
     new_mask_input_dims[2] /= num_heads;
-    auto& mask_split_output =
-        tensor_pool.CloneNativeTensorFrom(mask_input, new_mask_input_dims);
+    auto& mask_split_output = tensor_pool.Emplace();
+    CloneNativeTensorFrom(mask_split_output, "", mask_input,
+                          new_mask_input_dims);
     new_mask_inputs.emplace_back(mask_split_output);
   }
 
   const std::array<int32_t, 1> mask_split_axis_data{2};
-  auto& mask_split_axis = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, {}, {mask_split_axis_data.size()},
+  auto& mask_split_axis = tensor_pool.Emplace();
+  CreateStaticTensor(
+      mask_split_axis, "", QNN_DATATYPE_INT_32, {},
+      {mask_split_axis_data.size()},
       mask_split_axis_data.size() * sizeof(mask_split_axis_data[0]),
       mask_split_axis_data.data());
   auto mask_split_op = BuildSplitOp(
@@ -169,24 +175,22 @@ std::vector<OpWrapper> MHA2SHA(TensorPool& tensor_pool, const OpWrapper& mul_op,
   // Concat
   auto concat_dims = pattern_output.GetDims();
   concat_dims.insert(concat_dims.begin(), 1);
-  auto& concat_output =
-      tensor_pool.CloneNativeTensorFrom(pattern_output, concat_dims);
-  auto concat_final =
-      BuildConcatenationOp(tensor_pool, sha_outputs, {concat_output}, 3);
+  auto& concat_output = tensor_pool.Emplace();
+  CloneNativeTensorFrom(concat_output, "", pattern_output, concat_dims);
+  auto concat_final = BuildConcatenationOp(sha_outputs, {concat_output}, 3);
   std::move(concat_final.begin(), concat_final.end(),
             std::back_inserter(new_ops));
   // Reshape
-  auto reshape =
-      BuildReshapeOp(tensor_pool, {concat_output},
-                     {const_cast<::qnn::TensorWrapper&>(pattern_output)});
+  auto reshape = BuildReshapeOp(
+      {concat_output}, {const_cast<::qnn::TensorWrapper&>(pattern_output)});
   std::move(reshape.begin(), reshape.end(), std::back_inserter(new_ops));
   return new_ops;
 }
 
 size_t TransformEmbeddingGemma(
     std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
+    std::vector<OpWrapper>& ops, size_t start_index,
+    IrPool<TensorWrapper>& tensor_pool, size_t pattern_size) {
   // Connection check
   auto is_op_connected = [](const OpWrapper& op1,
                             const OpWrapper& op2) -> bool {

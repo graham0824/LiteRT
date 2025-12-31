@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/select_op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
 #include "QnnTypes.h"  // from @qairt
@@ -18,7 +18,7 @@ namespace qnn {
 
 std::vector<OpWrapper> TransformToSelectOp(
     const std::vector<OpWrapper>& original_ops, size_t start_index,
-    TensorPool& tensor_pool, size_t pattern_size) {
+    IrPool<TensorWrapper>& tensor_pool, size_t pattern_size) {
   // const_cast for BuildSelectOp, can be removed if builders are refined
   auto& pattern_input =
       const_cast<TensorWrapper&>(original_ops[start_index].GetInputTensor(0));
@@ -29,8 +29,9 @@ std::vector<OpWrapper> TransformToSelectOp(
   const std::uint32_t num_element = pattern_input.GetTensorNumElements();
 
   std::vector<std::int16_t> all_zero_data(num_element, 0);
-  auto& input_1 = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_SFIXED_POINT_16, quant_param, tensor_dims,
+  auto& input_1 = tensor_pool.Emplace();
+  CreateStaticTensor(
+      input_1, "", QNN_DATATYPE_SFIXED_POINT_16, quant_param, tensor_dims,
       all_zero_data.size() * sizeof(all_zero_data[0]), all_zero_data.data());
 
   auto& mul_static_tensor =
@@ -42,18 +43,18 @@ std::vector<OpWrapper> TransformToSelectOp(
   }
   std::vector<std::int16_t> mask_data(num_element,
                                       static_tensor_data.value()[0]);
-  auto& input_2 = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_SFIXED_POINT_16, quant_param, tensor_dims,
-      mask_data.size() * sizeof(mask_data[0]), mask_data.data());
+  auto& input_2 = tensor_pool.Emplace();
+  CreateStaticTensor(input_2, "", QNN_DATATYPE_SFIXED_POINT_16, quant_param,
+                     tensor_dims, mask_data.size() * sizeof(mask_data[0]),
+                     mask_data.data());
 
-  return BuildSelectOp(tensor_pool, {pattern_input, input_1, input_2},
-                       {pattern_output});
+  return BuildSelectOp({pattern_input, input_1, input_2}, {pattern_output});
 }
 
 size_t TransformQuantizeInMask(
     std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
+    std::vector<OpWrapper>& ops, size_t start_index,
+    IrPool<TensorWrapper>& tensor_pool, size_t pattern_size) {
   // Connection check
   bool is_connected = ops[start_index + 0].GetOutputTensor(0) ==
                           ops[start_index + 1].GetInputTensor(0) &&

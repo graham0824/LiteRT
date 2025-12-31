@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 
@@ -15,8 +15,8 @@ namespace qnn {
 
 size_t FuseMatMulConvertDecode(
     std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
+    std::vector<OpWrapper>& ops, size_t start_index,
+    IrPool<TensorWrapper>& tensor_pool, size_t pattern_size) {
   // Connection check
   if (ops[start_index].GetOutputTensor(0) !=
       ops[start_index + 1].GetInputTensor(0)) {
@@ -37,8 +37,8 @@ size_t FuseMatMulConvertDecode(
 
 size_t FuseMatMulConvertPrefill(
     std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
+    std::vector<OpWrapper>& ops, size_t start_index,
+    IrPool<TensorWrapper>& tensor_pool, size_t pattern_size) {
   // Connection check
   if (ops[start_index].GetOutputTensor(0) !=
       ops[start_index + 2].GetInputTensor(0)) {

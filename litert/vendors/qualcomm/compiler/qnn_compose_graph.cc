@@ -95,7 +95,7 @@
 #include "litert/vendors/qualcomm/core/builders/unpack_op_builder.h"
 #include "litert/vendors/qualcomm/core/common.h"
 #include "litert/vendors/qualcomm/core/dump/dump_graph.h"
-// #include "litert/vendors/qualcomm/core/transformation/graph_to_graph.h"
+#include "litert/vendors/qualcomm/core/transformation/graph_to_graph.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
 #include "litert/vendors/qualcomm/core/utils/miscs.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
@@ -304,6 +304,7 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
     CreateNativeTensorWithSuffix(tensor_wrapper, "", qnn_data_type,
                                  quantize_params, dimentions, "");
     // -1 in ids_to_dump will dump all tensors
+    const auto tensor_index = litert_tensor.TensorIndex();
     if (ids_to_dump.count(-1) > 0 || ids_to_dump.count(tensor_index) > 0) {
       LITERT_LOG(LITERT_INFO, "LiteRT tensor index: %d is dumped",
                  tensor_index);
@@ -1273,14 +1274,13 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
               std::back_inserter(graph_op_wrappers));
   }
   // TODO (jiunkaiy): Set this graph-to-graph transformation as a compile flag.
-  // const ::qnn::G2GConfig g2g_option = ::qnn::G2GConfig::kMHAOptPrefill;
-  // GraphToGraphTransform(g2g_option, graph_op_wrappers, tensor_pool,
-  //                       [api = qnn.Api(), backend = qnn.BackendHandle()](
-  //                           ::qnn::OpWrapper& op) -> bool {
-  //                         return QNN_SUCCESS == api->backendValidateOpConfig(
-  //                                                   backend,
-  //                                                   op.GetOpConfig());
-  //                       });
+  const ::qnn::G2GConfig g2g_option = ::qnn::G2GConfig::kMHAOptPrefill;
+  GraphToGraphTransform(g2g_option, graph_op_wrappers, tensor_pool,
+                        [api = qnn.Api(), backend = qnn.BackendHandle()](
+                            ::qnn::OpWrapper& op) -> bool {
+                          return QNN_SUCCESS == api->backendValidateOpConfig(
+                                                    backend, op.GetOpConfig());
+                        });
 
   // Assign unique names to all tensors.
   //
