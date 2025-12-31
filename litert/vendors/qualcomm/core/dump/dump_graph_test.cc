@@ -18,7 +18,6 @@
 #include "absl/container/flat_hash_set.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @com_github_nlohmann_json
 #include "litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -28,26 +27,27 @@ namespace qnn {
 namespace {
 
 TEST(IrJsonDump, SerializeOpToJson) {
-  TensorPool tensor_pool;
   std::vector<OpWrapper> graph_op_wrappers;
   QuantizeParamsWrapperVariant quant_param;
   quant_param.emplace<ScaleOffsetQuantizeParamsWrapper>(0.001, 0);
 
-  auto& input0 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
-                                                quant_param, {1, 1, 512, 256});
-  auto& input1 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
-                                                quant_param, {1, 1, 1280, 256});
-  auto& output0 = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_SFIXED_POINT_16, quant_param, {1, 1, 512, 1280});
-  auto matmul0 =
-      BuildMatmulOp(tensor_pool, {input0, input1}, {output0}, false, true);
+  TensorWrapper input0;
+  CreateNativeTensor(input0, "input0", QNN_DATATYPE_SFIXED_POINT_16,
+                     quant_param, {1, 1, 512, 256});
+  TensorWrapper input1;
+  CreateNativeTensor(input1, "input1", QNN_DATATYPE_SFIXED_POINT_16,
+                     quant_param, {1, 1, 1280, 256});
+  TensorWrapper output0;
+  CreateNativeTensor(output0, "output0", QNN_DATATYPE_SFIXED_POINT_16,
+                     quant_param, {1, 1, 512, 1280});
+  auto matmul0 = BuildMatmulOp({input0, input1}, {output0}, false, true);
   nlohmann::json qnn_op = SerializeOpToJson(matmul0[0].GetOpConfig());
 
   ASSERT_TRUE(qnn_op.contains("input_names"));
-  EXPECT_EQ(qnn_op["input_names"][0], "0_qnn");
-  EXPECT_EQ(qnn_op["input_names"][1], "1_qnn");
+  EXPECT_EQ(qnn_op["input_names"][0], "input0");
+  EXPECT_EQ(qnn_op["input_names"][1], "input1");
   ASSERT_TRUE(qnn_op.contains("output_names"));
-  EXPECT_EQ(qnn_op["output_names"][0], "2_qnn");
+  EXPECT_EQ(qnn_op["output_names"][0], "output0");
   ASSERT_TRUE(qnn_op.contains("scalar_params"));
   ASSERT_TRUE(qnn_op["scalar_params"].contains("transpose_in0"));
   ASSERT_TRUE(qnn_op["scalar_params"].contains("transpose_in1"));
@@ -115,19 +115,20 @@ TEST(IrJsonDump, SerializeTensorAndParamToJson) {
 }
 
 TEST(IrJsonDump, MatMul) {
-  TensorPool tensor_pool;
   std::vector<OpWrapper> graph_op_wrappers;
   QuantizeParamsWrapperVariant quant_param;
   quant_param.emplace<ScaleOffsetQuantizeParamsWrapper>(0.001, 0);
 
-  auto& input0 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
-                                                quant_param, {1, 1, 512, 256});
-  auto& input1 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
-                                                quant_param, {1, 1, 1280, 256});
-  auto& output0 = tensor_pool.CreateNativeTensor(
-      QNN_DATATYPE_SFIXED_POINT_16, quant_param, {1, 1, 512, 1280});
-  auto matmul0 =
-      BuildMatmulOp(tensor_pool, {input0, input1}, {output0}, false, true);
+  TensorWrapper input0;
+  CreateNativeTensor(input0, "input0", QNN_DATATYPE_SFIXED_POINT_16,
+                     quant_param, {1, 1, 512, 256});
+  TensorWrapper input1;
+  CreateNativeTensor(input1, "input1", QNN_DATATYPE_SFIXED_POINT_16,
+                     quant_param, {1, 1, 1280, 256});
+  TensorWrapper output0;
+  CreateNativeTensor(output0, "output0", QNN_DATATYPE_SFIXED_POINT_16,
+                     quant_param, {1, 1, 512, 1280});
+  auto matmul0 = BuildMatmulOp({input0, input1}, {output0}, false, true);
   std::move(matmul0.begin(), matmul0.end(),
             std::back_inserter(graph_op_wrappers));
   absl::flat_hash_set<const ::qnn::TensorWrapper*> created_tensors;
@@ -155,7 +156,7 @@ TEST(IrJsonDump, MatMul) {
   ASSERT_TRUE(qnn_ir["graph"].contains("tensors"));
   ASSERT_EQ(qnn_ir["graph"]["tensors"].size(), 3);
   const auto& tensor = qnn_ir["graph"]["tensors"];
-  for (const auto& op_name : {"0_qnn", "1_qnn", "2_qnn"}) {
+  for (const auto& op_name : {"input0", "input1", "output0"}) {
     ASSERT_TRUE(tensor.contains(op_name));
     // Check dataFormat.
     ASSERT_TRUE(tensor[op_name].contains("dataFormat"));
@@ -168,10 +169,10 @@ TEST(IrJsonDump, MatMul) {
     ASSERT_EQ(tensor[op_name]["dims"].size(), 4);
     EXPECT_EQ(tensor[op_name]["dims"][0], 1);
     EXPECT_EQ(tensor[op_name]["dims"][1], 1);
-    if (strcmp(op_name, "0_qnn") == 0) {
+    if (strcmp(op_name, "input0") == 0) {
       EXPECT_EQ(tensor[op_name]["dims"][2], 512);
       EXPECT_EQ(tensor[op_name]["dims"][3], 256);
-    } else if (strcmp(op_name, "1_qnn") == 0) {
+    } else if (strcmp(op_name, "input1") == 0) {
       EXPECT_EQ(tensor[op_name]["dims"][2], 1280);
       EXPECT_EQ(tensor[op_name]["dims"][3], 256);
     } else {
@@ -200,11 +201,11 @@ TEST(IrJsonDump, MatMul) {
   const auto& node = it.value();
   // Check input_names.
   ASSERT_TRUE(node.contains("input_names"));
-  EXPECT_EQ(node["input_names"][0], "0_qnn");
-  EXPECT_EQ(node["input_names"][1], "1_qnn");
+  EXPECT_EQ(node["input_names"][0], "input0");
+  EXPECT_EQ(node["input_names"][1], "input1");
   // Check output_names.
   ASSERT_TRUE(node.contains("output_names"));
-  EXPECT_EQ(node["output_names"][0], "2_qnn");
+  EXPECT_EQ(node["output_names"][0], "output0");
   // Check macs_per_inference.
   ASSERT_TRUE(node.contains("macs_per_inference"));
   // Check scalar_params.

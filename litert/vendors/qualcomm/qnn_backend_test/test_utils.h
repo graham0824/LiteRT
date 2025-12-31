@@ -9,7 +9,6 @@
 
 #include <gtest/gtest.h>
 #include "litert/vendors/qualcomm/core/common.h"
-#include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/utils/miscs.h"
 #include "litert/vendors/qualcomm/core/utils/qnn_model.h"
 #include "litert/vendors/qualcomm/qnn_manager.h"
@@ -27,7 +26,6 @@ class QnnModelTest : public testing::TestWithParam<
   QnnManager::Ptr qnn_manager_ptr_;
   QnnManager::ContextHandle context_handle_;
   ::qnn::QnnModel qnn_model_;
-  ::qnn::TensorPool tensor_pool_;
 
   void SetUp() override {
     const auto& [options, soc_model_name] = GetParam();

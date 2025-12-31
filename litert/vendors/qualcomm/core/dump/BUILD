@@ -39,7 +39,6 @@ cc_test(
     ],
     deps = [
         ":dump_graph",
-        "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/builders:matmul_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",

@@ -25,15 +25,18 @@ TEST_P(QnnModelTest, SingleTopK) {
   const uint32_t k_value = 3;
   const std::vector<std::uint32_t> outputDims{1, 3};
 
-  auto& input_tensor = tensor_pool_.CreateInputTensorWithSuffix(
-      QNN_DATATYPE_FLOAT_32, {}, inputDims, "");
-  auto& values_tensor = tensor_pool_.CreateOutpuTensorWithSuffix(
-      QNN_DATATYPE_FLOAT_32, {}, outputDims, "");
-  auto& indices_tensor = tensor_pool_.CreateOutpuTensorWithSuffix(
-      QNN_DATATYPE_UINT_32, {}, outputDims, "");
+  ::qnn::TensorWrapper input_tensor;
+  CreateInputTensorWithSuffix(input_tensor, "input_tensor",
+                              QNN_DATATYPE_FLOAT_32, {}, inputDims, "");
+  ::qnn::TensorWrapper values_tensor;
+  CreateOutpuTensorWithSuffix(values_tensor, "values_tensor",
+                              QNN_DATATYPE_FLOAT_32, {}, outputDims, "");
+  ::qnn::TensorWrapper indices_tensor;
+  CreateOutpuTensorWithSuffix(indices_tensor, "indices_tensor",
+                              QNN_DATATYPE_UINT_32, {}, outputDims, "");
 
-  auto ops = ::qnn::BuildTopKOp(tensor_pool_, {input_tensor},
-                                {values_tensor, indices_tensor}, k_value);
+  auto ops = ::qnn::BuildTopKOp({input_tensor}, {values_tensor, indices_tensor},
+                                k_value);
   ASSERT_FALSE(ops.empty());
 
   qnn_model_.MoveOpsToGraph(std::move(ops));

@@ -8,6 +8,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
+#include "litert/vendors/qualcomm/core/ir_pool.h"
 #include "litert/vendors/qualcomm/core/utils/miscs.h"
 #include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/qnn_backend_test/test_utils.h"
@@ -27,10 +28,14 @@ TEST_P(QnnModelTest, FullyConnectedInt2Sanity) {
   const std::vector<std::uint32_t> kInDims{1, 2};
   const std::vector<std::uint32_t> kOutDims{1, 2};
 
-  auto& input_0 = tensor_pool_.CreateInputTensorWithSuffix(
-      QNN_DATATYPE_SFIXED_POINT_16, input_quant, kInDims, "");
-  auto& output_0 = tensor_pool_.CreateOutpuTensorWithSuffix(
-      QNN_DATATYPE_SFIXED_POINT_16, output_quant, kOutDims, "");
+  ::qnn::IrPool<::qnn::TensorWrapper> tensor_pool;
+  auto& input_0 = tensor_pool.Emplace();
+  CreateInputTensorWithSuffix(input_0, "input_0", QNN_DATATYPE_SFIXED_POINT_16,
+                              input_quant, kInDims, "");
+  auto& output_0 = tensor_pool.Emplace();
+  CreateOutpuTensorWithSuffix(output_0, "output_0",
+                              QNN_DATATYPE_SFIXED_POINT_16, output_quant,
+                              kOutDims, "");
 
   const std::vector<std::uint32_t> kFilterDims{2, 2};
   auto weight_quant_param =
@@ -39,12 +44,14 @@ TEST_P(QnnModelTest, FullyConnectedInt2Sanity) {
   std::vector<int8_t> weight_data = {1, -1, -1, 1};
   std::vector<int8_t> int2_weight_data;
   ::qnn::ConvertDataFromInt8ToInt2(weight_data, int2_weight_data);
-  auto& weight_tensor = tensor_pool_.CreateStaticTensor(
-      QNN_DATATYPE_SFIXED_POINT_8, weight_quant_param, kFilterDims,
-      int2_weight_data.size(), int2_weight_data.data());
+  auto& weight_tensor = tensor_pool.Emplace();
+  CreateStaticTensor(weight_tensor, "weight_tensor",
+                     QNN_DATATYPE_SFIXED_POINT_8, weight_quant_param,
+                     kFilterDims, int2_weight_data.size(),
+                     int2_weight_data.data());
 
-  auto ops = ::qnn::BuildFullyConnectedOp(
-      tensor_pool_, {input_0, weight_tensor}, {output_0}, true);
+  auto ops = ::qnn::BuildFullyConnectedOp(tensor_pool, {input_0, weight_tensor},
+                                          {output_0}, true);
   ASSERT_FALSE(ops.empty());
 
   qnn_model_.MoveOpsToGraph(std::move(ops));

@@ -32,7 +32,6 @@ litert_test(
     use_sys_malloc = True,
     deps = [
         "//litert/vendors/qualcomm/core:common",
-        "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/builders:relu_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/qnn_backend_test:test_utils",
@@ -64,7 +63,6 @@ litert_test(
     use_sys_malloc = True,
     deps = [
         "//litert/vendors/qualcomm/core:common",
-        "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/builders:topk_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/qnn_backend_test:test_utils",
@@ -96,7 +94,6 @@ litert_test(
     use_sys_malloc = True,
     deps = [
         "//litert/vendors/qualcomm/core:common",
-        "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/builders:elementwise_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/qnn_backend_test:test_utils",
@@ -128,7 +125,7 @@ litert_test(
     use_sys_malloc = True,
     deps = [
         "//litert/vendors/qualcomm/core:common",
-        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core:ir_pool",
         "//litert/vendors/qualcomm/core/builders:fully_connected_op_builder",
         "//litert/vendors/qualcomm/core/utils:miscs",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
