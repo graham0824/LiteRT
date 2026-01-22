@@ -114,6 +114,63 @@ LiteRtStatus SqrtMeanSquareTransformation(LiteRtBuilder builder_ptr,
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus TranposeMatMulTransformation(LiteRtBuilder builder_ptr,
+                                          LiteRtOp op) {
+  Builder builder = Builder(builder_ptr);
+  Op root_op = Op(op);
+  // Pattern Match
+  if (root_op.Code() != kLiteRtOpCodeTflBatchMatmul) {
+    return kLiteRtStatusPatternNoMatch;
+  }
+  if (root_op.Inputs().size() != 2 || !root_op.Inputs()[1].DefiningOp().has_value()) {
+    return kLiteRtStatusPatternNoMatch;
+  }
+  Op transpose_op = Op(root_op.Inputs()[1].DefiningOp().value().op);
+  if (transpose_op.Code() != kLiteRtOpCodeTflTranspose) {
+    return kLiteRtStatusPatternNoMatch;
+  }
+  if (transpose_op.Inputs()[1].ElementType() != ::litert::ElementType::Int32) {
+    return kLiteRtStatusPatternNoMatch;
+  }
+  auto perm = transpose_op.Inputs()[1].WeightsData<int32_t>();
+  if (!perm) {
+    return kLiteRtStatusPatternNoMatch;
+  }
+  constexpr std::array<int, 4> kExpectedPerm = {0, 1, 3, 2};
+  if (!std::equal(perm.Value().begin(), perm.Value().end(),
+                  kExpectedPerm.begin(), kExpectedPerm.end())) {
+    return kLiteRtStatusPatternNoMatch;
+  }
+
+  // Reuse the inputs of the transpose op.
+  OpInputs inputs;
+  LiteRtTensor matmul_input;
+  LiteRtGetOpInput(root_op.Get(), 0, &matmul_input);
+  inputs.emplace_back(::litert::Tensor(matmul_input));
+  LiteRtTensor transpose_input;
+  LiteRtGetOpInput(transpose_op.Get(), 0, &transpose_input);
+  inputs.emplace_back(::litert::Tensor(transpose_input));
+
+  // Reuse the outputs of the matmul op.
+  OpOutputs outputs = root_op.Outputs();
+  // Build the MatMul op with new inputs and outputs.
+  Op new_matmul = builder.BuildOp(kLiteRtOpCodeTflBatchMatmul, inputs, outputs);
+  // Set MatMul options
+  tflite::BatchMatMulOptionsT options;
+  options.adj_x = false;
+  options.adj_y = true;
+  options.asymmetric_quantize_inputs = false;
+  ::litert::internal::TflOptions tfl_options;
+  tfl_options.type = ::tflite::BuiltinOptions_BatchMatMulOptions;
+  tfl_options.Set(options);
+  ::litert::internal::SetTflOptions(*new_matmul.Get(), tfl_options);
+
+  // Erase the original ops.
+  builder.EraseOp(root_op);
+  builder.EraseOp(transpose_op);
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus DummyTransformation(LiteRtBuilder builder_ptr, LiteRtOp op) {
   return kLiteRtStatusPatternNoMatch;
 }

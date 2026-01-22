@@ -34,6 +34,9 @@ LiteRtStatus DummyTransformation(LiteRtBuilder builder_ptr, LiteRtOp op);
 LiteRtStatus MatMulConvertTransformation(LiteRtBuilder builder_ptr,
                                          LiteRtOp op);
 
+LiteRtStatus TranposeMatMulTransformation(LiteRtBuilder builder_ptr,
+                                          LiteRtOp op);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

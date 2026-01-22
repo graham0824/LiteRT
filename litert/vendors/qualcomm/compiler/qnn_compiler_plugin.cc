@@ -517,6 +517,9 @@ LiteRtStatus LiteRtCompilerPluginRegisterAllTransformations(
   // Add MatMul-Convert funstion.
   compiler_plugin->transformations.push_back(
       {&MatMulConvertTransformation, "MatMulConvert", 100});
+  // Transpose-MatMul to MatMul
+  compiler_plugin->transformations.push_back(
+      {&TranposeMatMulTransformation, "Transpose-MatMul", 100});
   // // Add DummyTransformation.
   // compiler_plugin->transformations.push_back(
   //     {&DummyTransformation, "MyTransformation1"});
