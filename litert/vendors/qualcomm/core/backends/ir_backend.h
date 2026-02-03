@@ -31,9 +31,6 @@ class IrBackend : public QnnBackend {
 
   ~IrBackend();
 
-  bool Init(const Options& options,
-            std::optional<::qnn::SocInfo> soc_info) override;
-
  private:
 };
 

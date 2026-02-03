@@ -108,4 +108,50 @@ Qnn_DeviceHandle_t QnnBackend::GetDeviceHandle() {
 
 Qnn_LogHandle_t QnnBackend::GetLogHandle() { return log_handle_.get(); }
 
+bool QnnBackend::SetGlobalConfig(Qnn_SocModel_t soc_model) {
+  QnnGlobalConfig_t global_config = QNN_GLOBAL_CONFIG_INIT;
+  global_config.option = QNN_GLOBAL_CONFIG_OPTION_SOC_MODEL;
+  global_config.socModel = soc_model;
+  QNN_LOG_INFO("globalConfigSet: %d", soc_model);
+  const QnnGlobalConfig_t* global_configs[] = {&global_config, nullptr};
+  // Only GPU and HTP support globalConfigSet.
+  if (QnnApi()->globalConfigSet == nullptr) {
+    QNN_LOG_WARNING("globalConfigSet is not supported.");
+    return false;
+  };
+  return QnnApi()->globalConfigSet(global_configs) == QNN_SUCCESS;
+}
+
+bool QnnBackend::Init(const Options& options,
+                      std::optional<::qnn::SocInfo> soc_info) {
+  // Set global config.
+  if (soc_info) {
+    if (!SetGlobalConfig(
+            static_cast<Qnn_SocModel_t>(soc_info.value().soc_model))) {
+      QNN_LOG_WARNING("Failed to set global config!");
+    } else {
+      QNN_LOG_INFO("Set global config: %s", soc_info.value().soc_name);
+    }
+  }
+
+  // Create log handle.
+  auto local_log_handle = CreateLogHandle(options.GetLogLevel());
+  if (!local_log_handle && options.GetLogLevel() != ::qnn::LogLevel::kOff) {
+    QNN_LOG_ERROR("Failed to create log handle!");
+    return false;
+  }
+
+  // Create backend handle.
+  const QnnBackend_Config_t* backend_configs[] = {nullptr};
+  auto local_backend_handle =
+      CreateBackendHandle(local_log_handle.get(), backend_configs);
+  if (!local_backend_handle) {
+    QNN_LOG_ERROR("Failed to create backend handle!");
+    return false;
+  }
+
+  log_handle_ = std::move(local_log_handle);
+  backend_handle_ = std::move(local_backend_handle);
+  return true;
+}
 }  // namespace qnn

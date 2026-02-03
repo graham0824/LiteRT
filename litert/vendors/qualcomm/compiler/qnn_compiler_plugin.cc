@@ -492,9 +492,6 @@ LiteRtStatus LiteRtCompilerPluginCheckCompilerCompatibility(
     LiteRtApiVersion api_version, LiteRtCompilerPlugin compiler_plugin,
     LiteRtEnvironmentOptions env, LiteRtOptions options,
     const char* soc_model_name) {
-  // TODO(jiunkaiy): Check if the QAIRT SDK version meets the minimum required
-  // version.
-
   // Check LiteRt API version for backward compatibility.
   static constexpr LiteRtApiVersion kApiVersion{LITERT_API_VERSION_MAJOR,
                                                 LITERT_API_VERSION_MINOR,
@@ -523,5 +520,22 @@ LiteRtStatus LiteRtCompilerPluginCheckCompilerCompatibility(
     return kLiteRtStatusErrorUnsupportedCompilerVersion;
   }
 
+  QnnManager* qnn_manager = compiler_plugin->QNN();
+  if (!qnn_manager) {
+    auto qnn_manager_or = QnnManager::Create(
+        compiler_plugin->Options(), std::nullopt,
+        soc_model_name ? qnn::FindSocModel(soc_model_name) : std::nullopt);
+    if (!qnn_manager_or) {
+      LITERT_LOG(LITERT_ERROR, "%s", qnn_manager_or.Error().Message().data());
+      return qnn_manager_or.Error().Status();
+    }
+    LITERT_LOG(LITERT_INFO, "QNN manager created");
+    compiler_plugin->initQnnManager(std::move(*qnn_manager_or));
+    qnn_manager = compiler_plugin->QNN();
+  }
+  // Global config requires QAIRT >= 2.44.
+  if (qnn_manager->GetSdkVersion() < ::litert::qnn::SdkVersion{2, 44, 0}) {
+    return kLiteRtStatusErrorUnsupportedCompilerVersion;
+  }
   return kLiteRtStatusOk;
 }

@@ -36,13 +36,15 @@ class QnnBackend {
   virtual ~QnnBackend() = default;
 
   virtual bool Init(const Options& options,
-                    std::optional<::qnn::SocInfo> soc_info) = 0;
+                    std::optional<::qnn::SocInfo> soc_info);
 
   Qnn_BackendHandle_t GetBackendHandle();
 
   Qnn_DeviceHandle_t GetDeviceHandle();
 
   Qnn_LogHandle_t GetLogHandle();
+
+  bool SetGlobalConfig(Qnn_SocModel_t soc_model);
 
  private:
   const QNN_INTERFACE_VER_TYPE* qnn_api_ = nullptr;

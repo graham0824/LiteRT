@@ -215,21 +215,7 @@ DspBackend::DspBackend(const QNN_INTERFACE_VER_TYPE* qnn_api)
 DspBackend::~DspBackend() = default;
 
 bool DspBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
-  // Log Handle
-  auto local_log_handle = CreateLogHandle(options.GetLogLevel());
-  if (!local_log_handle && options.GetLogLevel() != LogLevel::kOff) {
-    QNN_LOG_ERROR("Failed to create log handle.");
-    return false;
-  }
-
-  // Backend Handle
-  std::vector<const QnnBackend_Config_t*> backend_configs;
-  backend_configs.emplace_back(nullptr);
-
-  auto local_backend_handle = CreateBackendHandle(
-      local_log_handle.get(), absl::MakeSpan(backend_configs));
-  if (!local_backend_handle) {
-    QNN_LOG_ERROR("Failed to create backend handle.");
+  if (!QnnBackend::Init(options, soc_info)) {
     return false;
   }
 
@@ -243,10 +229,6 @@ bool DspBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
     }
     dsp_perf_control_->UpVote();
   }
-
-  // Follow RAII pattern to manage handles.
-  log_handle_ = std::move(local_log_handle);
-  backend_handle_ = std::move(local_backend_handle);
 
   return true;
 }

@@ -352,6 +352,15 @@ TEST(TestQnnPlugin, Compatibility) {
       plugin.get(), nullptr, nullptr, nullptr));
 }
 
+TEST(TestQnnPlugin, GlobalConfig) {
+  static constexpr LiteRtApiVersion kApiVersion{LITERT_API_VERSION_MAJOR,
+                                                LITERT_API_VERSION_MINOR,
+                                                LITERT_API_VERSION_PATCH};
+  auto plugin = CreatePlugin();
+  LITERT_EXPECT_OK(LiteRtCompilerPluginCheckCompilerCompatibility(
+      kApiVersion, plugin.get(), nullptr, nullptr, "SM8850"));
+}
+
 class QnnPlyginSupportedSocCompilationTest
     : public ::testing::TestWithParam<std::string> {};
 
@@ -456,6 +465,5 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
 
 INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPluginOpCompatibilityTest,
                          kSupportedOps);
-
 }  // namespace
 }  // namespace litert

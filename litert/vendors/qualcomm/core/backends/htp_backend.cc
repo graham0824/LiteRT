@@ -375,124 +375,50 @@ HtpBackend::QnnDevicePlatformInfo HtpBackend::CreateDevicePlatformInfo() {
                                PlatformInfoDeleter{QnnApi()}};
 }
 
-bool HtpBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
-  // Log Handle
-  auto local_log_handle = CreateLogHandle(options.GetLogLevel());
-  if (!local_log_handle && options.GetLogLevel() != LogLevel::kOff) {
-    QNN_LOG_ERROR("Failed to create log handle.");
+bool HtpBackend::Init(const Options& options,
+                      std::optional<::qnn::SocInfo> soc_info) {
+  if (!QnnBackend::Init(options, soc_info)) {
     return false;
   }
-
-  // Backend Handle
-  std::vector<const QnnBackend_Config_t*> backend_configs;
-  backend_configs.emplace_back(nullptr);
-
-  auto local_backend_handle = CreateBackendHandle(
-      local_log_handle.get(), absl::MakeSpan(backend_configs));
-  if (!local_backend_handle) {
-    QNN_LOG_ERROR("Failed to create backend handle.");
+  auto info = CreateDevicePlatformInfo();
+  if (!info) {
+    QNN_LOG_ERROR("Cannot get device platform info.")
     return false;
   }
-
-  // Starting from QAIRT 2.39, platform information will be available even when
-  // this API is called during offline preparation. However, it will always
-  // return the default SoC info (SM8350). If user specifies a SoC, we will
-  // override the default.
-#if defined(__x86_64__) || defined(_M_X64)
-  if (soc_info.has_value()) {
-    QNN_LOG_INFO("Using provided SoC info. SoC name: %s.", soc_info->soc_name);
-    soc_info_ = *soc_info;
+  const auto& chip_info =
+      info->v1.hwDevices->v1.deviceInfoExtension->onChipDevice;
+  if (soc_info && (static_cast<uint32_t>(soc_info.value().soc_model) !=
+                   chip_info.socModel)) {
+    QNN_LOG_ERROR(
+        "Device platform information mismatch: the detected platform does not "
+        "match the targeted SoC.");
+    return false;
   }
-#else
-  if (auto device_platform_info = CreateDevicePlatformInfo();
-      device_platform_info) {
-    auto soc_model = device_platform_info->v1.hwDevices->v1.deviceInfoExtension
-                         ->onChipDevice.socModel;
-    auto soc_info_online = FindSocInfo(static_cast<SnapdragonModel>(soc_model));
-    soc_info_ = soc_info_online.value_or(kSocInfos[0]);
-  }
-#endif
+  soc_info_ =
+      FindSocInfo(static_cast<::qnn::SnapdragonModel>(chip_info.socModel))
+          .value_or(::qnn::kSocInfos[0]);
   if (soc_info_.dsp_arch == DspArch::NONE) {
     QNN_LOG_ERROR("SoC info was not configured successfully.")
     return false;
   }
   QNN_LOG_INFO("Initializing QNN backend for SoC model: %s",
                soc_info_.soc_name);
+  QNN_LOG_INFO(
+      "On-chip Device Info:\n\t\tVTCM Size: %d\n\t\tSoC Model: "
+      "%d\n\t\tSignedPdSupport: %d\n\t\tDLBC Support: %d\n\t\tArch: %d",
+      chip_info.vtcmSize, chip_info.socModel, chip_info.signedPdSupport,
+      chip_info.dlbcSupport, chip_info.arch);
 
   // Device Handle
-  std::vector<QnnDevice_CustomConfig_t> device_custom_configs;
-  QnnHtpDevice_CustomConfig_t* htp_device_custom_config =
-      &AllocateHtpDeviceConfig();
-  htp_device_custom_config->option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
-  htp_device_custom_config->socModel =
-      static_cast<uint32_t>(soc_info_.soc_model);
-  device_custom_configs.emplace_back(
-      static_cast<QnnDevice_CustomConfig_t>(htp_device_custom_config));
-
-#if defined(__x86_64__) || defined(_M_X64)
-  std::vector<QnnDevice_PlatformInfo_t*> device_platform_infos;
-
-  QnnDevice_PlatformInfo_t* device_platform_info =
-      &AllocateDevicePlatformInfo();
-  device_platform_info->version = QNN_DEVICE_PLATFORM_INFO_VERSION_1;
-  device_platform_info->v1.numHwDevices = 1;
-
-  QnnDevice_HardwareDeviceInfo_t* hardware_device_info =
-      &AllocateDeviceHardwareInfo();
-  hardware_device_info->version = QNN_DEVICE_HARDWARE_DEVICE_INFO_VERSION_1;
-  hardware_device_info->v1.deviceId = 0;
-  hardware_device_info->v1.deviceType = 0;
-  hardware_device_info->v1.numCores = 1;
-
-  QnnHtpDevice_DeviceInfoExtension_t* htp_device_info_extension =
-      &AllocHtpDeviceInfoExtension();
-  htp_device_info_extension->devType = QNN_HTP_DEVICE_TYPE_ON_CHIP;
-  htp_device_info_extension->onChipDevice.vtcmSize = soc_info_.vtcm_size_in_mb;
-  // TODO(jiunkaiy): Given by user, default value is unsigned pd
-  htp_device_info_extension->onChipDevice.signedPdSupport = false;
-  htp_device_info_extension->onChipDevice.socModel =
-      static_cast<uint32_t>(soc_info_.soc_model);
-  htp_device_info_extension->onChipDevice.arch =
-      static_cast<QnnHtpDevice_Arch_t>(soc_info_.dsp_arch);
-  // TODO(jiunkaiy): For Htp, dlbcSupport is true
-  htp_device_info_extension->onChipDevice.dlbcSupport = true;
-  hardware_device_info->v1.deviceInfoExtension = htp_device_info_extension;
-
-  QnnDevice_CoreInfo_t* device_core_info = &AllocateDeviceCoreInfo();
-  device_core_info->version = QNN_DEVICE_CORE_INFO_VERSION_1;
-  device_core_info->v1.coreId = 0;
-  device_core_info->v1.coreType = 0;
-  device_core_info->v1.coreInfoExtension = nullptr;
-  hardware_device_info->v1.cores = device_core_info;
-
-  device_platform_info->v1.hwDevices = hardware_device_info;
-  device_platform_infos.emplace_back(device_platform_info);
-#else
-  std::vector<QnnDevice_PlatformInfo_t*> device_platform_infos = {};
-#endif
-
-  std::vector<const QnnDevice_Config_t*> device_configs;
-  uint32_t num_custom_configs =
-      device_platform_infos.size() + device_custom_configs.size();
-  // +1 for null terminated
-  device_configs.reserve(num_custom_configs + 1);
-  for (std::size_t i = 0; i < device_custom_configs.size(); ++i) {
-    QnnDevice_Config_t* device_custom_config = &AllocateDeviceConfig();
-    device_custom_config->option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-    device_custom_config->customConfig = device_custom_configs[i];
-    device_configs.emplace_back(device_custom_config);
-  }
-  for (std::size_t i = 0; i < device_platform_infos.size(); ++i) {
-    QnnDevice_Config_t* device_custom_config = &AllocateDeviceConfig();
-    device_custom_config->option = QNN_DEVICE_CONFIG_OPTION_PLATFORM_INFO;
-    device_custom_config->hardwareInfo = device_platform_infos[i];
-    device_configs.emplace_back(device_custom_config);
-  }
-  // null terminated
-  device_configs.emplace_back(nullptr);
-
-  auto local_device_handle = CreateDeviceHandle(local_log_handle.get(),
-                                                absl::MakeSpan(device_configs));
+  auto& htp_device_custom_config = AllocateHtpDeviceConfig();
+  htp_device_custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
+  htp_device_custom_config.socModel = chip_info.socModel;
+  auto& device_config = AllocateDeviceConfig();
+  device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+  device_config.customConfig = &htp_device_custom_config;
+  const QnnDevice_Config_t* device_configs[] = {&device_config, nullptr};
+  auto local_device_handle =
+      CreateDeviceHandle(log_handle_.get(), absl::MakeSpan(device_configs));
   if (!local_device_handle) {
     QNN_LOG_ERROR("Failed to create device handle.");
     return false;
@@ -522,8 +448,6 @@ bool HtpBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
   }
 
   // Follow RAII pattern to manage handles.
-  log_handle_ = std::move(local_log_handle);
-  backend_handle_ = std::move(local_backend_handle);
   device_handle_ = std::move(local_device_handle);
 
   return true;

@@ -148,11 +148,7 @@ TEST_P(HtpBackendRPCPollingPerfParamTest, InitWithPerfMode) {
   options.SetHtpPerformanceMode(params.mode);
   HtpBackend backend(&qnn_api_copy_);
 
-#if defined(__x86_64__) || defined(_M_X64)
-  EXPECT_TRUE(backend.Init(options, kSocInfos[8]));
-#else
   EXPECT_TRUE(backend.Init(options, std::nullopt));
-#endif
 
   const auto& configs = *captured_configs;
   ASSERT_EQ(configs.size(), 2);
@@ -210,11 +206,7 @@ TEST_P(HtpBackendRPCControlPerfParamTest, InitWithPerfMode) {
   options.SetHtpPerformanceMode(params.mode);
   HtpBackend backend(&qnn_api_copy_);
 
-#if defined(__x86_64__) || defined(_M_X64)
-  EXPECT_TRUE(backend.Init(options, kSocInfos[8]));
-#else
   EXPECT_TRUE(backend.Init(options, std::nullopt));
-#endif
 
   const auto& configs = *captured_configs;
   ASSERT_EQ(configs.size(), 2);

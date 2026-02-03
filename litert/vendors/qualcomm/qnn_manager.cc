@@ -51,6 +51,7 @@
 #include "HTP/QnnHtpProfile.h"  // from @qairt
 #include "QnnCommon.h"  // from @qairt
 #include "QnnContext.h"  // from @qairt
+#include "QnnGlobalConfig.h"  // from @qairt
 #include "QnnInterface.h"  // from @qairt
 #include "QnnProfile.h"  // from @qairt
 #include "QnnTypes.h"  // from @qairt
@@ -423,6 +424,7 @@ LiteRtStatus QnnManager::Init(std::optional<std::string> shared_library_dir,
   options_ = options;
   switch (options_.GetBackendType()) {
     case ::qnn::BackendType::kHtpBackend: {
+      LITERT_LOG(LITERT_INFO, "HTP~~~~~~~~~HTP");
       LITERT_RETURN_IF_ERROR(LoadLib(::qnn::HtpBackend::GetLibraryName()));
       LITERT_RETURN_IF_ERROR(
           ResolveApi(::qnn::HtpBackend::GetExpectedBackendVersion()));
@@ -440,7 +442,7 @@ LiteRtStatus QnnManager::Init(std::optional<std::string> shared_library_dir,
           ResolveApi(::qnn::IrBackend::GetExpectedBackendVersion()));
 
       backend_ = std::make_unique<::qnn::IrBackend>(Api());
-      LITERT_RETURN_IF_ERROR(backend_->Init(options_, std::nullopt));
+      LITERT_RETURN_IF_ERROR(backend_->Init(options_, soc_info));
 
       break;
     }
