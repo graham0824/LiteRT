@@ -17,9 +17,11 @@
 #include "litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/pack_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/slice_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/split_op_builder.h"
@@ -897,6 +899,99 @@ std::vector<ConstTensorWrapperRef> SplitPositionEmbedding(
   }
   return add_outputs;
 }
+
+void FullyConnectedLoadBalance(std::vector<OpWrapper>& new_ops,
+                               TensorPool& tensor_pool,
+                               const TensorWrapper& input,
+                               const TensorWrapper& filter,  // rank = 2
+                               const TensorWrapper& output,
+                               std::uint32_t balance_size) {
+  balance_size = std::min(balance_size, filter.GetDim(0));
+
+  const auto& filter_quant_param =
+      std::get<AxisScaleOffsetQuantizeParamsWrapper>(filter.GetQuantParams());
+  std::vector<float> filter_scales;
+  filter_quant_param.GetScales(filter_scales);
+  std::vector<std::int32_t> filter_zero_points;
+  filter_quant_param.GetZeroPoints(filter_zero_points);
+
+  // mul
+  std::vector<std::vector<std::int16_t>> mul_input_1_data;
+  mul_input_1_data.reserve(balance_size);
+  auto* filter_data = filter.GetTensorData<int8_t>()->data();
+  for (size_t i = 0; i < balance_size; ++i) {
+    auto& back = mul_input_1_data.emplace_back();
+    for (size_t j = 0; j < filter.GetDim(1); ++j) {
+      back.emplace_back(*(filter_data + i * filter.GetDim(1) + j));
+    }
+  }
+  std::vector<ConstTensorWrapperRef> mul_outputs;
+  for (size_t i = 0; i < balance_size; ++i) {
+    const auto& mul_input_1 = tensor_pool.CreateStaticTensor(
+        QNN_DATATYPE_SFIXED_POINT_16,
+        ScaleOffsetQuantizeParamsWrapper(filter_scales[i],
+                                         filter_zero_points[i]),
+        {filter.GetDim(1)}, sizeof(std::int16_t) * filter.GetDim(1),
+        mul_input_1_data[i].data());
+    const auto& mul_output =
+        tensor_pool.CloneNativeTensorFrom(output, input.GetDims());
+    mul_outputs.emplace_back(mul_output);
+    new_ops.emplace_back(
+        CreateElementWiseMulOp(input, mul_input_1, mul_output));
+  }
+
+  // reduce sum
+  auto reduce_sum_output_dims = input.GetDims();
+  reduce_sum_output_dims.back() = 1;  // keep dims
+  std::array<std::uint32_t, 1> reduce_sum_axis_data{input.GetRank() - 1};
+  const auto& reduce_sum_axis = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_UINT_32, {}, {1},
+      sizeof(std::uint32_t) * reduce_sum_axis_data.size(),
+      reduce_sum_axis_data.data());
+  std::vector<ConstTensorWrapperRef> reduce_sum_outputs;
+  for (size_t i = 0; i < balance_size; ++i) {
+    const auto& reduce_sum_output =
+        tensor_pool.CloneNativeTensorFrom(output, reduce_sum_output_dims);
+    reduce_sum_outputs.emplace_back(reduce_sum_output);
+    new_ops.emplace_back(CreateReduceSumOp(
+        mul_outputs[i].get(), reduce_sum_output, reduce_sum_axis, true));
+  }
+
+  // new FC
+  AxisScaleOffsetQuantizeParamsWrapper new_fc_filter_quant_param(
+      1,
+      absl::MakeConstSpan(filter_scales.data() + balance_size,
+                          filter_scales.data() + filter_scales.size()),
+      absl::MakeConstSpan(
+          filter_zero_points.data() + balance_size,
+          filter_zero_points.data() + filter_zero_points.size()));
+  std::vector<std::uint32_t> new_fc_output_dims{
+      input.GetTensorNumElements() / filter.GetDim(1),
+      filter.GetDim(0) - balance_size};
+  const auto& new_fc_filter = tensor_pool.CreateStaticTensor(
+      filter.GetDataType(), new_fc_filter_quant_param,
+      {filter.GetDim(0) - balance_size, filter.GetDim(1)}, 
+      (filter.GetDim(0) - balance_size) *
+          (filter.GetTensorBytes() / filter.GetDim(0)),
+      filter_data + balance_size * filter.GetDim(1));
+  const auto& new_fc_output =
+      tensor_pool.CloneNativeTensorFrom(output, new_fc_output_dims);
+  new_ops.emplace_back(
+      CreateFullyConnectedOp(input, new_fc_output, new_fc_filter));
+
+  // Reshape to keep dims
+  auto reshape_dims = output.GetDims();
+  reshape_dims.back() = filter.GetDim(0) - balance_size;
+  const auto& reshape_output =
+      tensor_pool.CloneNativeTensorFrom(output, reshape_dims);
+  new_ops.emplace_back(CreateReshapeOp(new_fc_output, reshape_output));
+
+  // concat all
+  reduce_sum_outputs.emplace_back(reshape_output);
+  new_ops.emplace_back(
+      CreateConcatenationOp(reduce_sum_outputs, output, output.GetRank() - 1));
+}
+
 }  // namespace
 
 size_t OptimizeMHAFastVlmDecode(
@@ -1056,6 +1151,61 @@ size_t OptimizeMHAFastVlmDecode(
     ops.erase(ops.begin() + start_index,
               ops.begin() + start_index + pattern_size);
     QNN_LOG_INFO("[G2G] FastVLM decode optimization done.");
+    return step_size;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed. Rolling back to the original graph.");
+  return 1;
+}
+
+size_t OptimizeFastVlmMLP(std::function<bool(OpWrapper&)> validate_op_config,
+                          std::vector<OpWrapper>& ops, size_t start_index,
+                          TensorPool& tensor_pool, size_t pattern_size) {
+  QNN_LOG_INFO("[G2G] MLP optimization (fast vlm)");
+  constexpr size_t kFullyConnected0Index = 0;
+  constexpr size_t kReshape0Index = 1;
+  constexpr size_t kSigmoidIndex = 2;
+  constexpr size_t kMul0Index = 3;
+  constexpr size_t kFullyConnected1Index = 4;
+  constexpr size_t kReshape1Index = 5;
+  constexpr size_t kMul1Index = 6;
+  constexpr size_t kFullyConnected2Index = 7;
+  constexpr size_t kReshape2Index = 8;
+
+  auto& fc = ops[start_index + kFullyConnected1Index];
+  const auto& filter = fc.GetInputTensor(1);
+  if (!filter.IsTensorStatic() || filter.GetRank() != 2 ||
+      filter.GetDataType() != QNN_DATATYPE_SFIXED_POINT_8 ||
+      !std::holds_alternative<AxisScaleOffsetQuantizeParamsWrapper>(
+          filter.GetQuantParams())) {
+    return 1;
+  }
+
+  auto& reshape = ops[start_index + kReshape1Index];
+  std::vector<OpWrapper> new_ops;
+  FullyConnectedLoadBalance(new_ops, tensor_pool, fc.GetInputTensor(0),
+                            fc.GetInputTensor(1), reshape.GetOutputTensor(0),
+                            16);
+
+  // Validate new graph.
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](::qnn::OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    // Adjust the name to avoid a name collision in the Qnn JSON dump.
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+
+    size_t step_size = new_ops.size() + pattern_size - 1;  // only remove 1 fc
+    ops.erase(ops.begin() + start_index + kFullyConnected1Index,
+              ops.begin() + start_index + kReshape1Index + 1);
+    ops.insert(ops.begin() + start_index + kFullyConnected1Index,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    QNN_LOG_INFO("[G2G] FastVLM MLP optimization done.");
     return step_size;
   }
   QNN_LOG_WARNING(

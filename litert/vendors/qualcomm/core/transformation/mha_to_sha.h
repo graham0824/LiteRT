@@ -31,6 +31,10 @@ size_t OptimizeMHAFastVlmDecode(
     std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
     size_t pattern_size);
 
+size_t OptimizeFastVlmMLP(std::function<bool(OpWrapper&)> validate_op_config,
+                          std::vector<OpWrapper>& ops, size_t start_index,
+                          TensorPool& tensor_pool, size_t pattern_size);
+
 size_t OptimizeMHATinyGemmaPrefillPatternWithGlobalMask(
     std::function<bool(OpWrapper&)> validate_op_config,
     std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,

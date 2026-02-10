@@ -156,4 +156,18 @@ std::vector<OpWrapper> BuildReduceAllOp(
   return res;
 }
 
+OpWrapper CreateReduceSumOp(const TensorWrapper& input,
+                            const TensorWrapper& output,
+                            const TensorWrapper& axis, bool keep_dims) {
+  auto name = GetUniqueOpName(QNN_OP_REDUCE_SUM);
+  OpWrapper op;
+  op.SetName(std::move(name));
+  op.SetType(QNN_OP_REDUCE_SUM, QnnOpCode::kReduceSum);
+  op.AddInputTensor(input);
+  op.AddOutputTensor(output);
+  op.AddTensorParam(QNN_OP_REDUCE_SUM_PARAM_AXES, axis);
+  op.AddScalarParam<bool>(QNN_OP_REDUCE_SUM_PARAM_KEEP_DIMS, keep_dims);
+  return op;
+}
+
 }  // namespace qnn

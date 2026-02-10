@@ -284,6 +284,17 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   Transform(validate_op_config, ops, tensor_pool, fast_vlm_mha_decode,
             OptimizeMHAFastVlmDecode);
 
+  // Fast Vlm MLP Optimization
+  const std::vector<QnnOpCode> fast_vlm_mlp = {
+      QnnOpCode::kFullyConnected,    QnnOpCode::kReshape,
+      QnnOpCode::kElementWiseNeuron,  // sigmoid
+      QnnOpCode::kElementWiseBinary,  // mul
+      QnnOpCode::kFullyConnected,    QnnOpCode::kReshape,
+      QnnOpCode::kElementWiseBinary,  // mul
+      QnnOpCode::kFullyConnected,    QnnOpCode::kReshape};
+  Transform(validate_op_config, ops, tensor_pool, fast_vlm_mlp,
+            OptimizeFastVlmMLP);
+
   // Attention Optimization
   const std::vector<QnnOpCode> attn = {
       QnnOpCode::kElementWiseBinary,

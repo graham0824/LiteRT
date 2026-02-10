@@ -35,6 +35,9 @@ std::vector<OpWrapper> BuildReduceAllOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims);
 
+OpWrapper CreateReduceSumOp(const TensorWrapper& input,
+                            const TensorWrapper& output,
+                            const TensorWrapper& axis, bool keep_dims);
 }  // namespace qnn
 
 #endif  // ODML_LITERT_LITERT_VENDORS_QUALCOMM_CORE_BUILDERS_REDUCE_OP_BUILDER_H_
