@@ -19,7 +19,9 @@ target_include_directories(qnn_dump
 
 target_link_libraries(qnn_dump
     PUBLIC
-        qnn_core
+        qnn_log
+        qnn_miscs
+        qnn_wrappers
         absl::status
         absl::statusor
         nlohmann_json::nlohmann_json
