@@ -226,6 +226,15 @@ TensorWrapper& TensorPool::CloneNativeTensorFrom(
       src.quantize_params_, dimensions);
 }
 
+TensorWrapper& TensorPool::CloneNativeTensorFrom(const TensorWrapper& src,
+                                                 Qnn_DataType_t datatype) {
+  const auto id = tensor_wrappers_.size();
+  auto tensor_name = std::to_string(id) + kQnnSuffix;
+  return tensor_wrappers_.emplace_back(std::move(tensor_name),
+                                       QNN_TENSOR_TYPE_NATIVE, datatype,
+                                       src.quantize_params_, src.dimensions_);
+}
+
 TensorWrapper& TensorPool::CloneStaticTensorFrom(const TensorWrapper& src,
                                                  Qnn_DataType_t data_type) {
   const auto id = tensor_wrappers_.size();

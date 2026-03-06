@@ -376,6 +376,9 @@ LiteRtStatus QnnManager::ValidateOp(::qnn::OpWrapper& op) {
         "SDK version is in [2.35.0, 2.37.0); Split OP validation is bypassed.");
     return kLiteRtStatusOk;
   }
+  if (op.IsOpCode(::qnn::QnnOpCode::kFullyConnected)) {
+    LITERT_LOG(LITERT_INFO, "FC OP validation ~~~");
+  }
   const auto op_config = op.GetOpConfig();
   if (Qnn_ErrorHandle_t error =
           Api()->backendValidateOpConfig(BackendHandle(), op_config);

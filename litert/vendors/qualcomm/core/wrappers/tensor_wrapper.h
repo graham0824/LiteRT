@@ -99,6 +99,16 @@ class TensorWrapper final {
         quantize_params_);
   };
 
+  // Returns true if the quantization parameters indicate a bitwidth (BW)
+  // per-channel quantization matching the specified bitwidth.
+  bool IsBwPerChannelQuant(std::uint32_t bitwidth) const {
+    if (auto quant = std::get_if<BwAxisScaleOffsetQuantizeParamsWrapper>(
+            &quantize_params_)) {
+      return quant->GetBitwidth() == bitwidth;
+    }
+    return false;
+  }
+
   bool IsPerTensorQuant() const {
     return std::holds_alternative<ScaleOffsetQuantizeParamsWrapper>(
         quantize_params_);
