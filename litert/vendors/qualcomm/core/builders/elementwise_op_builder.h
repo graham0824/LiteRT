@@ -12,6 +12,10 @@
 
 namespace qnn {
 
+OpWrapper CreateElementWistAddOp(const TensorWrapper& input_0,
+                                 const TensorWrapper& input_1,
+                                 const TensorWrapper& output);
+
 std::vector<OpWrapper> BuildElementwiseAddOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs);

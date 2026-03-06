@@ -90,6 +90,18 @@ std::vector<OpWrapper> BuildReduceMaxOp(
                        QNN_OP_REDUCE_MAX_PARAM_KEEP_DIMS);
 }
 
+OpWrapper CreateReduceMinOp(const TensorWrapper& input,
+                            const TensorWrapper& output,
+                            const TensorWrapper& axis, bool keep_dims) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_REDUCE_MIN), QNN_OP_REDUCE_MIN,
+               QnnOpCode::kReduceMin);
+  op.AddInputTensor(input);
+  op.AddOutputTensor(output);
+  op.AddTensorParam(QNN_OP_REDUCE_MIN_PARAM_AXES, axis);
+  op.AddScalarParam<bool>(QNN_OP_REDUCE_MIN_PARAM_KEEP_DIMS, keep_dims);
+  return op;
+}
+
 std::vector<OpWrapper> BuildReduceMinOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, bool keep_dims) {

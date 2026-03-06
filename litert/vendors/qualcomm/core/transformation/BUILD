@@ -51,6 +51,7 @@ cc_library(
     deps = [
         ":embedding_gemma",
         ":mask",
+        ":masked_softmax",
         ":matmul_convert",
         ":mha_to_sha",
         "//litert/vendors/qualcomm/core:op_code",
@@ -113,6 +114,25 @@ cc_library(
     deps = [
         "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/builders:select_op_builder",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+        "@qairt//:qnn_lib_headers",
+    ],
+)
+
+cc_library(
+    name = "masked_softmax",
+    srcs = ["masked_softmax.cc"],
+    hdrs = ["masked_softmax.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/builders:select_op_builder",
+        "//litert/vendors/qualcomm/core/builders:elementwise_op_builder",
+        "//litert/vendors/qualcomm/core/builders:reduce_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
         "@qairt//:qnn_lib_headers",

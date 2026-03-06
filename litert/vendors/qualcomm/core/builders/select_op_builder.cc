@@ -27,4 +27,16 @@ std::vector<OpWrapper> BuildSelectOp(
   return res;
 }
 
+OpWrapper CreateSelectOp(const TensorWrapper& condition,
+                         const TensorWrapper& input_1,
+                         const TensorWrapper& input_2,
+                         const TensorWrapper& output) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_ELEMENT_WISE_SELECT),
+               QNN_OP_ELEMENT_WISE_SELECT, QnnOpCode::kElementWiseSelect);
+  op.AddInputTensor(condition);
+  op.AddInputTensor(input_1);
+  op.AddInputTensor(input_2);
+  op.AddOutputTensor(output);
+  return op;
+}
 }  // namespace qnn
