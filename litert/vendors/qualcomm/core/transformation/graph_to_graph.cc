@@ -268,5 +268,43 @@ void GraphToGraphTransform(const G2GConfig g2g_option,
       QnnOpCode::kTranspose,
   };
   Transform(validate_op_config, ops, tensor_pool, attn, OptimizeMHAAttn);
+
+  // Gemma4 (MHA-SHA)
+  QNN_LOG_INFO("GEMMA4 w/ shared mask");
+  const std::vector<QnnOpCode> gemma4_mha_shared_mask = {
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConvert,  // V Quant
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kConcat,   // Shared mask
+      QnnOpCode::kReshape,  // Shared mask
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kConvert,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,
+  };
+  Transform(validate_op_config, ops, tensor_pool, gemma4_mha_shared_mask,
+            OptimizeGemma4MHA);
+  QNN_LOG_INFO("GEMMA4 w/o shared mask");
+  const std::vector<QnnOpCode> gemma4_mha = {
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConvert,  // V Quant
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kConvert,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,
+  };
+  Transform(validate_op_config, ops, tensor_pool, gemma4_mha,
+            OptimizeGemma4MHA);
 }
 }  // namespace qnn

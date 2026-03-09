@@ -33,4 +33,15 @@ std::vector<OpWrapper> BuildConcatenationOp(
   return res;
 }
 
+OpWrapper CreateConcatOp(const std::vector<TensorWrapperRef>& inputs,
+                         const TensorWrapper& output, std::uint32_t axis) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_CONCAT), QNN_OP_CONCAT,
+               QnnOpCode::kConcat);
+  for (const auto& input : inputs) {
+    op.AddInputTensor(input);
+  }
+  op.AddOutputTensor(output);
+  op.AddScalarParam<std::uint32_t>(QNN_OP_CONCAT_PARAM_AXIS, axis);
+  return op;
+}
 }  // namespace qnn
