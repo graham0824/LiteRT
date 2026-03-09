@@ -14,6 +14,9 @@ namespace qnn {
 std::vector<OpWrapper> BuildSoftmaxOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs, const float beta);
+
+OpWrapper CreateSoftmaxOp(const TensorWrapper& input,
+                          const TensorWrapper& output, float beta);
 }  // namespace qnn
 
 #endif  // ODML_LITERT_LITERT_VENDORS_QUALCOMM_CORE_BUILDERS_SOFTMAX_OP_BUILDER_H_

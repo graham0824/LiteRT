@@ -25,7 +25,7 @@ std::vector<OpWrapper> BuildReduceMaxOp(
 
 OpWrapper CreateReduceMinOp(const TensorWrapper& input,
                             const TensorWrapper& output,
-                            const TensorWrapper& axis, bool keep_dims);
+                            const TensorWrapper& axes, bool keep_dims);
 
 std::vector<OpWrapper> BuildReduceMinOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,

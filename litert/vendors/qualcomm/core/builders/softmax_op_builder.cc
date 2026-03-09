@@ -26,4 +26,14 @@ std::vector<OpWrapper> BuildSoftmaxOp(
   return res;
 }
 
+OpWrapper CreateSoftmaxOp(const TensorWrapper& input,
+                          const TensorWrapper& output, float beta) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_SOFTMAX), QNN_OP_SOFTMAX,
+               QnnOpCode::kSoftmax);
+  op.AddInputTensor(input);
+  op.AddOutputTensor(output);
+  op.AddScalarParam<float>(QNN_OP_SOFTMAX_PARAM_BETA, beta);
+  return op;
+}
+
 }  // namespace qnn

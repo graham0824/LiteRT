@@ -131,6 +131,7 @@ cc_library(
     deps = [
         "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/builders:select_op_builder",
+        "//litert/vendors/qualcomm/core/builders:softmax_op_builder",
         "//litert/vendors/qualcomm/core/builders:elementwise_op_builder",
         "//litert/vendors/qualcomm/core/builders:reduce_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",

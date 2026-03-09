@@ -92,12 +92,12 @@ std::vector<OpWrapper> BuildReduceMaxOp(
 
 OpWrapper CreateReduceMinOp(const TensorWrapper& input,
                             const TensorWrapper& output,
-                            const TensorWrapper& axis, bool keep_dims) {
+                            const TensorWrapper& axes, bool keep_dims) {
   OpWrapper op(GetUniqueOpName(QNN_OP_REDUCE_MIN), QNN_OP_REDUCE_MIN,
                QnnOpCode::kReduceMin);
   op.AddInputTensor(input);
   op.AddOutputTensor(output);
-  op.AddTensorParam(QNN_OP_REDUCE_MIN_PARAM_AXES, axis);
+  op.AddTensorParam(QNN_OP_REDUCE_MIN_PARAM_AXES, axes);
   op.AddScalarParam<bool>(QNN_OP_REDUCE_MIN_PARAM_KEEP_DIMS, keep_dims);
   return op;
 }
