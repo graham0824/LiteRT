@@ -51,22 +51,31 @@ size_t TransformMaskedSoftmax(
 
   // Add (B: <= -20)
   auto& add_out = tensor_pool.CloneNativeTensorFrom(min_out);
-  static constexpr std::int8_t kNegativeValue = -20;
+  static constexpr std::int16_t kNegativeValue = -20;
   auto& negative_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_SFIXED_POINT_8, ScaleOffsetQuantizeParamsWrapper{1.0f, 0},
+      QNN_DATATYPE_SFIXED_POINT_16, ScaleOffsetQuantizeParamsWrapper{1.0f, 0},
       kOneDim, sizeof(kNegativeValue), &kNegativeValue);
+
+  // Equal
+  const auto& mask = ops[start_index + kAddIndex].GetInputTensor(1);
+  const auto& bool_mask = tensor_pool.CreateNativeTensor(
+      QNN_DATATYPE_BOOL_8, {}, mask.GetDimensions());
+  static constexpr std::int16_t kZeroValue = 0;
+  auto& zero_tensor = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_SFIXED_POINT_16, mask.GetQuantParams(), kOneDim,
+      sizeof(kZeroValue), &kZeroValue);
 
   // Graph transform
   QNN_LOG_INFO("[G2G] Transform MaskedSoftmax");
 
   // Construct the new subgraph
-  const auto& mask = ops[start_index + kAddIndex].GetInputTensor(1);
   const auto& softmax_in = ops[start_index + kSoftmaxIndex].GetInputTensor(0);
   const auto& output = ops[start_index + kSoftmaxIndex].GetOutputTensor(0);
   std::vector<OpWrapper> new_ops =
       MakeVector(CreateReduceMinOp(input, min_out, axes, true),
                  CreateElementWistAddOp(min_out, negative_tensor, add_out),
-                 CreateSelectOp(mask, input, add_out, softmax_in),
+                 CreateElementWistEqualOp(mask, zero_tensor, bool_mask),
+                 CreateSelectOp(bool_mask, input, add_out, softmax_in),
                  CreateSoftmaxOp(softmax_in, output, 1.0f));
 
   if (new_ops.empty()) {

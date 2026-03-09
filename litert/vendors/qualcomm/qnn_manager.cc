@@ -376,6 +376,11 @@ LiteRtStatus QnnManager::ValidateOp(::qnn::OpWrapper& op) {
         "SDK version is in [2.35.0, 2.37.0); Split OP validation is bypassed.");
     return kLiteRtStatusOk;
   }
+  // Bypass ReduceMin OP validation.
+  if (op.IsOpCode(::qnn::QnnOpCode::kReduceMin)) {
+    LITERT_LOG(LITERT_WARNING, "ReduceMin Split OP validation is bypassed.");
+    return kLiteRtStatusOk;
+  }
   const auto op_config = op.GetOpConfig();
   if (Qnn_ErrorHandle_t error =
           Api()->backendValidateOpConfig(BackendHandle(), op_config);

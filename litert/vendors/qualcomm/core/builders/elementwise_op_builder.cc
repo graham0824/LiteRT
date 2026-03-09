@@ -363,6 +363,20 @@ std::vector<OpWrapper> BuildElementwiseNotEqualOp(
   return res;
 }
 
+OpWrapper CreateElementWistNotEqualOp(const TensorWrapper& input_0,
+                                      const TensorWrapper& input_1,
+                                      const TensorWrapper& output) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_ELEMENT_WISE_BINARY),
+               QNN_OP_ELEMENT_WISE_BINARY, QnnOpCode::kElementWiseBinary);
+  op.AddInputTensor(input_0);
+  op.AddInputTensor(input_1);
+  op.AddOutputTensor(output);
+  op.AddScalarParam<std::uint32_t>(
+      QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+      QNN_OP_ELEMENT_WISE_BINARY_OPERATION_NOT_EQUAL);
+  return op;
+}
+
 std::vector<OpWrapper> BuildElementwiseOrOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
@@ -473,6 +487,19 @@ std::vector<OpWrapper> BuildElementwiseEqualOp(
       QNN_OP_ELEMENT_WISE_BINARY_OPERATION_EQUAL);
 
   return res;
+}
+
+OpWrapper CreateElementWistEqualOp(const TensorWrapper& input_0,
+                                   const TensorWrapper& input_1,
+                                   const TensorWrapper& output) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_ELEMENT_WISE_BINARY),
+               QNN_OP_ELEMENT_WISE_BINARY, QnnOpCode::kElementWiseBinary);
+  op.AddInputTensor(input_0);
+  op.AddInputTensor(input_1);
+  op.AddOutputTensor(output);
+  op.AddScalarParam<std::uint32_t>(QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+                                   QNN_OP_ELEMENT_WISE_BINARY_OPERATION_EQUAL);
+  return op;
 }
 
 std::vector<OpWrapper> BuildElementwiseLogOp(
