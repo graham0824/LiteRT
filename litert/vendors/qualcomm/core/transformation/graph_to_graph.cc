@@ -14,6 +14,7 @@
 #include "litert/vendors/qualcomm/core/transformation/mask.h"
 #include "litert/vendors/qualcomm/core/transformation/matmul_convert.h"
 #include "litert/vendors/qualcomm/core/transformation/mha_to_sha.h"
+#include "litert/vendors/qualcomm/core/transformation/fc_tiling.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 
 namespace qnn {
@@ -311,5 +312,11 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
       QnnOpCode::kTranspose,
   };
   Transform(validate_op_config, ops, tensor_pool, attn, OptimizeMHAAttn);
+
+  // Tiling FC
+  const std::vector<QnnOpCode> fc = {
+      QnnOpCode::kFullyConnected,
+  };
+  Transform(validate_op_config, ops, tensor_pool, fc, TileFullyConnected);
 }
 }  // namespace qnn

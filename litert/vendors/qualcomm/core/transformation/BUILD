@@ -54,6 +54,7 @@ cc_library(
         ":mask",
         ":matmul_convert",
         ":mha_to_sha",
+        ":fc_tiling",
         "//litert/vendors/qualcomm/core:op_code",
         "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
@@ -116,6 +117,24 @@ cc_library(
         "//litert/vendors/qualcomm/core/builders:select_op_builder",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+        "@qairt//:qnn_lib_headers",
+    ],
+)
+
+cc_library(
+    name = "fc_tiling",
+    srcs = ["fc_tiling.cc"],
+    hdrs = ["fc_tiling.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/builders:elementwise_op_builder",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+        "//litert/vendors/qualcomm/core/builders:split_op_builder",
         "@qairt//:qnn_lib_headers",
     ],
 )

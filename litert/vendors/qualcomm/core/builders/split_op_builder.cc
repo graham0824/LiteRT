@@ -66,4 +66,17 @@ std::vector<OpWrapper> BuildSplitOp(
   return res;
 }
 
+OpWrapper CreateSplitOp(const TensorWrapper& input_0,
+                        const std::vector<ConstTensorWrapperRef>& outputs,
+                        std::uint32_t axis, const TensorWrapper& split_index) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_SPLIT), QNN_OP_SPLIT, QnnOpCode::kSplit);
+  op.AddInputTensor(input_0);
+  for (const auto& output : outputs) {
+    op.AddOutputTensor(output);
+  }
+  op.AddScalarParam<std::uint32_t>(QNN_OP_SPLIT_PARAM_AXIS, axis);
+  op.AddTensorParam(QNN_OP_SPLIT_PARAM_SPLIT_INDEX, split_index);
+  return op;
+}
+
 }  // namespace qnn

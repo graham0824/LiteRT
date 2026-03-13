@@ -98,15 +98,14 @@ TensorWrapper::TensorWrapper(
     const void* data, bool copy_data)
     : TensorWrapper(std::move(name), tensor_type, data_type, quantize_params,
                     dimensions) {
-  // Already map to QNN_DATATYPE_SFIXED_POINT_8 for 4-bit and 2-bit
-  // quantization
-  if (IsQuantBitwidth(kQuantBitWidth4)) {
+  if (IsQuantBitwidth(kQuantBitWidth4) && IsQuantI8() &&
+      GetTensorNumElements() / 2 == bytes) {
     std::vector<std::int8_t> int8_data;
     QNN_LOG_DEBUG("4-bit Qunat, converting data to 8-bit for QNN.");
     ConvertDataFromInt4ToInt8(data, bytes, int8_data);
-    // Set copy_data to true to prevent loss of int8_data.
     SetDataBy(GetTensorBytes(), int8_data.data(), true);
-  } else if (IsQuantBitwidth(kQuantBitWidth2)) {
+  } else if (IsQuantBitwidth(kQuantBitWidth2) && IsQuantI8() &&
+             GetTensorNumElements() / 4 == bytes) {
     std::vector<std::int8_t> int8_data;
     QNN_LOG_DEBUG("2-bit Qunat, converting data to 8-bit for QNN.");
     ConvertDataFromInt2ToInt8(data, bytes, int8_data);

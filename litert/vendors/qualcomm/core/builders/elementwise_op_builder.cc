@@ -31,6 +31,20 @@ std::vector<OpWrapper> BuildElementwiseAddOp(
   return res;
 }
 
+OpWrapper CreateElementWiseBinaryOp(const TensorWrapper& input_0,
+                                    const TensorWrapper& input_1,
+                                    const TensorWrapper& output,
+                                    std::uint32_t op_type) {
+  OpWrapper op(GetUniqueOpName(QNN_OP_ELEMENT_WISE_BINARY),
+               QNN_OP_ELEMENT_WISE_BINARY, QnnOpCode::kElementWiseBinary);
+  op.AddInputTensor(input_0);
+  op.AddInputTensor(input_1);
+  op.AddOutputTensor(output);
+  op.AddScalarParam<std::uint32_t>(QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+                                   op_type);
+  return op;
+}
+
 std::vector<OpWrapper> BuildElementwiseSubOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs) {
