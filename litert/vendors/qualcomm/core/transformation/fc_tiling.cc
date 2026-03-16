@@ -33,8 +33,26 @@ OpWrapper CloneOpWithIO(
 size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
                           std::vector<OpWrapper>& ops, size_t start_index,
                           TensorPool& tensor_pool, size_t pattern_size) {
-  // Check size.
-  const auto& input = ops[start_index].GetInputTensor(0);
+  // Tile FC computation along the K dimension and combine partial results using
+  // an adder-tree. This allows the FC operation to scale by splitting large
+  // weight into smaller tiles while maintaining the same output shape.
+  //
+  //      k            k             n
+  //   ┌─────┐      ┌─────┐     ┌─────────┐
+  // m │  I  │  x   │     │ = m |    O    |
+  //   └─────┘    n │  W  │     └─────────┘
+  //                │     │
+  //                └─────┘
+  //
+  // For example, if t (num tiles) = 2, we have:
+  //
+  //   k/t          k/t              n
+  //   ┌─┐ ┌─┐      ┌─┐ ┌─┐     ┌─────────┐   ┌─────────┐
+  // m │I| |I│  x   │ │ │ │ = m |    O    | + |    O    |
+  //   └─┘ └─┘    n │W│ │W│     └─────────┘   └─────────┘
+  //                │ │ │ │
+  //                └─┘ └─┘
+  //
   const auto& weight = ops[start_index].GetInputTensor(1);
   auto weight_data = weight.GetTensorData<int8_t>();
   QNN_LOG_INFO("[G2G] FC Weight Info:");
@@ -46,58 +64,60 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
     return 1;
   }
   if (!weight_data.has_value()) return 1;
+  static constexpr uint32_t kNumTiles = 2;
   // Split
-  auto split_output_dims = input.GetDimensions();
-  split_output_dims[split_output_dims.size() - 1] /= 2;
-  auto& fc_input_0 =
-      tensor_pool.CloneNativeTensorFrom(input, split_output_dims);
-  auto& fc_input_1 =
-      tensor_pool.CloneNativeTensorFrom(input, split_output_dims);
-  std::vector<std::uint32_t> split_index_dims = {1};
-  std::vector<std::uint32_t> split_index = {
-      input.GetDimension(input.GetRank() - 1) / 2};
+  const auto& input = ops[start_index].GetInputTensor(0);
+  auto split_dims = input.GetDimensions();
+  split_dims.back() /= kNumTiles;
+  const std::uint32_t tile_size = split_dims.back();
+  std::vector<TensorWrapperRef> fc_inputs;
+  fc_inputs.reserve(kNumTiles);
+  for (size_t i = 0; i < kNumTiles; ++i) {
+    fc_inputs.emplace_back(
+        tensor_pool.CloneNativeTensorFrom(input, split_dims));
+  }
+
+  std::vector<std::uint32_t> split_index_dims = {kNumTiles - 1};
+  std::vector<std::uint32_t> split_index;
+  split_index.reserve(split_index_dims[0]);
+  for (std::uint32_t i = tile_size; i < input.GetDimensions().back();
+       i += tile_size) {
+    split_index.emplace_back(i);
+  }
   auto& split_index_tensor = tensor_pool.CreateStaticTensor(
       QNN_DATATYPE_UINT_32, {}, split_index_dims,
       sizeof(split_index[0]) * split_index.size(), split_index.data());
-
+  std::vector<OpWrapper> new_ops;
+  new_ops.reserve(2 + kNumTiles);
+  new_ops.emplace_back(
+      CreateSplitOp(input, fc_inputs, input.GetRank() - 1, split_index_tensor));
   // Graph transform
   QNN_LOG_INFO("[G2G] Tile FC");
-  // Construct the new subgraph
-  std::vector<int8_t> fc_weight_0;
-  fc_weight_0.reserve(weight_data.value().size() / 2);
-  std::vector<int8_t> fc_weight_1;
-  fc_weight_1.reserve(weight_data.value().size() / 2);
-  const size_t j_bound = weight.GetDimension(1);
-  for (size_t i = 0; i < weight.GetDimension(0); ++i) {
-    for (size_t j = 0; j < j_bound / 2; ++j) {
-      fc_weight_0.emplace_back(weight_data.value()[j]);
-    }
-    for (size_t j = j_bound / 2; j < j_bound; ++j) {
-      fc_weight_1.emplace_back(weight_data.value()[j]);
-    }
-  }
-
   auto weight_dims = weight.GetDimensions();
-  weight_dims[weight.GetRank() - 1] /= 2;
-
-  auto& tiled_weight_0 = tensor_pool.CreateStaticTensor(
-      weight.GetDataType(), weight.GetQuantParams(), weight_dims,
-      weight.GetTensorBytes(), fc_weight_0.data());
-  auto& tiled_weight_1 = tensor_pool.CreateStaticTensor(
-      weight.GetDataType(), weight.GetQuantParams(), weight_dims,
-      weight.GetTensorBytes(), fc_weight_1.data());
-  const auto& output_tensor = ops[start_index].GetOutputTensor(0);
-  auto& fc_output_0 = tensor_pool.CloneNativeTensorFrom(output_tensor);
-  auto& fc_output_1 = tensor_pool.CloneNativeTensorFrom(output_tensor);
-
-  std::vector<OpWrapper> new_ops = MakeVector(
-      CreateSplitOp(input, {fc_input_0, fc_input_1}, input.GetRank() - 1,
-                    split_index_tensor),
-      CloneOpWithIO(ops[start_index], {fc_input_0, tiled_weight_0},
-                    {fc_output_0}),
-      CloneOpWithIO(ops[start_index], {fc_input_1, tiled_weight_1},
-                    {fc_output_1}),
-      CreateElementWiseBinaryOp(fc_output_0, fc_output_1, output_tensor,
+  weight_dims.back() /= kNumTiles;
+  std::vector<TensorWrapperRef> fc_outputs;
+  fc_outputs.reserve(fc_inputs.size());
+  const auto& output = ops[start_index].GetOutputTensor(0);
+  for (size_t op_index = 0; op_index < kNumTiles; ++op_index) {
+    std::vector<int8_t> fc_weight;
+    fc_weight.reserve(weight.GetTensorNumElements() / kNumTiles);
+    for (size_t i = 0; i < weight.GetDimension(0); ++i) {
+      for (size_t j = op_index * tile_size; j < (op_index + 1) * tile_size;
+           ++j) {
+        fc_weight.emplace_back(weight_data.value()[j]);
+      }
+    }
+    auto& tiled_weight = tensor_pool.CreateStaticTensor(
+        weight.GetDataType(), weight.GetQuantParams(), weight_dims,
+        weight.GetTensorBytes(), fc_weight.data());
+    auto& fc_output = fc_outputs.emplace_back(
+        tensor_pool.CloneNativeTensorFrom(output));
+    new_ops.emplace_back(CloneOpWithIO(
+        ops[start_index], {fc_inputs[op_index], tiled_weight}, {fc_output}));
+  }
+  // TODO (jiunkaiy): Change to adder tree.
+  new_ops.emplace_back(
+      CreateElementWiseBinaryOp(fc_outputs[0], fc_outputs[1], output,
                                 QNN_OP_ELEMENT_WISE_BINARY_OPERATION_ADD));
 
   // Validate new graph.

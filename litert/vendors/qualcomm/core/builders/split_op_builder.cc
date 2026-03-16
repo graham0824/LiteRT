@@ -67,7 +67,7 @@ std::vector<OpWrapper> BuildSplitOp(
 }
 
 OpWrapper CreateSplitOp(const TensorWrapper& input_0,
-                        const std::vector<ConstTensorWrapperRef>& outputs,
+                        const std::vector<TensorWrapperRef>& outputs,
                         std::uint32_t axis, const TensorWrapper& split_index) {
   OpWrapper op(GetUniqueOpName(QNN_OP_SPLIT), QNN_OP_SPLIT, QnnOpCode::kSplit);
   op.AddInputTensor(input_0);
