@@ -108,6 +108,7 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
   new_ops.emplace_back(
       CreateSplitOp(input, fc_inputs, input.GetRank() - 1, split_index_tensor));
   CloneNamespace(ops[start_index], new_ops.back());
+
   // Construct kNumTiles FCs.
   auto weight_dims = weight.GetDimensions();
   weight_dims.back() /= kNumTiles;
@@ -120,7 +121,8 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
     for (size_t i = 0; i < weight.GetDimension(0); ++i) {
       for (size_t j = op_index * tile_size; j < (op_index + 1) * tile_size;
            ++j) {
-        fc_weight.emplace_back(weight_data.value()[j]);
+        size_t weight_index = i * weight.GetDimension(1) + j;
+        fc_weight.emplace_back(weight_data.value()[weight_index]);
       }
     }
     auto& tiled_weight = tensor_pool.CreateStaticTensor(
