@@ -136,6 +136,7 @@ cc_library(
         "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
         "//litert/vendors/qualcomm/core/builders:split_op_builder",
         "@qairt//:qnn_lib_headers",
+        "@com_google_absl//absl/numeric:bits",
     ],
 )
 

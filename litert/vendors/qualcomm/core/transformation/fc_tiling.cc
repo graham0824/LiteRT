@@ -8,8 +8,10 @@
 #include <functional>
 #include <vector>
 #include <variant>
+#include <cmath>
 
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/numeric/bits.h"
 #include "litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
@@ -20,6 +22,9 @@
 
 namespace qnn {
 namespace {
+constexpr uint32_t kNumTiles = 2;
+static_assert((kNumTiles & (kNumTiles - 1)) == 0,
+              "kNumTiles must be a power of two");
 OpWrapper CloneOpWithIO(
     const OpWrapper& source_op,
     const std::vector<std::optional<qnn::TensorWrapperRef>>& inputs,
@@ -28,7 +33,15 @@ OpWrapper CloneOpWithIO(
   ret.UpdateTensors(inputs, outputs);
   return ret;
 }
+void CloneNamespace(const OpWrapper& source, OpWrapper& op) {
+  absl::string_view start_op_name = source.GetName();
+  size_t pos = start_op_name.rfind('/');
+  if (pos == absl::string_view::npos) {
+    return;
+  }
+  op.AddPrefixToName(absl::StrCat(start_op_name.substr(0, pos), "/"));
 }
+}  // namespace
 
 size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
                           std::vector<OpWrapper>& ops, size_t start_index,
@@ -44,7 +57,7 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
   //                │     │
   //                └─────┘
   //
-  // For example, if t (num tiles) = 2, we have:
+  // For example, if t (num of tiles) = 2, we have:
   //
   //   k/t          k/t              n
   //   ┌─┐ ┌─┐      ┌─┐ ┌─┐     ┌─────────┐   ┌─────────┐
@@ -59,12 +72,14 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
   for (size_t i = 0; i < weight.GetRank(); ++i) {
     QNN_LOG_INFO("[G2G] Dim %d: %d", i, weight.GetDimension(i));
   }
+  // TODO (jiunkaiy): Eliminate hard-coded values by deriving general transform
+  // parameters.
   if (!(weight.GetDimension(0) == 12288 || weight.GetDimension(0) == 1536 ||
         weight.GetDimension(0) == 262144)) {
     return 1;
   }
   if (!weight_data.has_value()) return 1;
-  static constexpr uint32_t kNumTiles = 2;
+  QNN_LOG_INFO("[G2G] Tile FC");
   // Split
   const auto& input = ops[start_index].GetInputTensor(0);
   auto split_dims = input.GetDimensions();
@@ -76,7 +91,6 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
     fc_inputs.emplace_back(
         tensor_pool.CloneNativeTensorFrom(input, split_dims));
   }
-
   std::vector<std::uint32_t> split_index_dims = {kNumTiles - 1};
   std::vector<std::uint32_t> split_index;
   split_index.reserve(split_index_dims[0]);
@@ -88,15 +102,17 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
       QNN_DATATYPE_UINT_32, {}, split_index_dims,
       sizeof(split_index[0]) * split_index.size(), split_index.data());
   std::vector<OpWrapper> new_ops;
-  new_ops.reserve(2 + kNumTiles);
+  const size_t tree_depth = absl::countr_zero(kNumTiles) - 1;
+  // Reserve for 1 Split, kNumTiles FCs, and 2^(tree_depth + 1) - 1 Adds.
+  new_ops.reserve(kNumTiles + (1 << (tree_depth + 1)) + 1);
   new_ops.emplace_back(
       CreateSplitOp(input, fc_inputs, input.GetRank() - 1, split_index_tensor));
-  // Graph transform
-  QNN_LOG_INFO("[G2G] Tile FC");
+  CloneNamespace(ops[start_index], new_ops.back());
+  // Construct kNumTiles FCs.
   auto weight_dims = weight.GetDimensions();
   weight_dims.back() /= kNumTiles;
-  std::vector<TensorWrapperRef> fc_outputs;
-  fc_outputs.reserve(fc_inputs.size());
+  std::vector<TensorWrapperRef> add_inputs;
+  add_inputs.reserve(fc_inputs.size());
   const auto& output = ops[start_index].GetOutputTensor(0);
   for (size_t op_index = 0; op_index < kNumTiles; ++op_index) {
     std::vector<int8_t> fc_weight;
@@ -110,15 +126,32 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
     auto& tiled_weight = tensor_pool.CreateStaticTensor(
         weight.GetDataType(), weight.GetQuantParams(), weight_dims,
         weight.GetTensorBytes(), fc_weight.data());
-    auto& fc_output = fc_outputs.emplace_back(
+    auto& fc_output = add_inputs.emplace_back(
         tensor_pool.CloneNativeTensorFrom(output));
     new_ops.emplace_back(CloneOpWithIO(
         ops[start_index], {fc_inputs[op_index], tiled_weight}, {fc_output}));
   }
-  // TODO (jiunkaiy): Change to adder tree.
+  // Construct adder tree for tiled accumulation.
+  for (size_t n = tree_depth; n > 0; --n) {
+    const size_t num_adds = 1 << n;
+    std::vector<TensorWrapperRef> add_outputs;
+    add_outputs.reserve(num_adds);
+    for (size_t i = 0; i < num_adds; ++i) {
+      // Create Add OP's output.
+      auto& add_output =
+          add_outputs.emplace_back(tensor_pool.CloneNativeTensorFrom(output));
+      // Create Add OP.
+      new_ops.emplace_back(CreateElementWiseBinaryOp(
+          add_inputs[2 * i], add_inputs[2 * i + 1], add_output,
+          QNN_OP_ELEMENT_WISE_BINARY_OPERATION_ADD));
+      CloneNamespace(ops[start_index], new_ops.back());
+    }
+    add_inputs = add_outputs;
+  }
   new_ops.emplace_back(
-      CreateElementWiseBinaryOp(fc_outputs[0], fc_outputs[1], output,
+      CreateElementWiseBinaryOp(add_inputs[0], add_inputs[1], output,
                                 QNN_OP_ELEMENT_WISE_BINARY_OPERATION_ADD));
+  CloneNamespace(ops[start_index], new_ops.back());
 
   // Validate new graph.
   bool is_valid =
