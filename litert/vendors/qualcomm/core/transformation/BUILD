@@ -162,6 +162,23 @@ cc_library(
 )
 
 cc_test(
+    name = "fc_tiling_test",
+    srcs = ["fc_tiling_test.cc"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":graph_to_graph",
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/utils:log",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/builders:fully_connected_op_builder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "embedding_gemma_test",
     srcs = [
         "embedding_gemma_test.cc",
