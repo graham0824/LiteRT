@@ -67,7 +67,7 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
   //                └─┘ └─┘
   //
   const auto& weight = ops[start_index].GetInputTensor(1);
-  auto weight_data = weight.GetTensorData<int8_t>();
+  QNN_LOG_INFO("[G2G] TileFullyConnected");
   QNN_LOG_INFO("[G2G] FC Weight Info:");
   for (size_t i = 0; i < weight.GetRank(); ++i) {
     QNN_LOG_INFO("[G2G] Dim %d: %d", i, weight.GetDimension(i));
@@ -78,8 +78,9 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
         weight.GetDimension(0) == 262144)) {
     return 1;
   }
+  auto weight_data = weight.GetTensorData<int8_t>();
   if (!weight_data.has_value()) return 1;
-  QNN_LOG_INFO("[G2G] Tile FC");
+  QNN_LOG_INFO("[G2G] Tile FC Start");
   // Split
   const auto& input = ops[start_index].GetInputTensor(0);
   auto split_dims = input.GetDimensions();
@@ -127,7 +128,7 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
     }
     auto& tiled_weight = tensor_pool.CreateStaticTensor(
         weight.GetDataType(), weight.GetQuantParams(), weight_dims,
-        weight.GetTensorBytes(), fc_weight.data());
+        weight.GetTensorBytes() / kNumTiles, fc_weight.data());
     auto& fc_output = add_inputs.emplace_back(
         tensor_pool.CloneNativeTensorFrom(output));
     new_ops.emplace_back(CloneOpWithIO(
@@ -173,6 +174,7 @@ size_t TileFullyConnected(std::function<bool(OpWrapper&)> validate_op_config,
                std::make_move_iterator(new_ops.end()));
     ops.erase(ops.begin() + start_index,
               ops.begin() + start_index + pattern_size);
+    QNN_LOG_INFO("[G2G] Tile FC DONE");
     return step_size;
   }
   QNN_LOG_WARNING(
