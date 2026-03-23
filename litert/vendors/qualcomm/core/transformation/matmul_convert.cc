@@ -57,4 +57,47 @@ size_t FuseMatMulConvertPrefill(
   return 1;
 }
 
+size_t FuseConvertMatMul(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size) {
+  // Connection check
+  if (ops[start_index].GetOutputTensor(0) !=
+      ops[start_index + 1].GetInputTensor(1)) {
+    return 1;
+  }
+  // Graph transform
+  QNN_LOG_INFO("[G2G] Convert-MatMul");
+  auto& convert_output_0 = ops[start_index].GetOutputTensor(0);
+  QNN_LOG_INFO("[G2G] Convert-MatMul 0");
+  // Loop thru all output ops.
+  const auto& matmul_op_names = convert_output_0.GetConsumerOpNames();
+  // Find ops by name.
+  std::vector<OpWrapper*> matmul_ops;
+  for (auto& op : ops) {
+    for (const auto& name : matmul_op_names) {
+        // QNN_LOG_INFO("[G2G] Convert-MatMul target %s", name.c_str());
+      if (absl::StrContains(op.GetName(), name)) {
+        QNN_LOG_INFO("[G2G] Convert-MatMul found %s", name.c_str());
+        matmul_ops.push_back(&op);
+        break;
+      }
+    }
+  }
+  for (auto* matmul_op : matmul_ops) {
+    matmul_op->AttachInput(ops[start_index].GetInputTensor(0), 1);
+  }
+  QNN_LOG_INFO("[G2G] Convert-MatMul 2");
+  if (validate_op_config(ops[start_index])) {
+    ops.erase(ops.begin() + start_index);
+    QNN_LOG_INFO("[G2G] Convert-MatMul 3");
+  } else {
+    QNN_LOG_WARNING(
+        "[G2G] Validation failed. Rolling back to the original graph.");
+    // for (auto* matmul_op : matmul_ops) {
+    //   ops[start_index].SwapInput(*matmul_op, 0, 1);
+    // }
+  }
+  return 1;
+}
 }  // namespace qnn

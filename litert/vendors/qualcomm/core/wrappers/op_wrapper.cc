@@ -57,6 +57,7 @@ void OpWrapper::SetType(const char* op_type, QnnOpCode op_code) {
 
 void OpWrapper::AddInputTensor(const TensorWrapper& tensor) {
   input_tensors_.emplace_back(tensor);
+  tensor.AddConsumerOp(name_);
 }
 
 void OpWrapper::AddOutputTensor(const TensorWrapper& tensor) {
@@ -140,6 +141,10 @@ std::optional<ScalarParamWrapper> OpWrapper::GetScalarParam(size_t i) const {
 
 void OpWrapper::SwapOutputs(OpWrapper& other) {
   this->output_tensors_.swap(other.output_tensors_);
+}
+
+void OpWrapper::AttachInput(const TensorWrapper& tensor, size_t idx) {
+  this->input_tensors_[idx] = tensor;
 }
 
 void OpWrapper::UpdateTensors(

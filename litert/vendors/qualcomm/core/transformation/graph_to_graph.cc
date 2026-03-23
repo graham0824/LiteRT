@@ -311,5 +311,12 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
       QnnOpCode::kTranspose,
   };
   Transform(validate_op_config, ops, tensor_pool, attn, OptimizeMHAAttn);
+
+  const std::vector<QnnOpCode> convert_matmul = {
+      QnnOpCode::kConvert,
+      QnnOpCode::kMatMul,
+  };
+  Transform(validate_op_config, ops, tensor_pool, convert_matmul,
+            FuseConvertMatMul);
 }
 }  // namespace qnn

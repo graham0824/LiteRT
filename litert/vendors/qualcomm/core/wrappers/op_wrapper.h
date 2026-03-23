@@ -63,6 +63,8 @@ class OpWrapper final {
 
   void SwapOutputs(OpWrapper& other);
 
+  void AttachInput(const TensorWrapper& tensor, size_t idx);
+
   void UpdateTensors(
       const std::vector<std::optional<TensorWrapperRef>>& inputs,
       const std::vector<std::optional<TensorWrapperRef>>& outputs);

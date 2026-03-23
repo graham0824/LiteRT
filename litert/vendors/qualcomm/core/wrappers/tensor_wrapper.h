@@ -173,6 +173,17 @@ class TensorWrapper final {
 
   void SetQuantBitwidth(std::uint32_t bitwidth);
 
+  // Op usage tracking ////////////////////////////////////////////////////////
+
+  // Register an op (by name) that uses this tensor as one of its inputs.
+  void AddConsumerOp(std::string op_name) const {
+    consumer_op_names_.push_back(std::move(op_name));
+  }
+
+  const std::vector<std::string>& GetConsumerOpNames() const {
+    return consumer_op_names_;
+  }
+
  private:
   void SetDataBy(std::uint32_t bytes, const void* data, bool copy_data);
 
@@ -207,6 +218,7 @@ class TensorWrapper final {
   std::vector<std::uint32_t> dimensions_{};
   QuantizeParamsWrapperVariant quantize_params_{};
   std::vector<std::byte> owned_data_{};
+  mutable std::vector<std::string> consumer_op_names_{};
 };
 
 using TensorWrapperRef = std::reference_wrapper<TensorWrapper>;
