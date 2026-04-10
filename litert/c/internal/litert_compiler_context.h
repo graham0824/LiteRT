@@ -126,6 +126,11 @@ typedef struct LiteRtCompilerContext {
   LiteRtStatus (*get_environment_options_value)(
       LiteRtEnvironmentOptions options, LiteRtEnvOptionTag tag,
       LiteRtAny* value);
+
+  // Op inspection
+  LiteRtStatus (*get_custom_options)(LiteRtOp op,
+                                     const uint8_t** custom_options,
+                                     size_t* custom_options_size);
 } LiteRtCompilerContext;
 
 // ABI compatibility check for LiteRtCompilerContext.
@@ -134,7 +139,7 @@ typedef struct LiteRtCompilerContext {
 // changes to this struct.
 #if defined(__cplusplus) && defined(__SIZEOF_POINTER__) && \
     __SIZEOF_POINTER__ == 8
-static_assert(sizeof(LiteRtCompilerContext) == 296,
+static_assert(sizeof(LiteRtCompilerContext) == 304,
               "LiteRtCompilerContext size mismatch");
 static_assert(offsetof(LiteRtCompilerContext, get_num_model_subgraphs) == 0,
               "LiteRtCompilerContext get_num_model_subgraphs offset mismatch");
@@ -219,6 +224,8 @@ static_assert(offsetof(LiteRtCompilerContext, destroy_options) == 280,
 static_assert(
     offsetof(LiteRtCompilerContext, get_environment_options_value) == 288,
     "LiteRtCompilerContext get_environment_options_value offset mismatch");
+static_assert(offsetof(LiteRtCompilerContext, get_custom_options) == 296,
+              "LiteRtCompilerContext get_custom_options offset mismatch");
 #endif  // __cplusplus
 
 LiteRtCompilerContext* LrtGetCompilerContext();

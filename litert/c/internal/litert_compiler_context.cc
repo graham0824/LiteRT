@@ -60,6 +60,7 @@ LiteRtCompilerContext* LrtGetCompilerContext() {
       .find_opaque_options_data = LiteRtFindOpaqueOptionsData,
       .destroy_options = LiteRtDestroyOptions,
       .get_environment_options_value = LiteRtGetEnvironmentOptionsValue,
+      .get_custom_options = LiteRtGetCustomOptions,
   };
   return &ctx;
 }
