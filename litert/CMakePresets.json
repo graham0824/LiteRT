@@ -27,7 +27,7 @@
       "name": "x86",
       "displayName": "X86-64 (host)",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/../cmake_build",
+      "binaryDir": "$env{LITERT_CMAKE_BUILD_DIR}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_C_COMPILER": "$env{LITERT_CLANG}",
@@ -44,7 +44,7 @@
       "name": "android-arm64",
       "displayName": "Android arm64-v8a",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/../cmake_build_android_arm64",
+      "binaryDir": "$env{LITERT_CMAKE_BUILD_DIR}",
       "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
       "cacheVariables": {
         "CMAKE_SYSTEM_NAME": "Android",
