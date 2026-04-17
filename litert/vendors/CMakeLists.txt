@@ -20,9 +20,15 @@ cmake_minimum_required(VERSION 3.20)
 include(CheckIncludeFileCXX)
 include(FetchContent)
 
+option(LITERT_ENABLE_MEDIATEK "Enable MediaTek vendor build" OFF)
 set(NEUROPILOT_HEADERS_DIR "" CACHE PATH "Path to pre-downloaded NeuroPilot headers (root containing neuron/api)")
 set(QAIRT_HEADERS_DIR "" CACHE PATH "Path to pre-downloaded QAIRT/QNN headers (root containing Qnn*.h)")
 set(LITECORE_HEADERS_DIR "" CACHE PATH "Path to Samsung AI LiteCore headers (root containing graph_wrapper_api.h)")
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
+
+if (LITERT_TOOLS_DEP)
+  message(STATUS "Using dependencies from ${LITERT_TOOLS_DEP} for offline build.")
+endif()
 
 option(LITERT_ENABLE_ALL_VENDORS "Enable all available NPU vendors by default" ON)
 option(LITERT_ENABLE_GOOGLE_TENSOR "Enable Google Tensor dispatch build" ${LITERT_ENABLE_ALL_VENDORS})
@@ -69,6 +75,43 @@ if(LITERT_ENABLE_MEDIATEK AND NOT NEUROPILOT_HEADERS_DIR)
     message(STATUS "NeuroPilot headers at: ${NEUROPILOT_HEADERS_DIR}")
   endif()
 endif()
+
+# if(NOT NEUROPILOT_HEADERS_DIR)
+#   if(NOT NEUROPILOT_HEADERS_URL AND NOT NEUROPILOT_GIT_REPO)
+#     set(NEUROPILOT_HEADERS_URL "https://s3.ap-southeast-1.amazonaws.com/mediatek.neuropilot.com/66f2c33a-2005-4f0b-afef-2053c8654e4f.gz")
+#   endif()
+#   if(NEUROPILOT_HEADERS_URL OR NEUROPILOT_GIT_REPO)
+#     if(NEUROPILOT_HEADERS_URL)
+#       FetchContent_Declare(neuro_pilot
+#         URL ${NEUROPILOT_HEADERS_URL}
+#       )
+#     else()
+#       FetchContent_Declare(neuro_pilot
+#         GIT_REPOSITORY ${NEUROPILOT_GIT_REPO}
+#         GIT_TAG        ${NEUROPILOT_GIT_TAG}
+#       )
+#     endif()
+#     FetchContent_MakeAvailable(neuro_pilot)
+#     set(NEUROPILOT_HEADERS_DIR ${neuro_pilot_SOURCE_DIR})
+#     set(_np_candidates)
+#     list(APPEND _np_candidates
+#       "${NEUROPILOT_HEADERS_DIR}/${NEUROPILOT_HEADERS_SUBDIR}"
+#       "${NEUROPILOT_HEADERS_DIR}/v8_latest/host/include"
+#       "${NEUROPILOT_HEADERS_DIR}/v9_latest/host/include"
+#       "${NEUROPILOT_HEADERS_DIR}/v7_latest/host/include"
+#       "${NEUROPILOT_HEADERS_DIR}/v8_0_8/host/include"
+#       "${NEUROPILOT_HEADERS_DIR}/host/include"
+#       "${NEUROPILOT_HEADERS_DIR}/include"
+#     )
+#     foreach(_cand IN LISTS _np_candidates)
+#       if(_cand AND EXISTS "${_cand}/neuron/api/NeuronAdapter.h")
+#         set(NEUROPILOT_HEADERS_DIR "${_cand}")
+#         break()
+#       endif()
+#     endforeach()
+#     message(STATUS "NeuroPilot headers at: ${NEUROPILOT_HEADERS_DIR}")
+#   endif()
+# endif()
 
 # LINT.IfChange(qairt_headers_dir)
 if(LITERT_ENABLE_QUALCOMM AND NOT QAIRT_HEADERS_DIR)
@@ -176,15 +219,15 @@ if(LITERT_ENABLE_SAMSUNG AND NOT LITECORE_HEADERS_DIR)
 endif()
 
 
-if(NEUROPILOT_HEADERS_DIR)
-  list(APPEND CMAKE_REQUIRED_INCLUDES ${NEUROPILOT_HEADERS_DIR})
-endif()
-if(QAIRT_HEADERS_DIR)
-  list(APPEND CMAKE_REQUIRED_INCLUDES ${QAIRT_HEADERS_DIR})
-endif()
-if(LITECORE_HEADERS_DIR)
-  list(APPEND CMAKE_REQUIRED_INCLUDES ${LITECORE_HEADERS_DIR})
-endif()
+# if(NEUROPILOT_HEADERS_DIR)
+#   list(APPEND CMAKE_REQUIRED_INCLUDES ${NEUROPILOT_HEADERS_DIR})
+# endif()
+# if(QAIRT_HEADERS_DIR)
+#   list(APPEND CMAKE_REQUIRED_INCLUDES ${QAIRT_HEADERS_DIR})
+# endif()
+# if(LITECORE_HEADERS_DIR)
+#   list(APPEND CMAKE_REQUIRED_INCLUDES ${LITECORE_HEADERS_DIR})
+# endif()
 
 
 function(_litert_add_dispatch_so VENDOR DIR OUTPUT_BASENAME)
@@ -253,27 +296,28 @@ function(_litert_add_dispatch_so VENDOR DIR OUTPUT_BASENAME)
     )
   endif()
 
-  if(VENDOR STREQUAL "Qualcomm")
-    list(APPEND DISPATCH_SRCS
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/qnn_manager.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/context_binary_info.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/common.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/utils/miscs.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/backend_factory.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/qnn_backend.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/gpu_backend.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/dsp_backend.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/htp_backend.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/ir_backend.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/quantize_params_wrapper.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/tensor_wrapper.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/param_wrapper.cc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/op_wrapper.cc"
-    )
-    if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-      list(APPEND DISPATCH_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/utils/log_android.cc")
-    else()
-      list(APPEND DISPATCH_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/utils/log_default.cc")
+  if(LITERT_ENABLE_QUALCOMM)
+    if(VENDOR STREQUAL "Qualcomm")
+      list(APPEND DISPATCH_SRCS
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/qnn_manager.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/context_binary_info.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/common.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/utils/miscs.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/schema/soc_table.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/qnn_backend.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/htp_backend.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/htp_perf_control.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/backends/ir_backend.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/quantize_params_wrapper.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/tensor_wrapper.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/param_wrapper.cc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/wrappers/op_wrapper.cc"
+      )
+      if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+        list(APPEND DISPATCH_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/utils/log_android.cc")
+      else()
+        list(APPEND DISPATCH_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/qualcomm/core/utils/log_default.cc")
+      endif()
     endif()
   endif()
 
@@ -344,6 +388,7 @@ if(LITERT_ENABLE_GOOGLE_TENSOR)
 else()
   message(STATUS "Skipping Google Tensor dispatch: LITERT_ENABLE_GOOGLE_TENSOR is OFF")
 endif()
+# MediaTek
 # MediaTek
 if(LITERT_ENABLE_MEDIATEK)
   check_include_file_cxx("neuron/api/NeuronAdapter.h" HAVE_MEDIATEK_NEURON_HDR)

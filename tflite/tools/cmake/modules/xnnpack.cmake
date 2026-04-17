@@ -18,13 +18,22 @@ if(TARGET xnnpack OR xnnpack_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   xnnpack
-  GIT_REPOSITORY https://github.com/google/XNNPACK
+  # GIT_REPOSITORY https://github.com/google/XNNPACK
+
+  # When updating XNNPACK in LiteRT_Tools, remember to update the link for downloading kleidiai as well.
+  # 1. Clone new XNNPACK repo, checkout to the new tag.
+  # 2. Update URL under XNNPACK/cmake/DownloadKleidiAI.cmake.
+  # 3. Remove .git in the repo and replace the old one in LiteRT_Tools.
+  URL ${LITERT_TOOLS_DEP}/XNNPACK
+
   # Sync with tensorflow/workspace2.bzl
   GIT_TAG 0a66ebb5817fce48df605451444dcfc27a5e4ee4
   GIT_PROGRESS TRUE
+  LICENSE_URL ${LITERT_TOOLS_DEP}/XNNPACK/LICENSE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/xnnpack"
 )

@@ -18,26 +18,29 @@ if(TARGET eigen OR eigen_POPULATED)
 endif()
 
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 
 OverridableFetchContent_Declare(
   eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  URL ${LITERT_TOOLS_DEP}/eigen
   # Sync with tensorflow/third_party/eigen3/workspace.bzl
   GIT_TAG ea13a98decd497a8c5588fb5de71b57bcf10d864
-  # Download a pinned archive from the TensorFlow mirror by default instead of
-  # cloning gitlab.com, which is frequently rate limited on CI. Set
-  # OVERRIDABLE_FETCH_CONTENT_USE_GIT=ON to clone GIT_REPOSITORY instead.
-  URL https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/ea13a98decd497a8c5588fb5de71b57bcf10d864/eigen-ea13a98decd497a8c5588fb5de71b57bcf10d864.tar.gz
-  URL_HASH SHA256=35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e
+  # Upstream downloads a pinned archive from the TensorFlow mirror by default
+  # instead of cloning gitlab.com (frequently rate limited on CI). Offline
+  # build keeps URL pointed at LITERT_TOOLS_DEP above instead (last URL wins
+  # in cmake_parse_arguments), so this mirror URL/hash stay commented out:
+  # URL https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/ea13a98decd497a8c5588fb5de71b57bcf10d864/eigen-ea13a98decd497a8c5588fb5de71b57bcf10d864.tar.gz
+  # URL_HASH SHA256=35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17770
   # GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  # GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/eigen"
-  LICENSE_FILE "COPYING.MPL2"
+  LICENSE_URL "${LITERT_TOOLS_DEP}/eigen/COPYING.MPL2"
+  # LICENSE_FILE "COPYING.MPL2"
 )
 OverridableFetchContent_GetProperties(eigen)
 if(NOT eigen_POPULATED)

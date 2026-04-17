@@ -19,8 +19,9 @@ if(TARGET neon2sse OR neon2sse_POPULATED)
   return()
 endif()
 
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 set(NEON2SSE_URL
-  https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/ARM_NEON_2_x86_SSE/archive/a15b489e1222b2087007546b4912e21293ea86ff.tar.gz
+  ${LITERT_TOOLS_DEP}/neon2sse/a15b489e1222b2087007546b4912e21293ea86ff.tar.gz
 )
 OverridableFetchContent_Declare(
   neon2sse

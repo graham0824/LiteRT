@@ -21,6 +21,7 @@ if(POLICY CMP0169)
   cmake_policy(SET CMP0169 OLD)
 endif()
 
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 project(LiteRT VERSION 1.4.0 LANGUAGES CXX C)
 
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL
@@ -116,7 +117,7 @@ if(CMAKE_CROSSCOMPILING)
       message(STATUS "Reusing host flatc from ${TFLITE_HOST_TOOLS_DIR}")
     else()
       file(MAKE_DIRECTORY "${_root_host_flatc_dir}")
-      file(WRITE "${_root_host_flatc_dir}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.16)\nproject(HostFlatc LANGUAGES C CXX)\ninclude(FetchContent)\nFetchContent_Declare(flatbuffers GIT_REPOSITORY https://github.com/google/flatbuffers.git GIT_TAG v25.9.23)\nset(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\nFetchContent_MakeAvailable(flatbuffers)\n")
+      file(WRITE "${_root_host_flatc_dir}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.16)\nproject(HostFlatc LANGUAGES C CXX)\ninclude(FetchContent)\nFetchContent_Declare(flatbuffers URL "${LITERT_TOOLS_DEP}/flatbuffers")\nset(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\nFetchContent_MakeAvailable(flatbuffers)\n")
       set(_litert_host_flatc_cmake_args -S . -B . -DCMAKE_BUILD_TYPE=Release)
       set(_litert_host_c_compiler "${LITERT_HOST_C_COMPILER}")
       if(NOT _litert_host_c_compiler)

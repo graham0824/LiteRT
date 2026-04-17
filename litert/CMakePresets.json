@@ -24,10 +24,27 @@
       }
     },
     {
-      "name": "android-arm64",
-      "displayName": "Android arm64-v8a Release",
+      "name": "x86",
+      "displayName": "X86-64 (host)",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/cmake_build_android_arm64",
+      "binaryDir": "${sourceDir}/../cmake_build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "$env{LITERT_CLANG}",
+        "CMAKE_CXX_COMPILER": "$env{LITERT_CLANG_PP}",
+	"CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "QAIRT_HEADERS_DIR": "$env{QAIRT_HEADERS_DIR}",
+        "LITERT_ENABLE_GPU": "OFF",
+        "LITERT_BUILD_TESTS": "ON",
+        "LITERT_ENABLE_MEDIATEK": "OFF",
+        "CMAKE_CXX_FLAGS": "$env{CMAKE_BUILD_TYPE} -fpermissive"
+      }
+    },
+    {
+      "name": "android-arm64",
+      "displayName": "Android arm64-v8a",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../cmake_build_android_arm64",
       "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
       "cacheVariables": {
         "CMAKE_SYSTEM_NAME": "Android",
@@ -35,7 +52,14 @@
         "ANDROID_PLATFORM": "26",
         "CMAKE_BUILD_TYPE": "Release",
         "LITERT_AUTO_BUILD_TFLITE": "ON",
-        "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "LITERT_HOST_C_COMPILER": "$env{LITERT_CLANG}",
+        "LITERT_HOST_CXX_COMPILER": "$env{LITERT_CLANG_PP}",
+        "LITERT_ENABLE_GPU": "OFF",
+        "CMAKE_CXX_FLAGS": "-DABSL_FLAGS_STRIP_NAMES=0",
+        "LITERT_BUILD_TESTS": "ON",
+        "LITERT_ENABLE_MEDIATEK": "OFF",
+        "QAIRT_HEADERS_DIR": "$env{QAIRT_HEADERS_DIR}"
       }
     },
     {

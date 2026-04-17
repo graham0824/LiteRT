@@ -21,7 +21,8 @@ Thumbs.db
 .idea/
 cmake_build_android_arm64/
 host_flatc_build/
-cmake_build/
+cmake_build*
+_build/
 
 /.bazelrc.user
 /bazel-*

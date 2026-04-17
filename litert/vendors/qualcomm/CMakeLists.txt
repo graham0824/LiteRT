@@ -22,22 +22,43 @@ message(STATUS "Configuring Qualcomm QNN support")
 
 # Fetch dependencies needed by core libraries (dump needs nlohmann_json)
 include(FetchContent)
-
-FetchContent_Declare(
-        nlohmann_json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.11.3
+if(LITERT_TOOLS_DEP)
+    message(STATUS "Building in offline mode, using local dependencies")
+    FetchContent_Declare(
+      nlohmann_json
+      # GIT_REPOSITORY https://github.com/nlohmann/json.git
+      URL ${LITERT_TOOLS_DEP}/json
+      # GIT_TAG v3.11.3
     )
     FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG v1.12.x
+      googletest
+      # GIT_REPOSITORY https://github.com/google/googletest.git
+      URL ${LITERT_TOOLS_DEP}/googletest
+      # GIT_TAG        e2239ee6043f73722e7aa812a459f54a28552929 # release-1.11.0
     )
     FetchContent_Declare(
         googlebenchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG 0d98dba29d66e93259db7daa53a9327df767a415 # v1.6.1
-)
+        URL ${LITERT_TOOLS_DEP}/benchmark
+        # GIT_REPOSITORY https://github.com/google/benchmark.git
+        # GIT_TAG        0d98dba29d66e93259db7daa53a9327df767a415 # v1.6.1
+    )
+else()
+    FetchContent_Declare(
+            nlohmann_json
+            GIT_REPOSITORY https://github.com/nlohmann/json.git
+            GIT_TAG v3.11.3
+        )
+        FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG v1.12.x
+        )
+        FetchContent_Declare(
+            googlebenchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG 0d98dba29d66e93259db7daa53a9327df767a415 # v1.6.1
+    )
+endif()
 
 FetchContent_MakeAvailable(nlohmann_json)
 FetchContent_MakeAvailable(googletest)
