@@ -87,6 +87,9 @@ ABSL_FLAG(std::string, cpu_kernel_mode, "xnnpack",
 ABSL_FLAG(std::string, input_dir, "",
           "An input folder containing .raw files with model input signatures "
           "as their file names.");
+ABSL_FLAG(std::string, output_dir, "",
+          "Output directory for writing output tensor .raw files named after "
+          "model output tensor names.");
 
 ABSL_FLAG(std::string, scoped_weight_file, "",
           "Optional path to a scoped external weight file.");
@@ -507,6 +510,13 @@ Expected<void> RunModel() {
       auto& buffer = output_buffers[i];
       LITERT_RETURN_IF_ERROR(PrintTensorBuffer(buffer, "Output", i));
     }
+  }
+
+  // Write output tensors to .raw files if output_dir is specified.
+  std::string output_dir = absl::GetFlag(FLAGS_output_dir);
+  if (!output_dir.empty()) {
+    LITERT_RETURN_IF_ERROR(tensor_utils::WriteOutputBuffersToRawFiles(
+        compiled_model, signature_index, output_buffers, output_dir));
   }
 
   ABSL_LOG(INFO) << "Model run completed";

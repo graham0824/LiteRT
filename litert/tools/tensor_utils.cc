@@ -49,5 +49,30 @@ Expected<void> FillInputBuffersWithCustomData(
   return {};
 }
 
+Expected<void> WriteOutputBuffersToRawFiles(
+    const CompiledModel& compiled_model, size_t signature_index,
+    std::vector<TensorBuffer>& output_buffers, absl::string_view output_dir) {
+  ABSL_LOG(INFO) << "Writing outputs to: " << output_dir;
+  std::filesystem::create_directories(std::string(output_dir));
+  LITERT_ASSIGN_OR_RETURN(
+      const auto output_names,
+      compiled_model.GetSignatureOutputNames(signature_index));
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    const auto& output_name = output_names[i];
+    auto& output_buffer = output_buffers[i];
+    LITERT_ASSIGN_OR_RETURN(auto size, output_buffer.PackedSize());
+    std::vector<uint8_t> data(size);
+    LITERT_RETURN_IF_ERROR(output_buffer.Read<uint8_t>(absl::MakeSpan(data)));
+    const auto output_file_path =
+        std::filesystem::path(std::string(output_dir)) /
+        (std::string(output_name.data()) + ".raw");
+    LITERT_RETURN_IF_ERROR(
+        tensor_utils::WriteTensorDataToRawFile(output_file_path.string(), data));
+    ABSL_LOG(INFO) << "Wrote output tensor \"" << output_name << "\" ("
+                   << size << " bytes) to " << output_file_path;
+  }
+  return {};
+}
+
 }  // namespace tensor_utils
 }  // namespace litert

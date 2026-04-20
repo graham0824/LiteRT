@@ -338,9 +338,31 @@ inline Expected<void> FillBufferWithRandomData(TensorBuffer& buffer) {
   return {};
 }
 
+inline Expected<void> WriteTensorDataToRawFile(
+    absl::string_view file_path, const std::vector<uint8_t>& data) {
+  std::ofstream file(file_path.data(), std::ios::binary);
+  if (!file.is_open()) {
+    return Unexpected(
+        kLiteRtStatusErrorRuntimeFailure,
+        absl::StrFormat("Failed to open output file %s.", file_path));
+  }
+  file.write(reinterpret_cast<const char*>(data.data()), data.size());
+  if (!file.good()) {
+    return Unexpected(
+        kLiteRtStatusErrorRuntimeFailure,
+        absl::StrFormat("Failed to write output file %s.", file_path));
+  }
+  return {};
+}
+
 Expected<void> FillInputBuffersWithCustomData(
     const CompiledModel& compiled_model, size_t signature_index,
     std::vector<TensorBuffer>& input_buffers, absl::string_view input_dir);
+
+Expected<void> WriteOutputBuffersToRawFiles(
+    const CompiledModel& compiled_model, size_t signature_index,
+    std::vector<TensorBuffer>& output_buffers, absl::string_view output_dir);
+
 }  // namespace tensor_utils
 }  // namespace litert
 
