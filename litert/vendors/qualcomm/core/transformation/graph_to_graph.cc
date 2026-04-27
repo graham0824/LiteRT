@@ -303,6 +303,26 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   Transform(validate_op_config, ops, tensor_pool, fast_vlm_mha_decode,
             OptimizeMHAFastVlmDecode);
 
+  const std::vector<QnnOpCode> tiny_tiny_prefill_mha_pattern = {
+      QnnOpCode::kTranspose,
+      QnnOpCode::kReshape,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape,
+      QnnOpCode::kTranspose,
+      QnnOpCode::kReshape,
+  };
+  Transform(validate_op_config, ops, tensor_pool, tiny_tiny_prefill_mha_pattern,
+            OptimizeTinyTinyPrefillMHAPattern);
+
   // Attention Optimization
   const std::vector<QnnOpCode> attn = {
       QnnOpCode::kElementWiseBinary,
