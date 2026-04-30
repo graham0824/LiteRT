@@ -346,6 +346,59 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
             tiny_tiny_prefill_mha_concat_mask_pattern,
             OptimizeTinyTinyPrefillMHAConcatMaskPattern);
 
+  const std::vector<QnnOpCode> tiny_tiny_decode_add_dummy_reshape_pattern = {
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,  // mul
+      QnnOpCode::kElementWiseBinary,  // mul
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+  };
+  Transform(validate_op_config, ops, tensor_pool,
+            tiny_tiny_decode_add_dummy_reshape_pattern,
+            AddDummyReshapeForTinyTinyDecode);
+
+  const std::vector<QnnOpCode> tiny_tiny_decode_mha_pattern = {
+      QnnOpCode::kReshape,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape,
+  };
+  Transform(validate_op_config, ops, tensor_pool, tiny_tiny_decode_mha_pattern,
+            OptimizeTinyTinyDecodeMHAPattern);
+
+  const std::vector<QnnOpCode> tiny_tiny_decode_mha_concat_mask_pattern = {
+      QnnOpCode::kReshape,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kConcat,             // concat mask
+      QnnOpCode::kReshape,            // reshape mask
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape,
+  };
+  Transform(validate_op_config, ops, tensor_pool,
+            tiny_tiny_decode_mha_concat_mask_pattern,
+            OptimizeTinyTinyDecodeMHAConcatMaskPattern);
+
   // Attention Optimization
   const std::vector<QnnOpCode> attn = {
       QnnOpCode::kElementWiseBinary,

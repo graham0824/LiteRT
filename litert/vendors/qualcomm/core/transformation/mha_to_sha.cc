@@ -1275,21 +1275,22 @@ bool OptimizeMHATinyGemmaPrefill(
 
 bool OptimizeTinyTinyPrefill(
     std::vector<OpWrapper>& new_ops, TensorPool& tensor_pool,
-    const OpWrapper& q_transpose, const OpWrapper& q_reshape,
+    const OpWrapper* q_transpose, const OpWrapper& q_reshape,
     const OpWrapper& q_kcache_matmul, const OpWrapper& q_kslice_matmul,
     const OpWrapper& qk_concat, const OpWrapper& mask_add,
     const OpWrapper& softmax, const OpWrapper& qk_vcache_slice,
     const OpWrapper& qk_vslice_slice, const OpWrapper& qk_vcache_matmul,
     const OpWrapper& qk_vslice_matmul, const OpWrapper& qkv_add,
-    const OpWrapper& qkv_reshape, const OpWrapper& qkv_transpose,
-    const OpWrapper& oproj_reshape) {
+    const OpWrapper& qkv_reshape, const OpWrapper* qkv_transpose,
+    const OpWrapper* oproj_reshape) {
   const auto is_connected =
       [](const OpWrapper& output, size_t output_tensor_index,
          const OpWrapper& input, size_t input_tensor_index) -> bool {
     return output.GetOutputTensor(output_tensor_index) ==
            input.GetInputTensor(input_tensor_index);
   };
-  if (!(is_connected(q_transpose, 0, q_reshape, 0) &&
+  if (!((q_transpose == nullptr ||
+         is_connected(*q_transpose, 0, q_reshape, 0)) &&
         is_connected(q_reshape, 0, q_kcache_matmul, 0) &&
         is_connected(q_reshape, 0, q_kslice_matmul, 0) &&
         is_connected(q_kcache_matmul, 0, qk_concat, 0) &&
@@ -1303,21 +1304,28 @@ bool OptimizeTinyTinyPrefill(
         is_connected(qk_vcache_matmul, 0, qkv_add, 0) &&
         is_connected(qk_vslice_matmul, 0, qkv_add, 1) &&
         is_connected(qkv_add, 0, qkv_reshape, 0) &&
-        is_connected(qkv_reshape, 0, qkv_transpose, 0) &&
-        is_connected(qkv_transpose, 0, oproj_reshape, 0) &&
+        (qkv_transpose == nullptr ||
+         is_connected(qkv_reshape, 0, *qkv_transpose, 0)) &&
+        (oproj_reshape == nullptr ||
+         is_connected(qkv_transpose == nullptr ? qkv_reshape : *qkv_transpose,
+                      0, *oproj_reshape, 0)) &&
         IsElementWiseAdd(mask_add) && IsElementWiseAdd(qkv_add))) {
     return false;
   }
 
   QNN_LOG_INFO("[G2G] TinyTiny Prefill start MHA-SHA");
-  const auto& pattern_input = q_transpose.GetInputTensor(0);
-  const auto& pattern_output = oproj_reshape.GetOutputTensor(0);
+  const auto& pattern_input = q_transpose == nullptr
+                                  ? q_reshape.GetInputTensor(0)
+                                  : q_transpose->GetInputTensor(0);
+  const auto& pattern_output = oproj_reshape == nullptr
+                                   ? qkv_reshape.GetOutputTensor(0)
+                                   : oproj_reshape->GetOutputTensor(0);
 
   // unpack pattern_input on axis 2, as q_input
   const size_t q_unpack_axis = pattern_input.GetRank() - 2;
   auto q_inputs =
       UnpackTensor(tensor_pool, new_ops, pattern_input, q_unpack_axis);
-  CloneNamespace(q_transpose, new_ops.back());
+  CloneNamespace(q_reshape, new_ops.back());
 
   // unpack q_kcache_matmul.input(1) on axis 1, as k_cache
   auto k_cache_outputs =
@@ -1611,10 +1619,10 @@ size_t OptimizeTinyTinyPrefillMHAPattern(
 
   std::vector<OpWrapper> new_ops;
   if (!OptimizeTinyTinyPrefill(
-          new_ops, tensor_pool, q_transpose, q_reshape, q_kcache_matmul,
+          new_ops, tensor_pool, &q_transpose, q_reshape, q_kcache_matmul,
           q_kslice_matmul, qk_concat, mask_add, softmax, qk_vcache_slice,
           qk_vslice_slice, qk_vcache_matmul, qk_vslice_matmul, qkv_add,
-          qkv_reshape, qkv_transpose, oproj_reshape)) {
+          qkv_reshape, &qkv_transpose, &oproj_reshape)) {
     return 1;
   }
 
@@ -1690,10 +1698,10 @@ size_t OptimizeTinyTinyPrefillMHAConcatMaskPattern(
 
   std::vector<OpWrapper> new_ops;
   if (!OptimizeTinyTinyPrefill(
-          new_ops, tensor_pool, q_transpose, q_reshape, q_kcache_matmul,
+          new_ops, tensor_pool, &q_transpose, q_reshape, q_kcache_matmul,
           q_kslice_matmul, qk_concat, mask_add, softmax, qk_vcache_slice,
           qk_vslice_slice, qk_vcache_matmul, qk_vslice_matmul, qkv_add,
-          qkv_reshape, qkv_transpose, oproj_reshape)) {
+          qkv_reshape, &qkv_transpose, &oproj_reshape)) {
     return 1;
   }
 
@@ -1720,6 +1728,202 @@ size_t OptimizeTinyTinyPrefillMHAConcatMaskPattern(
   QNN_LOG_WARNING(
       "[G2G] Validation failed in OptimizeTinyTinyPrefillMHAConcatMaskPattern. "
       "Rolling back to the original graph.");
+  return 1;
+}
+
+size_t AddDummyReshapeForTinyTinyDecode(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size) {
+  QNN_LOG_INFO("[G2G] TinyTiny add dummy reshape.");
+  constexpr size_t kAddIdx = 0;
+  constexpr size_t kQKCacheMatmulIdx = 8;
+  constexpr size_t kQKSliceMatmulIdx = 9;
+  const auto& add = ops[start_index + kAddIdx];
+  const auto& q_kcache_matmul = ops[start_index + kQKCacheMatmulIdx];
+  const auto& q_kslice_matmul = ops[start_index + kQKSliceMatmulIdx];
+
+  std::vector<OpWrapper> new_ops;
+  const auto& dummy_reshape_output =
+      tensor_pool.CloneNativeTensorFrom(add.GetOutputTensor(0));
+  auto& dummy_reshape = new_ops.emplace_back(
+      CreateReshapeOp(add.GetOutputTensor(0), dummy_reshape_output));
+
+  const std::array<ConstTensorWrapperRef, 2> q_kcache_matmul_inputs = {
+      dummy_reshape_output, q_kcache_matmul.GetInputTensor(1)};
+  const std::array<ConstTensorWrapperRef, 1> q_kcache_matmul_outputs = {
+      q_kcache_matmul.GetOutputTensor(0)};
+  new_ops.emplace_back(CreateOpWithSameParams(
+      q_kcache_matmul, q_kcache_matmul_inputs, q_kcache_matmul_outputs));
+
+  const std::array<ConstTensorWrapperRef, 2> q_kslice_matmul_inputs = {
+      dummy_reshape_output, q_kslice_matmul.GetInputTensor(1)};
+  const std::array<ConstTensorWrapperRef, 1> q_kslice_matmul_outputs = {
+      q_kslice_matmul.GetOutputTensor(0)};
+  new_ops.emplace_back(CreateOpWithSameParams(
+      q_kslice_matmul, q_kslice_matmul_inputs, q_kslice_matmul_outputs));
+
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index + kQKCacheMatmulIdx,
+              ops.begin() + start_index + pattern_size);
+    QNN_LOG_INFO("[G2G] TinyTiny add dummy reshape succeed.");
+    return pattern_size + 1;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed in AddDummyReshapeForTinyTinyDecode. "
+      "Rolling back to the original graph.");
+  return 1;
+}
+
+size_t OptimizeTinyTinyDecodeMHAPattern(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size) {
+  QNN_LOG_INFO("[G2G] TinyTiny decode MHA matched.");
+  constexpr size_t kQReshapeIdx = 0;
+  constexpr size_t kQKCacheMatmulIdx = 1;
+  constexpr size_t kQKSliceMatmulIdx = 2;
+  constexpr size_t kQKConcatIdx = 3;
+  constexpr size_t kMaskAddIdx = 4;
+  constexpr size_t kSoftmaxIdx = 5;
+  constexpr size_t kQKVCacheSliceIdx = 6;
+  constexpr size_t kQKVSliceSliceIdx = 7;
+  constexpr size_t kQKVCacheMatmulIdx = 8;
+  constexpr size_t kQKVSliceMatmulIdx = 9;
+  constexpr size_t kQKVAddIdx = 10;
+  constexpr size_t kQKVReshapeIdx = 11;
+
+  const auto& q_reshape = ops[start_index + kQReshapeIdx];
+  const auto& q_kcache_matmul = ops[start_index + kQKCacheMatmulIdx];
+  const auto& q_kslice_matmul = ops[start_index + kQKSliceMatmulIdx];
+  const auto& qk_concat = ops[start_index + kQKConcatIdx];
+  const auto& mask_add = ops[start_index + kMaskAddIdx];
+  const auto& softmax = ops[start_index + kSoftmaxIdx];
+  const auto& qk_vcache_slice = ops[start_index + kQKVCacheSliceIdx];
+  const auto& qk_vslice_slice = ops[start_index + kQKVSliceSliceIdx];
+  const auto& qk_vcache_matmul = ops[start_index + kQKVCacheMatmulIdx];
+  const auto& qk_vslice_matmul = ops[start_index + kQKVSliceMatmulIdx];
+  const auto& qkv_add = ops[start_index + kQKVAddIdx];
+  const auto& qkv_reshape = ops[start_index + kQKVReshapeIdx];
+
+  std::vector<OpWrapper> new_ops;
+  if (!OptimizeTinyTinyPrefill(
+          new_ops, tensor_pool, nullptr, q_reshape, q_kcache_matmul,
+          q_kslice_matmul, qk_concat, mask_add, softmax, qk_vcache_slice,
+          qk_vslice_slice, qk_vcache_matmul, qk_vslice_matmul, qkv_add,
+          qkv_reshape, nullptr, nullptr)) {
+    return 1;
+  }
+
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+    size_t step_size = new_ops.size();
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + pattern_size);
+    QNN_LOG_INFO("[G2G] TinyTiny decode MHA-SHA optimization succeed.");
+    return step_size;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed in OptimizeTinyTinyDecodeMHAPattern. "
+      "Rolling back to the original graph.");
+  return 1;
+}
+
+size_t OptimizeTinyTinyDecodeMHAConcatMaskPattern(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size) {
+  QNN_LOG_INFO("[G2G] TinyTiny decode MHA concat mask matched.");
+  constexpr size_t kQReshapeIdx = 0;
+  constexpr size_t kQKCacheMatmulIdx = 1;
+  constexpr size_t kQKSliceMatmulIdx = 2;
+  constexpr size_t kQKConcatIdx = 3;
+  constexpr size_t kMaskConcatIdx = 4;
+  constexpr size_t kMaskReshapeIdx = 5;
+  constexpr size_t kMaskAddIdx = 6;
+  constexpr size_t kSoftmaxIdx = 7;
+  constexpr size_t kQKVCacheSliceIdx = 8;
+  constexpr size_t kQKVSliceSliceIdx = 9;
+  constexpr size_t kQKVCacheMatmulIdx = 10;
+  constexpr size_t kQKVSliceMatmulIdx = 11;
+  constexpr size_t kQKVAddIdx = 12;
+  constexpr size_t kQKVReshapeIdx = 13;
+
+  const auto& q_reshape = ops[start_index + kQReshapeIdx];
+  const auto& q_kcache_matmul = ops[start_index + kQKCacheMatmulIdx];
+  const auto& q_kslice_matmul = ops[start_index + kQKSliceMatmulIdx];
+  const auto& qk_concat = ops[start_index + kQKConcatIdx];
+  const auto& mask_concat = ops[start_index + kMaskConcatIdx];
+  const auto& mask_reshape = ops[start_index + kMaskReshapeIdx];
+  const auto& mask_add = ops[start_index + kMaskAddIdx];
+  const auto& softmax = ops[start_index + kSoftmaxIdx];
+  const auto& qk_vcache_slice = ops[start_index + kQKVCacheSliceIdx];
+  const auto& qk_vslice_slice = ops[start_index + kQKVSliceSliceIdx];
+  const auto& qk_vcache_matmul = ops[start_index + kQKVCacheMatmulIdx];
+  const auto& qk_vslice_matmul = ops[start_index + kQKVSliceMatmulIdx];
+  const auto& qkv_add = ops[start_index + kQKVAddIdx];
+  const auto& qkv_reshape = ops[start_index + kQKVReshapeIdx];
+
+  if (mask_concat.GetOutputTensor(0) != mask_reshape.GetInputTensor(0) ||
+      mask_reshape.GetOutputTensor(0) != mask_add.GetInputTensor(1)) {
+    return 1;
+  }
+
+  std::vector<OpWrapper> new_ops;
+  if (!OptimizeTinyTinyPrefill(
+          new_ops, tensor_pool, nullptr, q_reshape, q_kcache_matmul,
+          q_kslice_matmul, qk_concat, mask_add, softmax, qk_vcache_slice,
+          qk_vslice_slice, qk_vcache_matmul, qk_vslice_matmul, qkv_add,
+          qkv_reshape, nullptr, nullptr)) {
+    return 1;
+  }
+
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+    size_t step_size = new_ops.size() + 2;
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index + kMaskAddIdx,
+              ops.begin() + start_index + pattern_size);
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + kMaskConcatIdx);
+    QNN_LOG_INFO(
+        "[G2G] TinyTiny decode concat-mask MHA-SHA optimization succeed.");
+    return step_size;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed in "
+      "OptimizeTinyTinyDecodeMHAConcatMaskPattern. Rolling back to the "
+      "original graph.");
   return 1;
 }
 

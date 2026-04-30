@@ -67,6 +67,21 @@ size_t OptimizeTinyTinyPrefillMHAConcatMaskPattern(
     std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
     size_t pattern_size);
 
+size_t AddDummyReshapeForTinyTinyDecode(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size);
+
+size_t OptimizeTinyTinyDecodeMHAPattern(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size);
+
+size_t OptimizeTinyTinyDecodeMHAConcatMaskPattern(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size);
+
 size_t OptimizeMHAAttn(std::function<bool(OpWrapper&)> validate_op_config,
                        std::vector<OpWrapper>& ops, size_t start_index,
                        TensorPool& tensor_pool, size_t pattern_size);
