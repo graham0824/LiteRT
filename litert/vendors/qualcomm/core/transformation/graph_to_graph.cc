@@ -323,6 +323,29 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   Transform(validate_op_config, ops, tensor_pool, tiny_tiny_prefill_mha_pattern,
             OptimizeTinyTinyPrefillMHAPattern);
 
+  const std::vector<QnnOpCode> tiny_tiny_prefill_mha_concat_mask_pattern = {
+      QnnOpCode::kTranspose,
+      QnnOpCode::kReshape,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kConcat,             // concat mask
+      QnnOpCode::kReshape,            // reshape mask
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape,
+      QnnOpCode::kTranspose,
+      QnnOpCode::kReshape,
+  };
+  Transform(validate_op_config, ops, tensor_pool,
+            tiny_tiny_prefill_mha_concat_mask_pattern,
+            OptimizeTinyTinyPrefillMHAConcatMaskPattern);
+
   // Attention Optimization
   const std::vector<QnnOpCode> attn = {
       QnnOpCode::kElementWiseBinary,
