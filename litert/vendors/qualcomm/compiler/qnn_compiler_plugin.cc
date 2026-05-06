@@ -50,6 +50,7 @@
 #include "litert/vendors/c/litert_compiler_plugin.h"
 #include "litert/vendors/qualcomm/common.h"
 #include "litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
+#include "litert/vendors/qualcomm/compiler/qnn_transformations.h"
 #include "litert/vendors/qualcomm/core/common.h"
 #include "litert/vendors/qualcomm/core/schema/soc_table.h"
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
@@ -250,6 +251,10 @@ class LiteRtCompilerPluginT {
     return shared_library_dir_;
   }
 
+  std::vector<LiteRtTransformation>& transformations() {
+    return transformations_;
+  }
+
  private:
   litert::Expected<litert::internal::OptionsWrapper> opts_ =
       litert::Error(kLiteRtStatusErrorInvalidArgument, "Null options");
@@ -258,6 +263,7 @@ class LiteRtCompilerPluginT {
   ::qnn::Options qnn_options_{};
   QnnManager::Ptr qnn_manager_ = nullptr;
   std::optional<std::string> shared_library_dir_;
+  std::vector<LiteRtTransformation> transformations_;
 };
 
 LiteRtStatus LiteRtCreateCompilerPlugin(
@@ -515,7 +521,23 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 LiteRtStatus LiteRtCompilerPluginRegisterAllTransformations(
     LiteRtCompilerPlugin compiler_plugin,
     LiteRtTransformation** transformations, LiteRtParamIndex* num_patterns) {
-  *num_patterns = 0;
+  if (compiler_plugin == nullptr || transformations == nullptr ||
+      num_patterns == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& registered = compiler_plugin->transformations();
+  // registered.push_back(
+  //     {&FuseMatMulRequantTransformation, "FuseMatMulRequant", 100});
+  // Full MHA->SHA rewrite (Phase 2c currently gated off in
+  // kCommitPhase2c). Uncomment to run.
+  // registered.push_back({&ApplyCompositeAttentionTransformation,
+  //                       "CompositeAttention", 50});
+  // Debug-only: replace Q-scale Mul → Add with named output tensor for Netron.
+  // Uncomment to enable; use standalone without the full MHA->SHA rewrite.
+  registered.push_back({&DebugReplaceQScaleMulWithAdd,
+                        "DebugReplaceQScaleMulWithAdd", 30});
+  *num_patterns = registered.size();
+  *transformations = registered.data();
   return kLiteRtStatusOk;
 }
 

@@ -12,6 +12,7 @@ message(STATUS "Building Qualcomm compiler plugin for host")
 add_library(qnn_compiler_plugin SHARED
     qnn_compiler_plugin.cc
     qnn_compose_graph.cc
+    qnn_transformations.cc
     graph_mapper.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../../cc/namespace_heuristics.cc
 )

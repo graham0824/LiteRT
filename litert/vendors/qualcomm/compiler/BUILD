@@ -53,6 +53,7 @@ litert_dynamic_lib(
     ],
     deps = [
         ":qnn_compose_graph",
+        ":qnn_transformations",
         "//litert/c:litert_common",
         "//litert/c:litert_runtime_c_api_shared_lib",
         "//litert/c/internal:litert_logging",
@@ -144,6 +145,53 @@ litert_device_exec(
     backend_id = "qualcomm",
     data = ["//litert/test:testdata"],
     target = ":qnn_compiler_plugin_test",
+)
+
+litert_lib(
+    name = "qnn_transformations",
+    srcs = ["qnn_transformations.cc"],
+    hdrs = ["qnn_transformations.h"],
+    deps = [
+        "//litert/c:litert_common",
+        "//litert/c:litert_runtime_c_api_shared_lib",
+        "//litert/c/internal:litert_logging",
+        "//litert/cc:litert_macros",
+        "//litert/cc/dynamic_runtime:litert_builder",
+        "//litert/cc/dynamic_runtime:litert_extended_model",
+        "//litert/cc/dynamic_runtime:litert_matchers",
+        "//litert/cc/dynamic_runtime:litert_op_options",
+        "//litert/core/model:model",
+    ],
+)
+
+litert_test(
+    name = "qnn_transformations_test",
+    srcs = ["qnn_transformations_test.cc"],
+    linkopts = select({
+        "//litert:android": [],
+        "//conditions:default": [
+            make_rpaths([
+                "//litert/c:litert_runtime_c_api_so",
+            ]),
+        ],
+    }),
+    linkstatic = True,
+    tags = [
+        "no-remote-exec",
+        "notap",
+        "nosan",
+    ],
+    ungrte = True,
+    use_sys_malloc = True,
+    deps = [
+        ":qnn_transformations",
+        "//litert/c:litert_common",
+        "//litert/c:litert_op_code",
+        "//litert/cc/dynamic_runtime:litert_builder",
+        "//litert/cc/dynamic_runtime:litert_extended_model",
+        "//litert/core/model:model_testonly",
+        "//tflite/converter/schema:schema_fbs",
+    ],
 )
 
 litert_lib(
