@@ -10,7 +10,6 @@
 #include "litert/vendors/qualcomm/core/op_code.h"
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/transformation/embedding_gemma.h"
-#include "litert/vendors/qualcomm/core/transformation/kv_swapped_attn.h"
 #include "litert/vendors/qualcomm/core/transformation/mask.h"
 #include "litert/vendors/qualcomm/core/transformation/matmul_convert.h"
 #include "litert/vendors/qualcomm/core/transformation/mha_to_sha.h"
@@ -111,99 +110,6 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
     Transform(validate_op_config, ops, tensor_pool, matmul_convert_prefill,
               FuseMatMulConvertPrefill);
   }
-  // MHA Optimization
-  if (g2g_option == G2GConfig::kMHAOpt) {
-    const std::vector<QnnOpCode> gemma3_mha_decode = {
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kConcat,
-        QnnOpCode::kReshape,
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kReshape,
-        QnnOpCode::kSoftmax,
-        QnnOpCode::kStridedSlice,
-        QnnOpCode::kStridedSlice,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kReshape,
-    };
-    Transform(validate_op_config, ops, tensor_pool, gemma3_mha_decode,
-              OptimizeMHADecode);
-  }
-  if (g2g_option == G2GConfig::kMHAOptPrefill ||
-      g2g_option == G2GConfig::kMHAOpt) {
-    const std::vector<QnnOpCode> gemma3_mha_prefill = {
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kTranspose,
-        QnnOpCode::kReshape,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kConcat,
-        QnnOpCode::kReshape,
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kReshape,
-        QnnOpCode::kSoftmax,
-        QnnOpCode::kStridedSlice,
-        QnnOpCode::kStridedSlice,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kReshape,
-        QnnOpCode::kTranspose,
-        QnnOpCode::kReshape,
-    };
-    Transform(validate_op_config, ops, tensor_pool, gemma3_mha_prefill,
-              OptimizeMHAPrefill);
-
-    const std::vector<QnnOpCode>
-        tiny_gemma_mha_prefill_pattern_with_global_mask = {
-            QnnOpCode::kElementWiseBinary,
-            QnnOpCode::kTranspose,
-            QnnOpCode::kReshape,
-            QnnOpCode::kMatMul,
-            QnnOpCode::kMatMul,
-            QnnOpCode::kConcat,
-            QnnOpCode::kConcat,   // concat mask
-            QnnOpCode::kReshape,  // reshape mask
-            QnnOpCode::kElementWiseBinary,
-            QnnOpCode::kSoftmax,
-            QnnOpCode::kStridedSlice,
-            QnnOpCode::kStridedSlice,
-            QnnOpCode::kMatMul,
-            QnnOpCode::kMatMul,
-            QnnOpCode::kElementWiseBinary,
-            QnnOpCode::kReshape,
-            QnnOpCode::kTranspose,
-            QnnOpCode::kReshape,
-        };
-    Transform(validate_op_config, ops, tensor_pool,
-              tiny_gemma_mha_prefill_pattern_with_global_mask,
-              OptimizeMHATinyGemmaPrefillPatternWithGlobalMask);
-
-    const std::vector<QnnOpCode> tiny_gemma_mha_prefill_pattern = {
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kTranspose,
-        QnnOpCode::kReshape,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kConcat,
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kSoftmax,
-        QnnOpCode::kStridedSlice,
-        QnnOpCode::kStridedSlice,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kMatMul,
-        QnnOpCode::kElementWiseBinary,
-        QnnOpCode::kReshape,
-        QnnOpCode::kTranspose,
-        QnnOpCode::kReshape,
-    };
-    Transform(validate_op_config, ops, tensor_pool,
-              tiny_gemma_mha_prefill_pattern,
-              OptimizeMHATinyGemmaPrefillPattern);
-  }
 
   // Mask Gemma Optimization
   const std::vector<QnnOpCode> gemma3_mask = {
@@ -239,70 +145,6 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   Transform(validate_op_config, ops, tensor_pool, embedding_gemma,
             TransformEmbeddingGemma);
 
-  // Fast Vlm Optimization
-  const std::vector<QnnOpCode> fast_vlm_mha_prefill = {
-      QnnOpCode::kElementWiseBinary,
-      QnnOpCode::kReshape,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kConcat,
-      QnnOpCode::kReshape,
-      QnnOpCode::kElementWiseBinary,
-      QnnOpCode::kReshape,
-      QnnOpCode::kSoftmax,
-      QnnOpCode::kStridedSlice,
-      QnnOpCode::kStridedSlice,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kElementWiseBinary,
-      QnnOpCode::kReshape,
-      QnnOpCode::kTranspose,
-      QnnOpCode::kReshape};
-  Transform(validate_op_config, ops, tensor_pool, fast_vlm_mha_prefill,
-            OptimizeMHAFastVlmPrefill);
-
-  // Kv-swapped Fast Vlm Optimization
-  const std::vector<QnnOpCode> kv_swapped_fastvlm_prefill = {
-      QnnOpCode::kElementWiseBinary,
-      QnnOpCode::kReshape,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kConcat,
-      QnnOpCode::kReshape,
-      QnnOpCode::kElementWiseBinary,
-      QnnOpCode::kReshape,
-      QnnOpCode::kSoftmax,
-      QnnOpCode::kStridedSlice,
-      QnnOpCode::kStridedSlice,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kElementWiseBinary,
-      QnnOpCode::kReshape,
-      QnnOpCode::kTranspose,
-      QnnOpCode::kReshape};
-  Transform(validate_op_config, ops, tensor_pool, kv_swapped_fastvlm_prefill,
-            OptimizeKvSwappedFastVlmPrefill);
-
-  // This optimization can be applied on FastVlm decode and Kanana decode.
-  const std::vector<QnnOpCode> fast_vlm_mha_decode = {
-      QnnOpCode::kElementWiseBinary,  // mul
-      QnnOpCode::kReshape,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kConcat,
-      QnnOpCode::kReshape,
-      QnnOpCode::kElementWiseBinary,  // add
-      QnnOpCode::kReshape,
-      QnnOpCode::kSoftmax,
-      QnnOpCode::kStridedSlice,
-      QnnOpCode::kStridedSlice,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kMatMul,
-      QnnOpCode::kElementWiseBinary,  // add
-      QnnOpCode::kReshape};
-  Transform(validate_op_config, ops, tensor_pool, fast_vlm_mha_decode,
-            OptimizeMHAFastVlmDecode);
-
   // Attention Optimization
   const std::vector<QnnOpCode> attn = {
       QnnOpCode::kElementWiseBinary,
@@ -319,5 +161,82 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
       QnnOpCode::kTranspose,
   };
   Transform(validate_op_config, ops, tensor_pool, attn, OptimizeMHAAttn);
+
+  // Merge concat and reshape to a single concat.
+  const std::vector<QnnOpCode> concat_reshape = {
+      QnnOpCode::kConcat,
+      QnnOpCode::kReshape,
+  };
+  Transform(validate_op_config, ops, tensor_pool, concat_reshape,
+            FuseConcatReshape);
+
+  // Duplicate or remove concat for each masking to make the pattern more
+  // independent.
+  const std::vector<QnnOpCode> concat_add = {
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,
+  };
+  Transform(validate_op_config, ops, tensor_pool, concat_add,
+            DuplicateOrRemoveConcate);
+
+  // Simplify masking
+  const std::vector<QnnOpCode> reshape_add_reshape = {
+      QnnOpCode::kReshape,
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kReshape,
+  };
+  Transform(validate_op_config, ops, tensor_pool, reshape_add_reshape,
+            SimplifyMaskingAdd);
+
+  // Revert mul transpose
+  const std::vector<QnnOpCode> mul_transpose = {
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kTranspose,
+  };
+  Transform(validate_op_config, ops, tensor_pool, mul_transpose,
+            RevertMulTranspose);
+
+  // This pattern is for FastVLM, Kanana, Gemma3 270M, and TinyTiny prefill.
+  const std::vector<QnnOpCode> gqa_prefill = {
+      QnnOpCode::kReshape,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kConcat,             // concat for add
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape,
+      QnnOpCode::kTranspose,
+      QnnOpCode::kReshape
+    };
+  Transform(validate_op_config, ops, tensor_pool, gqa_prefill,
+            OptimizeGqaPrefill);
+
+  // This pattern is for FastVLM, Kanana, and TinyTiny decode.
+  const std::vector<QnnOpCode> gqa_decode = {
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kSoftmax,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kMatMul,
+      QnnOpCode::kElementWiseBinary,  // add
+      QnnOpCode::kReshape};
+  Transform(validate_op_config, ops, tensor_pool, gqa_decode,
+            OptimizeGqaDecode);
+
+  // Gemma4 270M
+  const std::vector<QnnOpCode> matmul_tiling = {
+      QnnOpCode::kMatMul,};
+  Transform(validate_op_config, ops, tensor_pool, matmul_tiling,
+            TileMatMul);
 }
 }  // namespace qnn

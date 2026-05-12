@@ -195,79 +195,26 @@ const TensorWrapper& BuildSingleSHA(
   return add_2_output;
 }
 
-void CloneNamespace(const OpWrapper& source, OpWrapper& destination) {
+void CloneNamespace(const OpWrapper& source, OpWrapper& destination,
+                    absl::string_view group_name = {}) {
   absl::string_view start_op_name = source.GetName();
   size_t pos = start_op_name.rfind('/');
   if (pos == absl::string_view::npos) {
     return;
   }
-  destination.AddPrefixToName(absl::StrCat(start_op_name.substr(0, pos), "/"));
+  if (group_name.empty())
+    destination.AddPrefixToName(
+        absl::StrCat(start_op_name.substr(0, pos), "/"));
+  else
+    destination.AddPrefixToName(
+        absl::StrCat(start_op_name.substr(0, pos), "/", group_name, "/"));
 }
 
-void CloneNamespace(const OpWrapper& source, std::vector<OpWrapper>& ops) {
+void CloneNamespace(const OpWrapper& source, std::vector<OpWrapper>& ops,
+                    absl::string_view group_name = "") {
   for (auto& op : ops) {
-    CloneNamespace(source, op);
+    CloneNamespace(source, op, group_name);
   }
-}
-
-std::vector<OpWrapper> TransformToSHA(
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    const TensorWrapper& mha_input, const TensorWrapper& mha_output,
-    const OpWrapper& scaling_mul, size_t num_heads) {
-  std::vector<OpWrapper> new_ops;
-
-  const auto& split_input = ops[start_index].GetOutputTensor(0);
-  // Prepare inputs for num_heads SHAs.
-  std::vector<ConstTensorWrapperRef> sha_inputs;
-  sha_inputs.reserve(num_heads);
-  for (int i = 0; i < num_heads; ++i) {
-    auto head_input_dims = split_input.GetDimensions();
-    head_input_dims[2] /= num_heads;
-    const auto& split_output =
-        tensor_pool.CloneNativeTensorFrom(mha_input, head_input_dims);
-    sha_inputs.emplace_back(split_output);
-  }
-  // Split
-  std::vector<std::uint32_t> split_indice;
-  split_indice.reserve(num_heads);
-  for (std::uint32_t i = 1; i < num_heads; i++) {
-    split_indice.emplace_back(i * split_input.GetDimension(2) / num_heads);
-  }
-  const auto& split_indice_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, {},
-      {static_cast<std::uint32_t>(split_indice.size())},
-      sizeof(std::uint32_t) * split_indice.size(), split_indice.data());
-  auto& split = new_ops.emplace_back(
-      CreateSplitOp(split_input, sha_inputs, 2, split_indice_tensor));
-  CloneNamespace(ops[start_index], split);
-  // Prepare outputs for num_heads SHAs.
-  std::vector<ConstTensorWrapperRef> sha_outputs;
-  sha_outputs.reserve(num_heads);
-  // Create num_heads SHA.
-  for (int i = 0; i < num_heads; ++i) {
-    OpWrapper& add_1 = ops[start_index + kAddIndex];
-    const auto& mask = add_1.GetInputTensor(1);
-    sha_outputs.emplace_back(BuildSingleSHA(
-        new_ops, tensor_pool, sha_inputs[i].get(), mask, num_heads, scaling_mul,
-        ops[start_index + kMatMulK1Index], ops[start_index + kMatMulK2Index],
-        ops[start_index + kConcatIndex], add_1,
-        ops[start_index + kSoftmaxIndex], ops[start_index + kSlice1Index],
-        ops[start_index + kSlice2Index], ops[start_index + kMatMulV1Index],
-        ops[start_index + kMatMulV2Index], ops[start_index + kAdd2Index]));
-  }
-  // Concat
-  auto concat_dims = mha_output.GetDimensions();
-  concat_dims.insert(concat_dims.begin(), 1);
-  const auto& concat_output =
-      tensor_pool.CloneNativeTensorFrom(mha_output, concat_dims);
-  auto& concat_final = new_ops.emplace_back(
-      CreateConcatenationOp(sha_outputs, concat_output, 3));
-  CloneNamespace(ops[start_index], concat_final);
-  // Reshape
-  auto& reshape =
-      new_ops.emplace_back(CreateReshapeOp(concat_output, mha_output));
-  CloneNamespace(ops[start_index], reshape);
-  return new_ops;
 }
 
 }  // namespace
@@ -288,34 +235,76 @@ std::vector<ConstTensorWrapperRef> UnpackTensor(TensorPool& tensor_pool,
   return outputs;
 }
 
+std::vector<ConstTensorWrapperRef> SplitTensor(TensorPool& tensor_pool,
+                                               std::vector<OpWrapper>& new_ops,
+                                               const TensorWrapper& input,
+                                               size_t axis, size_t tile_size) {
+  auto input_dims = input.GetDimensions();
+  size_t same_size_cnt = input_dims[axis] / tile_size;
+  size_t num_outputs = same_size_cnt + (input_dims[axis] % tile_size != 0);
+  QNN_LOG_DEBUG("[SplitTensor] num_outputs: %d", num_outputs);  
+  if (num_outputs == 1) return {input};
+
+  std::vector<ConstTensorWrapperRef> outputs;
+  outputs.reserve(num_outputs);
+  // Create Regular tiles based on tile_size.
+  input_dims[axis] = tile_size;
+  for (size_t i = 0; i < same_size_cnt; ++i) {
+    QNN_LOG_DEBUG(" tile_size(%d) %d", i, input_dims[axis]);
+    outputs.emplace_back(tensor_pool.CloneNativeTensorFrom(input, input_dims));
+  }
+  // Create the last tile smaller than tile_size if needed.
+  if (num_outputs > same_size_cnt) {
+    input_dims[axis] = input.GetDimension(axis) % tile_size;
+    QNN_LOG_DEBUG(" tile_size(%d) %d", num_outputs - 1, input_dims[axis]);
+    outputs.emplace_back(tensor_pool.CloneNativeTensorFrom(input, input_dims));
+  }
+
+  std::vector<std::uint32_t> split_indice;
+  split_indice.reserve(num_outputs - 1);
+  for (std::uint32_t i = 1; i < num_outputs; i++) {
+    split_indice.emplace_back(i * tile_size);
+  }
+  const auto& split_indice_tensor = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_UINT_32, {},
+      {static_cast<std::uint32_t>(split_indice.size())},
+      sizeof(split_indice[0]) * split_indice.size(), split_indice.data());
+  new_ops.emplace_back(
+      CreateSplitOp(input, outputs, axis, split_indice_tensor));
+  return outputs;
+}
+
 TensorWrapper& BuildSingleSHAByUnpackAxis1(
     std::vector<OpWrapper>& new_ops, TensorPool& tensor_pool,
-    const uint32_t num_attn_per_kv_heads, const TensorWrapper& scale_mul_input,
+    const uint32_t num_attn_per_kv_heads, const TensorWrapper& input,
     const TensorWrapper& k_cache, const TensorWrapper& k_slice,
     const TensorWrapper& v_cache, const TensorWrapper& v_slice,
-    const OpWrapper& scale_mul, const OpWrapper& q_kcache_matmul,
+    const OpWrapper* scale_mul, const OpWrapper& q_kcache_matmul,
     const OpWrapper& q_kslice_matmul, const OpWrapper& qk_concat,
-    const OpWrapper& mask_add, const OpWrapper& post_mask_reshape,
-    const OpWrapper& softmax, const OpWrapper& qk_vcache_slice,
-    const OpWrapper& qk_vslice_slice, const OpWrapper& qk_vcache_matmul,
-    const OpWrapper& qk_vslice_matmul, const OpWrapper& qkv_add) {
-  // Scale Mul
-  auto mul_output_dims = scale_mul.GetOutputTensor(0).GetDimensions();
-  mul_output_dims.erase(mul_output_dims.begin() + 1);
-  auto& mul_output = tensor_pool.CloneNativeTensorFrom(
-      scale_mul.GetOutputTensor(0), mul_output_dims);
-  new_ops.emplace_back(CreateElementWiseMulOp(
-      scale_mul_input, scale_mul.GetInputTensor(1), mul_output));
+    const OpWrapper& mask_add, const OpWrapper& softmax,
+    const OpWrapper& qk_vcache_slice, const OpWrapper& qk_vslice_slice,
+    const OpWrapper& qk_vcache_matmul, const OpWrapper& qk_vslice_matmul,
+    const OpWrapper& qkv_add) {
+  const TensorWrapper* matmul_input = &input;
+  // Scale Mul -> change matmul_input.
+  if (scale_mul) {
+    auto mul_output_dims = scale_mul->GetOutputTensor(0).GetDimensions();
+    mul_output_dims[1] = 1;
+    matmul_input = &tensor_pool.CloneNativeTensorFrom(
+        scale_mul->GetOutputTensor(0), mul_output_dims);
+    new_ops.emplace_back(CreateElementWiseMulOp(
+        input, scale_mul->GetInputTensor(1), *matmul_input));
+  }
 
   // Q KCache Matmul
   auto q_kcache_matmul_output_dims =
       q_kcache_matmul.GetOutputTensor(0).GetDimensions();
-  q_kcache_matmul_output_dims.erase(q_kcache_matmul_output_dims.begin() + 1);
-  q_kcache_matmul_output_dims[1] /= num_attn_per_kv_heads;
+  q_kcache_matmul_output_dims[1] = 1u;
+  q_kcache_matmul_output_dims[2] /= num_attn_per_kv_heads;
   auto& q_kcache_matmul_output = tensor_pool.CloneNativeTensorFrom(
       q_kcache_matmul.GetOutputTensor(0), q_kcache_matmul_output_dims);
   const std::array<ConstTensorWrapperRef, 2> q_kcache_matmul_inputs = {
-      mul_output, k_cache};
+      *matmul_input, k_cache};
   const std::array<ConstTensorWrapperRef, 1> q_kcache_matmul_outputs = {
       q_kcache_matmul_output};
   new_ops.emplace_back(CreateOpWithSameParams(
@@ -324,22 +313,22 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
   // Q KSlice Matmul
   auto q_kslice_matmul_output_dims =
       q_kslice_matmul.GetOutputTensor(0).GetDimensions();
-  q_kslice_matmul_output_dims.erase(q_kslice_matmul_output_dims.begin() + 1);
-  q_kslice_matmul_output_dims[1] /= num_attn_per_kv_heads;
+  q_kslice_matmul_output_dims[1] = 1u;
+  q_kslice_matmul_output_dims[2] /= num_attn_per_kv_heads;
   auto& q_kslice_matmul_output = tensor_pool.CloneNativeTensorFrom(
       q_kslice_matmul.GetOutputTensor(0), q_kslice_matmul_output_dims);
   const std::array<ConstTensorWrapperRef, 2> q_kslice_matmul_inputs = {
-      mul_output, k_slice};
+      *matmul_input, k_slice};
   const std::array<ConstTensorWrapperRef, 1> q_kslice_matmul_outputs = {
       q_kslice_matmul_output};
   new_ops.emplace_back(CreateOpWithSameParams(
       q_kslice_matmul, q_kslice_matmul_inputs, q_kslice_matmul_outputs));
 
   // QK Concat
-  std::uint32_t adjusted_axis = 2;
+  std::uint32_t adjusted_axis = 3u;
   auto concat_output_dims = qk_concat.GetOutputTensor(0).GetDimensions();
-  concat_output_dims.erase(concat_output_dims.begin() + 1);
-  concat_output_dims[1] /= num_attn_per_kv_heads;
+  concat_output_dims[1] = 1;
+  concat_output_dims[2] /= num_attn_per_kv_heads;
   auto& concat_output = tensor_pool.CloneNativeTensorFrom(
       qk_concat.GetOutputTensor(0), concat_output_dims);
   new_ops.emplace_back(
@@ -347,33 +336,21 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
                             concat_output, adjusted_axis));
 
   // Mask Add
-  auto mask_add_output_dims = mask_add.GetOutputTensor(0).GetDimensions();
-  mask_add_output_dims[0] = 1;
+  const auto& mask_add_out = mask_add.GetOutputTensor(0);
+  auto mask_add_output_dims = mask_add_out.GetDimensions();
   mask_add_output_dims[1] = 1;
+  mask_add_output_dims[2] /= num_attn_per_kv_heads;
   auto& mask_add_output = tensor_pool.CloneNativeTensorFrom(
       mask_add.GetOutputTensor(0), mask_add_output_dims);
   new_ops.emplace_back(CreateElementWiseAddOp(
       concat_output, mask_add.GetInputTensor(1), mask_add_output));
-
-  // Post Mask Reshape
-  auto post_mask_reshape_output_dims =
-      post_mask_reshape.GetOutputTensor(0).GetDimensions();
-  post_mask_reshape_output_dims.erase(post_mask_reshape_output_dims.begin() +
-                                      1);
-  post_mask_reshape_output_dims[1] /= num_attn_per_kv_heads;
-  auto& post_mask_reshape_output = tensor_pool.CloneNativeTensorFrom(
-      post_mask_reshape.GetOutputTensor(0), post_mask_reshape_output_dims);
-  new_ops.emplace_back(
-      CreateReshapeOp(mask_add_output, post_mask_reshape_output));
-
   // Softmax
   auto softmax_output_dims = softmax.GetOutputTensor(0).GetDimensions();
-  softmax_output_dims.erase(softmax_output_dims.begin() + 1);
-  softmax_output_dims[1] /= num_attn_per_kv_heads;
+  softmax_output_dims[1] = 1;
+  softmax_output_dims[2] /= num_attn_per_kv_heads;
   auto& softmax_output = tensor_pool.CloneNativeTensorFrom(
       softmax.GetOutputTensor(0), softmax_output_dims);
-  const std::array<ConstTensorWrapperRef, 1> softmax_inputs = {
-      post_mask_reshape_output};
+  const std::array<ConstTensorWrapperRef, 1> softmax_inputs = {mask_add_output};
   const std::array<ConstTensorWrapperRef, 1> softmax_outputs = {softmax_output};
   new_ops.emplace_back(
       CreateOpWithSameParams(softmax, softmax_inputs, softmax_outputs));
@@ -385,20 +362,19 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
   std::vector<int32_t> qk_vcache_slice_ranges(
       qk_vcache_slice_param_data.value().begin(),
       qk_vcache_slice_param_data.value().end());
-  qk_vcache_slice_ranges.erase(qk_vcache_slice_ranges.begin() + 3,
-                               qk_vcache_slice_ranges.begin() + 6);
-  qk_vcache_slice_ranges[4] /= num_attn_per_kv_heads;
+  qk_vcache_slice_ranges[4] = 1;
+  qk_vcache_slice_ranges[7] /= num_attn_per_kv_heads;
   std::vector<uint32_t> qk_vcache_slice_param_dims = {
       static_cast<uint32_t>(qk_vcache_slice_ranges.size() / 3), 3};
   auto& qk_vcache_slice_param_tensor = tensor_pool.CreateStaticTensor(
       qk_vcache_slice_param.GetDataType(),
       qk_vcache_slice_param.GetQuantParams(), qk_vcache_slice_param_dims,
-      sizeof(int32_t) * qk_vcache_slice_ranges.size(),
+      sizeof(qk_vcache_slice_ranges[0]) * qk_vcache_slice_ranges.size(),
       qk_vcache_slice_ranges.data());
   auto qk_vcache_slice_output_dims =
       qk_vcache_slice.GetOutputTensor(0).GetDimensions();
-  qk_vcache_slice_output_dims.erase(qk_vcache_slice_output_dims.begin() + 1);
-  qk_vcache_slice_output_dims[1] /= num_attn_per_kv_heads;
+  qk_vcache_slice_output_dims[1] = 1;
+  qk_vcache_slice_output_dims[2] /= num_attn_per_kv_heads;
   auto& qk_vcache_slice_output = tensor_pool.CloneNativeTensorFrom(
       qk_vcache_slice.GetOutputTensor(0), qk_vcache_slice_output_dims);
   new_ops.emplace_back(CreateSliceOp(softmax_output, qk_vcache_slice_output,
@@ -411,20 +387,19 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
   std::vector<int32_t> qk_vslice_slice_ranges(
       qk_vslice_slice_param_data.value().begin(),
       qk_vslice_slice_param_data.value().end());
-  qk_vslice_slice_ranges.erase(qk_vslice_slice_ranges.begin() + 3,
-                               qk_vslice_slice_ranges.begin() + 6);
-  qk_vslice_slice_ranges[4] /= num_attn_per_kv_heads;
+  qk_vslice_slice_ranges[4] = 1;
+  qk_vslice_slice_ranges[7] /= num_attn_per_kv_heads;
   std::vector<uint32_t> qk_vslice_slice_param_dims = {
       static_cast<uint32_t>(qk_vslice_slice_ranges.size() / 3), 3};
   auto& qk_vslice_slice_param_tensor = tensor_pool.CreateStaticTensor(
       qk_vslice_slice_param.GetDataType(),
       qk_vslice_slice_param.GetQuantParams(), qk_vslice_slice_param_dims,
-      sizeof(int32_t) * qk_vslice_slice_ranges.size(),
+      sizeof(qk_vslice_slice_ranges[0]) * qk_vslice_slice_ranges.size(),
       qk_vslice_slice_ranges.data());
   auto qk_vslice_slice_output_dims =
       qk_vslice_slice.GetOutputTensor(0).GetDimensions();
-  qk_vslice_slice_output_dims.erase(qk_vslice_slice_output_dims.begin() + 1);
-  qk_vslice_slice_output_dims[1] /= num_attn_per_kv_heads;
+  qk_vslice_slice_output_dims[1] = 1;
+  qk_vslice_slice_output_dims[2] /= num_attn_per_kv_heads;
   auto& qk_vslice_slice_output = tensor_pool.CloneNativeTensorFrom(
       qk_vslice_slice.GetOutputTensor(0), qk_vslice_slice_output_dims);
   new_ops.emplace_back(CreateSliceOp(softmax_output, qk_vslice_slice_output,
@@ -433,8 +408,8 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
   // QK VCache Matmul
   auto qk_vcache_matmul_output_dims =
       qk_vcache_matmul.GetOutputTensor(0).GetDimensions();
-  qk_vcache_matmul_output_dims.erase(qk_vcache_matmul_output_dims.begin() + 1);
-  qk_vcache_matmul_output_dims[1] /= num_attn_per_kv_heads;
+  qk_vcache_matmul_output_dims[1] = 1;
+  qk_vcache_matmul_output_dims[2] /= num_attn_per_kv_heads;
   auto& qk_vcache_matmul_output = tensor_pool.CloneNativeTensorFrom(
       qk_vcache_matmul.GetOutputTensor(0), qk_vcache_matmul_output_dims);
   const std::array<ConstTensorWrapperRef, 2> qk_vcache_matmul_inputs = {
@@ -447,8 +422,8 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
   // QK VSlice Matmul
   auto qk_vslice_matmul_output_dims =
       qk_vslice_matmul.GetOutputTensor(0).GetDimensions();
-  qk_vslice_matmul_output_dims.erase(qk_vslice_matmul_output_dims.begin() + 1);
-  qk_vslice_matmul_output_dims[1] /= num_attn_per_kv_heads;
+  qk_vslice_matmul_output_dims[1] = 1;
+  qk_vslice_matmul_output_dims[2] /= num_attn_per_kv_heads;
   auto& qk_vslice_matmul_output = tensor_pool.CloneNativeTensorFrom(
       qk_vslice_matmul.GetOutputTensor(0), qk_vslice_matmul_output_dims);
   const std::array<ConstTensorWrapperRef, 2> qk_vslice_matmul_inputs = {
@@ -460,8 +435,8 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
 
   // QKV Add
   auto qkv_add_output_dims = qkv_add.GetOutputTensor(0).GetDimensions();
-  qkv_add_output_dims.erase(qkv_add_output_dims.begin() + 1);
-  qkv_add_output_dims[1] /= num_attn_per_kv_heads;
+  qkv_add_output_dims[1] = 1;
+  qkv_add_output_dims[2] /= num_attn_per_kv_heads;
   auto& qkv_add_output = tensor_pool.CloneNativeTensorFrom(
       qkv_add.GetOutputTensor(0), qkv_add_output_dims);
   new_ops.emplace_back(CreateElementWiseAddOp(
@@ -470,182 +445,10 @@ TensorWrapper& BuildSingleSHAByUnpackAxis1(
   return qkv_add_output;
 }
 
-size_t OptimizeMHAPrefill(std::function<bool(OpWrapper&)> validate_op_config,
+size_t OptimizeGqaPrefill(std::function<bool(OpWrapper&)> validate_op_config,
                           std::vector<OpWrapper>& ops, size_t start_index,
                           TensorPool& tensor_pool, size_t pattern_size) {
-  // Connection check
-  if (!(IS_CONNECTED(kMulIndex, 0, kTransposePrefillIndex, 0) &&
-        IS_CONNECTED(kTransposePrefillIndex, 0, kReshapePrefillIndex, 0) &&
-        IS_CONNECTED(kReshapePrefillIndex, 0, kMatMulK1Index + 2, 0) &&
-        IS_CONNECTED(kReshapePrefillIndex, 0, kMatMulK2Index + 2, 0) &&
-        IS_CONNECTED(kMatMulK1Index + 2, 0, kConcatIndex + 2, 0) &&
-        IS_CONNECTED(kMatMulK2Index + 2, 0, kConcatIndex + 2, 1) &&
-        IS_CONNECTED(kConcatIndex + 2, 0, kReshape0Index + 2, 0) &&
-        IS_CONNECTED(kReshape0Index + 2, 0, kAddIndex + 2, 0) &&
-        IS_CONNECTED(kAddIndex + 2, 0, kReshape1Index + 2, 0) &&
-        IS_CONNECTED(kReshape1Index + 2, 0, kSoftmaxIndex + 2, 0) &&
-        IS_CONNECTED(kSoftmaxIndex + 2, 0, kSlice1Index + 2, 0) &&
-        IS_CONNECTED(kSoftmaxIndex + 2, 0, kSlice2Index + 2, 0) &&
-        IS_CONNECTED(kSlice1Index + 2, 0, kMatMulV1Index + 2, 0) &&
-        IS_CONNECTED(kSlice2Index + 2, 0, kMatMulV2Index + 2, 0) &&
-        IS_CONNECTED(kMatMulV1Index + 2, 0, kAdd2Index + 2, 0) &&
-        IS_CONNECTED(kMatMulV2Index + 2, 0, kAdd2Index + 2, 1) &&
-        IS_CONNECTED(kAdd2Index + 2, 0, kReshape2Index + 2, 0) &&
-        IS_CONNECTED(kReshape2Index + 2, 0, kTranspose2Index + 2, 0) &&
-        IS_CONNECTED(kTranspose2Index + 2, 0, kReshape3Index + 2, 0) &&
-        IsElementWiseMultiply(ops[start_index + kMulIndex]) &&
-        IsElementWiseAdd(ops[start_index + kAddIndex + 2]) &&
-        IsElementWiseAdd(ops[start_index + kAdd2Index + 2]))) {
-    return 1;
-  }
-  // Graph transform
-  QNN_LOG_INFO("[G2G] MHA optimization (Prefill)");
-  std::vector<OpWrapper> new_ops;
-  const auto& scaling_mul = ops[start_index + kMulIndex];
-  const auto& pattern_input = scaling_mul.GetInputTensor(0);
-  const auto& pattern_output =
-      ops[start_index + pattern_size - 1].GetOutputTensor(0);
-
-  // Transpose
-  auto transpose_output_dims = ops[start_index + kTransposePrefillIndex]
-                                   .GetOutputTensor(0)
-                                   .GetDimensions();
-  const auto& transpose_output =
-      tensor_pool.CloneNativeTensorFrom(pattern_input, transpose_output_dims);
-  const std::array<ConstTensorWrapperRef, 1> transpose_inputs = {pattern_input};
-  const std::array<ConstTensorWrapperRef, 1> transpose_outputs = {
-      transpose_output};
-  new_ops.emplace_back(
-      CreateOpWithSameParams(ops[start_index + kTransposePrefillIndex],
-                             transpose_inputs, transpose_outputs));
-
-  // Reshape
-  const auto& reshape_output = tensor_pool.CloneNativeTensorFrom(
-      pattern_input, {transpose_output_dims[0], 1,
-                      transpose_output_dims[1] * transpose_output_dims[2],
-                      transpose_output_dims[3]});
-  new_ops.emplace_back(CreateReshapeOp(transpose_output, reshape_output));
-
-  // Process MHA to SHA transformation.
-  const int num_heads = pattern_input.GetDimension(2);
-  const auto& mha_input = new_ops.back().GetOutputTensor(0);
-  auto sha_ops =
-      TransformToSHA(ops, start_index + new_ops.size(), tensor_pool, mha_input,
-                     pattern_output, scaling_mul, num_heads);
-  std::move(sha_ops.begin(), sha_ops.end(), std::back_inserter(new_ops));
-
-  // Validate new graph.
-  const bool is_valid =
-      std::all_of(new_ops.begin(), new_ops.end(),
-                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
-                    return validate_op_config(op_wrapper);
-                  });
-  if (is_valid) {
-    // Adjust the name to avoid a name collision in the Qnn JSON dump.
-    for (size_t i = 0; i < new_ops.size(); ++i) {
-      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
-    }
-    // Replace the matched pattern with a newly generated subgraph.
-    size_t step_size = new_ops.size();
-    ops.insert(ops.begin() + start_index + pattern_size,
-               std::make_move_iterator(new_ops.begin()),
-               std::make_move_iterator(new_ops.end()));
-    ops.erase(ops.begin() + start_index,
-              ops.begin() + start_index + pattern_size);
-    return step_size;
-  }
-  QNN_LOG_WARNING(
-      "[G2G] Validation failed. Rolling back to the original graph.");
-  return 1;
-}
-
-size_t OptimizeMHADecode(std::function<bool(OpWrapper&)> validate_op_config,
-                         std::vector<OpWrapper>& ops, size_t start_index,
-                         TensorPool& tensor_pool, size_t pattern_size) {
-  // Connection check
-  if (!(IS_CONNECTED(kMulIndex, 0, kMatMulK1Index, 0) &&
-        IS_CONNECTED(kMulIndex, 0, kMatMulK2Index, 0) &&
-        IS_CONNECTED(kMatMulK1Index, 0, kConcatIndex, 0) &&
-        IS_CONNECTED(kMatMulK2Index, 0, kConcatIndex, 1) &&
-        IS_CONNECTED(kConcatIndex, 0, kReshape0Index, 0) &&
-        IS_CONNECTED(kReshape0Index, 0, kAddIndex, 0) &&
-        IS_CONNECTED(kAddIndex, 0, kReshape1Index, 0) &&
-        IS_CONNECTED(kReshape1Index, 0, kSoftmaxIndex, 0) &&
-        IS_CONNECTED(kSoftmaxIndex, 0, kSlice1Index, 0) &&
-        IS_CONNECTED(kSoftmaxIndex, 0, kSlice2Index, 0) &&
-        IS_CONNECTED(kSlice1Index, 0, kMatMulV1Index, 0) &&
-        IS_CONNECTED(kSlice2Index, 0, kMatMulV2Index, 0) &&
-        IS_CONNECTED(kMatMulV1Index, 0, kAdd2Index, 0) &&
-        IS_CONNECTED(kMatMulV2Index, 0, kAdd2Index, 1) &&
-        IS_CONNECTED(kAdd2Index, 0, kReshape2Index, 0) &&
-        IsElementWiseMultiply(ops[start_index + kMulIndex]) &&
-        IsElementWiseAdd(ops[start_index + kAddIndex]) &&
-        IsElementWiseAdd(ops[start_index + kAdd2Index]))) {
-    return 1;
-  }
-  // Graph transform
-  QNN_LOG_INFO("[G2G] MHA optimization (Decode)");
-  std::vector<OpWrapper> new_ops;
-  const auto& scaling_mul = ops[start_index + kMulIndex];
-  const auto& pattern_input = scaling_mul.GetInputTensor(0);
-  const auto& pattern_output =
-      ops[start_index + pattern_size - 1].GetOutputTensor(0);
-
-  // Process MHA to SHA transformation.
-  const int num_heads = pattern_input.GetDimension(2);
-  auto sha_ops =
-      TransformToSHA(ops, start_index + new_ops.size(), tensor_pool,
-                     pattern_input, pattern_output, scaling_mul, num_heads);
-  std::move(sha_ops.begin(), sha_ops.end(), std::back_inserter(new_ops));
-
-  // Validate new graph.
-  const bool is_valid =
-      std::all_of(new_ops.begin(), new_ops.end(),
-                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
-                    return validate_op_config(op_wrapper);
-                  });
-  if (is_valid) {
-    // Adjust the name to avoid a name collision in the Qnn JSON dump.
-    for (size_t i = 0; i < new_ops.size(); ++i) {
-      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
-    }
-    // Replace the matched pattern with a newly generated subgraph.
-    size_t step_size = new_ops.size();
-    ops.insert(ops.begin() + start_index + pattern_size,
-               std::make_move_iterator(new_ops.begin()),
-               std::make_move_iterator(new_ops.end()));
-    ops.erase(ops.begin() + start_index,
-              ops.begin() + start_index + pattern_size);
-    return step_size;
-  }
-  QNN_LOG_WARNING(
-      "[G2G] Validation failed. Rolling back to the original graph.");
-  return 1;
-}
-
-size_t OptimizeMHAFastVlmPrefill(
-    std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
-  constexpr int32_t kKSliceAddIdx = -2;
-  constexpr size_t kQScaleMulIdx = 0;
-  constexpr size_t kQScaleReshapeIdx = 1;
-  constexpr size_t kQKCacheMatmulIdx = 2;
-  constexpr size_t kQKSliceMatmulIdx = 3;
-  constexpr size_t kQKConcatIdx = 4;
-  constexpr size_t kPreMaskReshapeIdx = 5;
-  constexpr size_t kMaskAddIdx = 6;
-  constexpr size_t kPostMaskReshapeIdx = 7;
-  constexpr size_t kSoftmaxIdx = 8;
-  constexpr size_t kQKVCacheSliceIdx = 9;
-  constexpr size_t kQKVSliceSliceIdx = 10;
-  constexpr size_t kQKVCacheMatmulIdx = 11;
-  constexpr size_t kQKVSliceMatmulIdx = 12;
-  constexpr size_t kQKVAddIdx = 13;
-  constexpr size_t kQKVReshapeIdx = 14;
-  constexpr size_t kQKVTransposeIdx = 15;
-  constexpr size_t kOProjReshapeIdx = 16;
-
+  QNN_LOG_INFO("[G2G] OptimizeGqaPrefill");
   const auto is_connected =
       [&ops, &start_index](int32_t output_op_index, size_t output_tensor_index,
                            int32_t input_op_index,
@@ -657,16 +460,35 @@ size_t OptimizeMHAFastVlmPrefill(
            ops[out_op_idx].GetOutputTensor(output_tensor_index) ==
                ops[in_op_idx].GetInputTensor(input_tensor_index);
   };
-  if (!(is_connected(kKSliceAddIdx, 0, kQKSliceMatmulIdx, 1) &&
-        is_connected(kQScaleMulIdx, 0, kQScaleReshapeIdx, 0) &&
-        is_connected(kQScaleReshapeIdx, 0, kQKCacheMatmulIdx, 0) &&
+  bool has_scale_mul =
+      is_connected(-1, 0, 0, 0) && IsElementWiseMultiply(ops[start_index - 1]);
+  QNN_LOG_INFO("[G2G] GQA Optimization (Prefill): has_scale_mul %d",
+               has_scale_mul);
+  // Adjust indices based on scale_mul.
+  start_index -= has_scale_mul;
+  pattern_size += has_scale_mul;
+  const size_t kQScaleReshapeIdx = 0 + has_scale_mul;
+  const size_t kQKCacheMatmulIdx = 1 + has_scale_mul;
+  const size_t kQKSliceMatmulIdx = 2 + has_scale_mul;
+  const size_t kQKConcatIdx = 3 + has_scale_mul;
+  const size_t kMaskConcatIdx = 4 + has_scale_mul;
+  const size_t kMaskAddIdx = 5 + has_scale_mul;
+  const size_t kSoftmaxIdx = 6 + has_scale_mul;
+  const size_t kQKVCacheSliceIdx = 7 + has_scale_mul;
+  const size_t kQKVSliceSliceIdx = 8 + has_scale_mul;
+  const size_t kQKVCacheMatmulIdx = 9 + has_scale_mul;
+  const size_t kQKVSliceMatmulIdx = 10 + has_scale_mul;
+  const size_t kQKVAddIdx = 11 + has_scale_mul;
+  const size_t kQKVReshapeIdx = 12 + has_scale_mul;
+  const size_t kQKVTransposeIdx = 13 + has_scale_mul;
+  const size_t kOProjReshapeIdx = 14 + has_scale_mul;
+
+  if (!(is_connected(kQScaleReshapeIdx, 0, kQKCacheMatmulIdx, 0) &&
         is_connected(kQScaleReshapeIdx, 0, kQKSliceMatmulIdx, 0) &&
         is_connected(kQKCacheMatmulIdx, 0, kQKConcatIdx, 0) &&
         is_connected(kQKSliceMatmulIdx, 0, kQKConcatIdx, 1) &&
-        is_connected(kQKConcatIdx, 0, kPreMaskReshapeIdx, 0) &&
-        is_connected(kPreMaskReshapeIdx, 0, kMaskAddIdx, 0) &&
-        is_connected(kMaskAddIdx, 0, kPostMaskReshapeIdx, 0) &&
-        is_connected(kPostMaskReshapeIdx, 0, kSoftmaxIdx, 0) &&
+        is_connected(kQKConcatIdx, 0, kMaskAddIdx, 0) &&
+        is_connected(kMaskAddIdx, 0, kSoftmaxIdx, 0) &&
         is_connected(kSoftmaxIdx, 0, kQKVCacheSliceIdx, 0) &&
         is_connected(kSoftmaxIdx, 0, kQKVSliceSliceIdx, 0) &&
         is_connected(kQKVCacheSliceIdx, 0, kQKVCacheMatmulIdx, 0) &&
@@ -676,264 +498,77 @@ size_t OptimizeMHAFastVlmPrefill(
         is_connected(kQKVAddIdx, 0, kQKVReshapeIdx, 0) &&
         is_connected(kQKVReshapeIdx, 0, kQKVTransposeIdx, 0) &&
         is_connected(kQKVTransposeIdx, 0, kOProjReshapeIdx, 0) &&
-        IsElementWiseMultiply(ops[start_index + kQScaleMulIdx]) &&
-        IsElementWiseAdd(ops[start_index + kKSliceAddIdx]) &&
         IsElementWiseAdd(ops[start_index + kMaskAddIdx]) &&
         IsElementWiseAdd(ops[start_index + kQKVAddIdx]))) {
     return 1;
   }
 
-  // Strict check for only FastVLM with q head = 14, kv head = 2.
-  static constexpr size_t kQHeads = 14;
-  static constexpr size_t kKVHeads = 2;
-  if (!(kKVHeads ==
-            ops[start_index + kKSliceAddIdx].GetInputTensor(0).GetDimension(
-                1) &&
-        kKVHeads ==
-            ops[start_index + kKSliceAddIdx].GetInputTensor(1).GetDimension(
-                1) &&
-        kQHeads ==
-            ops[start_index + kQScaleMulIdx].GetInputTensor(0).GetDimension(
-                1) &&
-        kKVHeads == ops[start_index + kQKVCacheMatmulIdx]
-                        .GetInputTensor(1)
-                        .GetDimension(1) &&
-        kKVHeads == ops[start_index + kQKVSliceMatmulIdx]
-                        .GetInputTensor(1)
-                        .GetDimension(1))) {
-    QNN_LOG_WARNING(
-        "[G2G] Pattern does not match Q heads: %d, KV heads &d. In pattern, "
-        "k_slice_add_in_0_dims[1]: %d, k_slice_add_in_1_dims[1]: %d,"
-        "q_scale_mul_dims[1]: %d, v_cache_dims[1]: %d, v_slice_dims[1]: %d",
-        kQHeads, kKVHeads,
-        ops[start_index + kKSliceAddIdx].GetInputTensor(0).GetDimension(1),
-        ops[start_index + kKSliceAddIdx].GetInputTensor(1).GetDimension(1),
-        ops[start_index + kQScaleMulIdx].GetInputTensor(0).GetDimension(1),
-        ops[start_index + kQKVCacheMatmulIdx].GetInputTensor(1).GetDimension(1),
-        ops[start_index + kQKVSliceMatmulIdx].GetInputTensor(1).GetDimension(
-            1));
+  const size_t num_q_heads = ops[start_index].GetInputTensor(0).GetDimension(1);
+  const size_t num_kv_heads =
+      ops[start_index + kQKSliceMatmulIdx].GetInputTensor(1).GetDimension(1);
+  // Strict check:
+  // - FastVLM with q head = 14, kv head = 2.
+  // - Kanana with q head = 16, kv head = 8.
+  // - TinyTiny with q head = 4, kv head = 2 & 1.
+  QNN_LOG_INFO(
+      "[G2G] GQA Optimization (Prefill):\n  # Q Heads: %d\n  # K Heads: %d",
+      num_q_heads, num_kv_heads);
+  if (!((num_q_heads == 14 && num_kv_heads == 2) ||
+        (num_q_heads == 16 && num_kv_heads == 8) ||
+        (num_q_heads == 4 && num_kv_heads == 2) ||
+        (num_q_heads == 4 && num_kv_heads == 1))) {
     return 1;
   }
-  QNN_LOG_INFO("[G2G] MHA Optimization (FastVLM Prefill).");
+  QNN_LOG_INFO("[G2G] GQA Optimization (Prefill): Start");
   std::vector<OpWrapper> new_ops;
-
-  // Manually unpack the Add Op inorder to reuse BuildSingleSHAByUnpackAxis1().
-  const auto& k_slice_add_in_0 =
-      ops[start_index + kKSliceAddIdx].GetInputTensor(0);
-  auto k_slice_add_0_unpack_outputs =
-      UnpackTensor(tensor_pool, new_ops, k_slice_add_in_0);
-
-  const auto& k_slice_add_in_1 =
-      ops[start_index + kKSliceAddIdx].GetInputTensor(1);
-  auto k_slice_add_1_unpack_outputs =
-      UnpackTensor(tensor_pool, new_ops, k_slice_add_in_1);
-
-  const auto& k_slice_add_out_0 =
-      ops[start_index + kKSliceAddIdx].GetOutputTensor(0);
-  size_t num_kv_heads = k_slice_add_out_0.GetDimension(1);
-  std::vector<TensorWrapperRef> k_slice_add_outputs;
-  k_slice_add_outputs.reserve(num_kv_heads);
-
-  auto k_slice_add_out_0_dims = k_slice_add_out_0.GetDimensions();
-  k_slice_add_out_0_dims.erase(k_slice_add_out_0_dims.begin() + 1);
-  for (int i = 0; i < num_kv_heads; i++) {
-    auto& cloned_k_slice_add_out_0 = tensor_pool.CloneNativeTensorFrom(
-        k_slice_add_out_0, k_slice_add_out_0_dims);
-    k_slice_add_outputs.emplace_back(cloned_k_slice_add_out_0);
-    new_ops.emplace_back(CreateElementWiseAddOp(k_slice_add_0_unpack_outputs[i],
-                                                k_slice_add_1_unpack_outputs[i],
-                                                cloned_k_slice_add_out_0));
-  }
 
   // QKV Unpack
   const auto& k_cache = ops[start_index + kQKCacheMatmulIdx].GetInputTensor(1);
-  auto k_cache_unpack_outputs = UnpackTensor(tensor_pool, new_ops, k_cache);
-
-  const auto& scale_mul_in = ops[start_index + kQScaleMulIdx].GetInputTensor(0);
-  auto scale_mul_unpack_outputs =
-      UnpackTensor(tensor_pool, new_ops, scale_mul_in);
+  auto k_cache_unpack_outputs = SplitTensor(tensor_pool, new_ops, k_cache);
+  constexpr size_t kUnpackAxis = 1;
+  auto k_slice_unpack_outputs = SplitTensor(
+      tensor_pool, new_ops,
+      ops[start_index + kQKSliceMatmulIdx].GetInputTensor(1), kUnpackAxis);
+  auto q_inputs =
+      SplitTensor(tensor_pool, new_ops, ops[start_index].GetInputTensor(0));
 
   const auto& v_cache = ops[start_index + kQKVCacheMatmulIdx].GetInputTensor(1);
-  auto v_cache_unpack_outputs = UnpackTensor(tensor_pool, new_ops, v_cache);
+  auto v_cache_unpack_outputs = SplitTensor(tensor_pool, new_ops, v_cache);
 
   const auto& v_slice = ops[start_index + kQKVSliceMatmulIdx].GetInputTensor(1);
-  auto v_slice_unpack_outputs = UnpackTensor(tensor_pool, new_ops, v_slice);
+  auto v_slice_unpack_outputs = SplitTensor(tensor_pool, new_ops, v_slice);
 
-  auto num_attn_heads = scale_mul_unpack_outputs.size();
-  auto num_attn_per_kv_heads = num_attn_heads / num_kv_heads;
-
+  auto group_size = num_q_heads / num_kv_heads;
+  // Remove unnessary concat mask.
+  auto add_op = CreateElementWiseAddOp(
+      ops[start_index + kMaskAddIdx].GetInputTensor(0),
+      ops[start_index + kMaskConcatIdx].GetInputTensor(0),
+      ops[start_index + kMaskAddIdx].GetOutputTensor(0));
+  const auto& mask_add_out = add_op.GetOutputTensor(0);
+  auto mask_add_output_dims = mask_add_out.GetDimensions();
   // Build num_head SHAs
   std::vector<ConstTensorWrapperRef> sha_outputs;
-  sha_outputs.reserve(num_attn_heads);
+  sha_outputs.reserve(num_q_heads);
   for (size_t i = 0; i < num_kv_heads; ++i) {
-    for (size_t j = 0; j < num_attn_per_kv_heads; ++j) {
+    for (size_t j = 0; j < group_size; ++j) {
       auto& sha_output = BuildSingleSHAByUnpackAxis1(
-          new_ops, tensor_pool, num_attn_per_kv_heads,
-          scale_mul_unpack_outputs[i * num_attn_per_kv_heads + j],
-          k_cache_unpack_outputs[i], k_slice_add_outputs[i],
+          new_ops, tensor_pool, group_size, q_inputs[i * group_size + j],
+          k_cache_unpack_outputs[i], k_slice_unpack_outputs[i],
           v_cache_unpack_outputs[i], v_slice_unpack_outputs[i],
-          ops[start_index + kQScaleMulIdx],
+          has_scale_mul ? &ops[start_index] : nullptr,
           ops[start_index + kQKCacheMatmulIdx],
           ops[start_index + kQKSliceMatmulIdx], ops[start_index + kQKConcatIdx],
-          ops[start_index + kMaskAddIdx],
-          ops[start_index + kPostMaskReshapeIdx],
-          ops[start_index + kSoftmaxIdx], ops[start_index + kQKVCacheSliceIdx],
+          add_op, ops[start_index + kSoftmaxIdx],
+          ops[start_index + kQKVCacheSliceIdx],
           ops[start_index + kQKVSliceSliceIdx],
           ops[start_index + kQKVCacheMatmulIdx],
           ops[start_index + kQKVSliceMatmulIdx], ops[start_index + kQKVAddIdx]);
       sha_outputs.emplace_back(sha_output);
     }
   }
-
-  // Concat
-  const auto& pattern_output =
-      ops[start_index + pattern_size - 1].GetOutputTensor(0);
-  new_ops.emplace_back(CreateConcatenationOp(sha_outputs, pattern_output, 2));
-
-  // Validate new graph.
-  const bool is_valid =
-      std::all_of(new_ops.begin(), new_ops.end(),
-                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
-                    return validate_op_config(op_wrapper);
-                  });
-  if (is_valid) {
-    // Adjust the name to avoid a name collision in the Qnn JSON dump.
-    for (size_t i = 0; i < new_ops.size(); ++i) {
-      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
-    }
-    // Replace the matched pattern with a newly generated subgraph.
-    size_t step_size = new_ops.size();
-    ops.insert(ops.begin() + start_index + pattern_size,
-               std::make_move_iterator(new_ops.begin()),
-               std::make_move_iterator(new_ops.end()));
-    ops.erase(ops.begin() + start_index,
-              ops.begin() + start_index + pattern_size);
-    return step_size;
-  }
-  QNN_LOG_WARNING(
-      "[G2G] Validation failed. Rolling back to the original graph.");
-  return 1;
-}
-
-size_t OptimizeMHAFastVlmDecode(
-    std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
-  QNN_LOG_INFO("[G2G] MHA optimization (fast vlm decode)");
-
-  constexpr size_t kQScaleMulIdx = 0;
-  constexpr size_t kQScaleReshapeIdx = 1;
-  constexpr size_t kQKCacheMatmulIdx = 2;
-  constexpr size_t kQKSliceMatmulIdx = 3;
-  constexpr size_t kQKConcatIdx = 4;
-  constexpr size_t kPreMaskReshapeIdx = 5;
-  constexpr size_t kMaskAddIdx = 6;
-  constexpr size_t kPostMaskReshapeIdx = 7;
-  constexpr size_t kSoftmaxIdx = 8;
-  constexpr size_t kQKVCacheSliceIdx = 9;
-  constexpr size_t kQKVSliceSliceIdx = 10;
-  constexpr size_t kQKVCacheMatmulIdx = 11;
-  constexpr size_t kQKVSliceMatmulIdx = 12;
-  constexpr size_t kQKVAddIdx = 13;
-  constexpr size_t kQKVReshapeIdx = 14;
-  const auto& q_scale_mul = ops[start_index + kQScaleMulIdx];
-  const auto& q_scale_reshape = ops[start_index + kQScaleReshapeIdx];
-  const auto& q_kcache_matmul = ops[start_index + kQKCacheMatmulIdx];
-  const auto& q_kslice_matmul = ops[start_index + kQKSliceMatmulIdx];
-  const auto& qk_concat = ops[start_index + kQKConcatIdx];
-  const auto& pre_mask_reshape = ops[start_index + kPreMaskReshapeIdx];
-  const auto& mask_add = ops[start_index + kMaskAddIdx];
-  const auto& post_mask_reshape = ops[start_index + kPostMaskReshapeIdx];
-  const auto& softmax = ops[start_index + kSoftmaxIdx];
-  const auto& qk_vcache_slice = ops[start_index + kQKVCacheSliceIdx];
-  const auto& qk_vslice_slice = ops[start_index + kQKVSliceSliceIdx];
-  const auto& qk_vcache_matmul = ops[start_index + kQKVCacheMatmulIdx];
-  const auto& qk_vslice_matmul = ops[start_index + kQKVSliceMatmulIdx];
-  const auto& qkv_add = ops[start_index + kQKVAddIdx];
-  const auto& qkv_reshape = ops[start_index + kQKVReshapeIdx];
-
-  const auto is_connected =
-      [](const OpWrapper& output, size_t output_tensor_index,
-         const OpWrapper& input, size_t input_tensor_index) -> bool {
-    return output.GetOutputTensor(output_tensor_index) ==
-           input.GetInputTensor(input_tensor_index);
-  };
-  if (!(is_connected(q_scale_mul, 0, q_scale_reshape, 0) &&
-        is_connected(q_scale_reshape, 0, q_kcache_matmul, 0) &&
-        is_connected(q_scale_reshape, 0, q_kslice_matmul, 0) &&
-        is_connected(q_kcache_matmul, 0, qk_concat, 0) &&
-        is_connected(q_kslice_matmul, 0, qk_concat, 1) &&
-        is_connected(qk_concat, 0, pre_mask_reshape, 0) &&
-        is_connected(pre_mask_reshape, 0, mask_add, 0) &&
-        is_connected(mask_add, 0, post_mask_reshape, 0) &&
-        is_connected(post_mask_reshape, 0, softmax, 0) &&
-        is_connected(softmax, 0, qk_vcache_slice, 0) &&
-        is_connected(softmax, 0, qk_vslice_slice, 0) &&
-        is_connected(qk_vcache_slice, 0, qk_vcache_matmul, 0) &&
-        is_connected(qk_vslice_slice, 0, qk_vslice_matmul, 0) &&
-        is_connected(qk_vcache_matmul, 0, qkv_add, 0) &&
-        is_connected(qk_vslice_matmul, 0, qkv_add, 1) &&
-        is_connected(qkv_add, 0, qkv_reshape, 0))) {
-    QNN_LOG_WARNING(
-        "[G2G] Failed to check connectivity when doing MHA-SHA transformation "
-        "for FastVLM decode.");
-    return 1;
-  }
-
-  constexpr size_t kSupportedRank = 4;
-  constexpr size_t kUnpackAxis = 1;
-  if (q_scale_mul.GetInputTensor(0).GetRank() != kSupportedRank ||
-      q_kcache_matmul.GetInputTensor(1).GetRank() != kSupportedRank ||
-      q_kslice_matmul.GetInputTensor(1).GetRank() != kSupportedRank ||
-      qk_vcache_matmul.GetInputTensor(1).GetRank() != kSupportedRank ||
-      qk_vslice_matmul.GetInputTensor(1).GetRank() != kSupportedRank ||
-      mask_add.GetInputTensor(1).GetRank() != kSupportedRank ||
-      mask_add.GetInputTensor(1).GetDimension(0) != 1 ||
-      mask_add.GetInputTensor(1).GetDimension(1) != 1) {
-    QNN_LOG_WARNING(
-        "[G2G] Failed to check dimensions when doing MHA-SHA transformation "
-        "for FastVLM decode.");
-    return 1;
-  }
-
-  std::vector<OpWrapper> new_ops;
-
-  auto scale_mul_unpack_outputs = UnpackTensor(
-      tensor_pool, new_ops, q_scale_mul.GetInputTensor(0), kUnpackAxis);
-
-  auto k_slice_unpack_outputs = UnpackTensor(
-      tensor_pool, new_ops, q_kslice_matmul.GetInputTensor(1), kUnpackAxis);
-
-  auto k_cache_unpack_outputs = UnpackTensor(
-      tensor_pool, new_ops, q_kcache_matmul.GetInputTensor(1), kUnpackAxis);
-
-  auto v_cache_unpack_outputs = UnpackTensor(
-      tensor_pool, new_ops, qk_vcache_matmul.GetInputTensor(1), kUnpackAxis);
-
-  auto v_slice_unpack_outputs = UnpackTensor(
-      tensor_pool, new_ops, qk_vslice_matmul.GetInputTensor(1), kUnpackAxis);
-
-  // Build SHA
-  const auto num_attn_head = scale_mul_unpack_outputs.size();
-  const auto num_kv_head = k_slice_unpack_outputs.size();
-  const auto num_attn_per_kv_head = num_attn_head / num_kv_head;
-  std::vector<ConstTensorWrapperRef> sha_outputs;
-  for (size_t i = 0; i < num_kv_head; ++i) {
-    for (size_t j = 0; j < num_attn_per_kv_head; ++j) {
-      const auto& sha_output = BuildSingleSHAByUnpackAxis1(
-          new_ops, tensor_pool, num_attn_per_kv_head,
-          scale_mul_unpack_outputs[i * num_attn_per_kv_head + j],
-          k_cache_unpack_outputs[i], k_slice_unpack_outputs[i],
-          v_cache_unpack_outputs[i], v_slice_unpack_outputs[i], q_scale_mul,
-          q_kcache_matmul, q_kslice_matmul, qk_concat, mask_add,
-          post_mask_reshape, softmax, qk_vcache_slice, qk_vslice_slice,
-          qk_vcache_matmul, qk_vslice_matmul, qkv_add);
-      sha_outputs.emplace_back(sha_output);
-    }
-  }
-
-  // Concat SHA outputs by the second-to-last dimension.
-  const auto concat_axis = sha_outputs[0].get().GetRank() - 2;
+  const auto& qkv_reshape = ops[start_index + pattern_size - 1];
+  // Concat SHA outputs by the last dimension.
+  const auto concat_axis = sha_outputs[0].get().GetRank() - 1;
   auto concat_sha_dims = sha_outputs[0].get().GetDimensions();
   concat_sha_dims[concat_axis] = 0;
   for (const auto& sha_output : sha_outputs) {
@@ -946,6 +581,185 @@ size_t OptimizeMHAFastVlmDecode(
   new_ops.emplace_back(
       CreateReshapeOp(concat_sha_output, qkv_reshape.GetOutputTensor(0)));
 
+  // Clone namespace.
+  CloneNamespace(ops[start_index + kQScaleReshapeIdx], new_ops);
+  // Validate new graph.
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    // Adjust the name to avoid a name collision in the Qnn JSON dump.
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+    // Replace the matched pattern with a newly generated subgraph.
+    size_t step_size = new_ops.size();
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + pattern_size);
+    return step_size;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed. Rolling back to the original graph.");
+  return 1;
+}
+
+size_t OptimizeGqaDecode(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size) {
+  QNN_LOG_INFO("Unified GQA DECODE");
+  const auto is_connected =
+      [&ops, &start_index](int32_t output_op_index, size_t output_tensor_index,
+                           int32_t input_op_index,
+                           size_t input_tensor_index) -> bool {
+    // Input/output op index might be negative.
+    int32_t out_op_idx = static_cast<int32_t>(start_index) + output_op_index;
+    int32_t in_op_idx = static_cast<int32_t>(start_index) + input_op_index;
+    return out_op_idx >= 0 && in_op_idx >= 0 &&
+           ops[out_op_idx].GetOutputTensor(output_tensor_index) ==
+               ops[in_op_idx].GetInputTensor(input_tensor_index);
+  };
+  // Case 1 (offset: 2): mul -> reshape -> gqa
+  // Case 2 (offset: 1): rehsapae -> gqa
+  // Case 3 (offset: 0): other -> gqa
+  size_t offset = 0;
+  if (is_connected(-1, 0, 0, 0) && is_connected(-1, 0, 1, 0) &&
+      ops[start_index - 1].IsOpCode(QnnOpCode::kReshape)) {
+    offset++;
+    start_index--;
+    if (is_connected(-1, 0, 0, 0) &&
+        IsElementWiseMultiply(ops[start_index - 1])) {
+      offset++;
+      start_index--;
+    }
+  }
+  pattern_size += offset;
+  if (offset == 2) {
+    QNN_LOG_INFO(">> mul -> reshape -> GQA");
+  } else if (offset == 1) {
+    QNN_LOG_INFO(">> reshape -> GQA @ %d (is_reshape %d)", start_index,
+                 ops[start_index].IsOpCode(QnnOpCode::kReshape));
+  } else if (offset == 0) {
+    QNN_LOG_INFO(">> -> GQA");
+  } else {
+    QNN_LOG_INFO(">> ERROR: Unknown GQA");
+    return 1;
+  }
+
+  const size_t kQKCacheMatmulIdx = 0 + offset;
+  const size_t kQKSliceMatmulIdx = 1 + offset;
+  const size_t kQKConcatIdx = 2 + offset;
+  const size_t kMaskAddIdx = 3 + offset;
+  const size_t kSoftmaxIdx = 4 + offset;
+  const size_t kQKVCacheSliceIdx = 5 + offset;
+  const size_t kQKVSliceSliceIdx = 6 + offset;
+  const size_t kQKVCacheMatmulIdx = 7 + offset;
+  const size_t kQKVSliceMatmulIdx = 8 + offset;
+  const size_t kQKVAddIdx = 9 + offset;
+  const size_t kQKVReshapeIdx = 10 + offset;
+
+  if (!(ops[start_index + kQKCacheMatmulIdx].GetInputTensor(0) ==
+            ops[start_index + kQKSliceMatmulIdx].GetInputTensor(0) &&
+        is_connected(kQKCacheMatmulIdx, 0, kQKConcatIdx, 0) &&
+        is_connected(kQKSliceMatmulIdx, 0, kQKConcatIdx, 1) &&
+        is_connected(kQKConcatIdx, 0, kMaskAddIdx, 0) &&
+        is_connected(kMaskAddIdx, 0, kSoftmaxIdx, 0) &&
+        is_connected(kSoftmaxIdx, 0, kQKVCacheSliceIdx, 0) &&
+        is_connected(kSoftmaxIdx, 0, kQKVSliceSliceIdx, 0) &&
+        is_connected(kQKVCacheSliceIdx, 0, kQKVCacheMatmulIdx, 0) &&
+        is_connected(kQKVSliceSliceIdx, 0, kQKVSliceMatmulIdx, 0) &&
+        is_connected(kQKVCacheMatmulIdx, 0, kQKVAddIdx, 0) &&
+        is_connected(kQKVSliceMatmulIdx, 0, kQKVAddIdx, 1) &&
+        is_connected(kQKVAddIdx, 0, kQKVReshapeIdx, 0))) {
+    QNN_LOG_WARNING(
+        "[G2G] Failed to check connectivity when doing MHA-SHA transformation "
+        "for GQA decode.");
+    return 1;
+  }
+
+  constexpr size_t kSupportedRank = 4;
+  constexpr size_t kUnpackAxis = 1;
+  size_t split_index = 1;
+  size_t num_q_heads =
+      ops[start_index].GetInputTensor(0).GetDimension(split_index);
+  if (num_q_heads == 1) {
+    split_index = 2;
+    num_q_heads = ops[start_index].GetInputTensor(0).GetDimension(split_index);
+  }
+  const size_t num_kv_heads =
+      ops[start_index + kQKSliceMatmulIdx].GetInputTensor(1).GetDimension(1);
+  // Strict check:
+  // - FastVLM with q head = 14, kv head = 2.
+  // - Kanana with q head = 16, kv head = 8.
+  // - TinyTiny with q head = 4, kv head = 2.
+  //   - Disable q head = 4 and kv head = 1.
+  QNN_LOG_INFO(
+      "[G2G] GQA Optimization (Decode):\n  # Q Heads: %d\n  # K Heads: %d",
+      num_q_heads, num_kv_heads);
+  if (!((num_q_heads == 14 && num_kv_heads == 2) ||
+        (num_q_heads == 16 && num_kv_heads == 8) ||
+        (num_q_heads == 4 && num_kv_heads == 2))) {
+    return 1;
+  }
+  QNN_LOG_INFO("[G2G] GQA Optimization (Decode): Start");
+
+  std::vector<OpWrapper> new_ops;
+  auto q_inputs = SplitTensor(tensor_pool, new_ops,
+                              ops[start_index].GetInputTensor(0), split_index);
+  auto k_cache_outputs = SplitTensor(
+      tensor_pool, new_ops,
+      ops[start_index + kQKCacheMatmulIdx].GetInputTensor(1), kUnpackAxis);
+  auto k_slice_outputs = SplitTensor(
+      tensor_pool, new_ops,
+      ops[start_index + kQKSliceMatmulIdx].GetInputTensor(1), kUnpackAxis);
+  auto v_cache_outputs = SplitTensor(
+      tensor_pool, new_ops,
+      ops[start_index + kQKVCacheMatmulIdx].GetInputTensor(1), kUnpackAxis);
+  auto v_slice_outputs = SplitTensor(
+      tensor_pool, new_ops,
+      ops[start_index + kQKVSliceMatmulIdx].GetInputTensor(1), kUnpackAxis);
+
+  // Build SHA
+  const auto group_size = num_q_heads / num_kv_heads;
+  std::vector<ConstTensorWrapperRef> sha_outputs;
+  for (size_t i = 0; i < num_kv_heads; ++i) {
+    for (size_t j = 0; j < group_size; ++j) {
+      const auto& sha_output = BuildSingleSHAByUnpackAxis1(
+          new_ops, tensor_pool, group_size, q_inputs[i * group_size + j],
+          k_cache_outputs[i], k_slice_outputs[i], v_cache_outputs[i],
+          v_slice_outputs[i],
+          IsElementWiseMultiply(ops[start_index]) ? &ops[start_index] : nullptr,
+          ops[start_index + kQKCacheMatmulIdx],
+          ops[start_index + kQKSliceMatmulIdx], ops[start_index + kQKConcatIdx],
+          ops[start_index + kMaskAddIdx], ops[start_index + kSoftmaxIdx],
+          ops[start_index + kQKVCacheSliceIdx],
+          ops[start_index + kQKVSliceSliceIdx],
+          ops[start_index + kQKVCacheMatmulIdx],
+          ops[start_index + kQKVSliceMatmulIdx], ops[start_index + kQKVAddIdx]);
+      sha_outputs.emplace_back(sha_output);
+    }
+  }
+
+  // Concat SHA outputs by the last dimension.
+  const auto concat_axis = sha_outputs[0].get().GetRank() - 1;
+  auto concat_sha_dims = sha_outputs[0].get().GetDimensions();
+  concat_sha_dims[concat_axis] = 0;
+  for (const auto& sha_output : sha_outputs) {
+    concat_sha_dims[concat_axis] += sha_output.get().GetDimension(concat_axis);
+  }
+  const auto& concat_sha_output = tensor_pool.CloneNativeTensorFrom(
+      ops[start_index + kQKVReshapeIdx].GetInputTensor(0), concat_sha_dims);
+  new_ops.emplace_back(
+      CreateConcatenationOp(sha_outputs, concat_sha_output, concat_axis));
+  new_ops.emplace_back(CreateReshapeOp(
+      concat_sha_output, ops[start_index + kQKVReshapeIdx].GetOutputTensor(0)));
+  // Clone namespace.
+  CloneNamespace(ops[start_index], new_ops);
   // Validate new graph.
   const bool is_valid =
       std::all_of(new_ops.begin(), new_ops.end(),
@@ -959,306 +773,22 @@ size_t OptimizeMHAFastVlmDecode(
     }
     // Replace the matched pattern with a newly generated subgraph.
     size_t step_size = new_ops.size();
+    QNN_LOG_INFO("new_ops size: %d", new_ops.size());
+    QNN_LOG_INFO("%s", new_ops[0].GetName().data());
+    QNN_LOG_INFO("%s %d", ops[start_index].GetName().data(), start_index);
+    for (size_t i = 37; i< 140; ++i) {
+        QNN_LOG_INFO("%d", ops[i].GetOpCode());
+    }
     ops.insert(ops.begin() + start_index + pattern_size,
                std::make_move_iterator(new_ops.begin()),
                std::make_move_iterator(new_ops.end()));
     ops.erase(ops.begin() + start_index,
               ops.begin() + start_index + pattern_size);
-    QNN_LOG_INFO("[G2G] FastVLM decode optimization done.");
+    QNN_LOG_INFO("[G2G] GQA optimization (decode) done.");
     return step_size;
   }
   QNN_LOG_WARNING(
       "[G2G] Validation failed. Rolling back to the original graph.");
-  return 1;
-}
-
-namespace {
-
-bool OptimizeMHATinyGemmaPrefill(
-    std::vector<OpWrapper>& new_ops, TensorPool& tensor_pool,
-    const OpWrapper& mul, const OpWrapper& transpoe_0,
-    const OpWrapper& reshape_0, const OpWrapper& matmul_k0,
-    const OpWrapper& matmul_k1, const OpWrapper& concat, const OpWrapper& add_0,
-    const OpWrapper& softmax, const OpWrapper& slice_0,
-    const OpWrapper& slice_1, const OpWrapper& matmul_v0,
-    const OpWrapper& matmul_v1, const OpWrapper& add_1,
-    const OpWrapper& reshape_1, const OpWrapper& transpose_1,
-    const OpWrapper& reshape_2) {
-  const auto is_connected =
-      [](const OpWrapper& output, size_t output_tensor_index,
-         const OpWrapper& input, size_t input_tensor_index) -> bool {
-    return output.GetOutputTensor(output_tensor_index) ==
-           input.GetInputTensor(input_tensor_index);
-  };
-  if (!(is_connected(mul, 0, transpoe_0, 0) &&
-        is_connected(transpoe_0, 0, reshape_0, 0) &&
-        is_connected(reshape_0, 0, matmul_k0, 0) &&
-        is_connected(reshape_0, 0, matmul_k1, 0) &&
-        is_connected(matmul_k0, 0, concat, 0) &&
-        is_connected(matmul_k1, 0, concat, 1) &&
-        is_connected(concat, 0, add_0, 0) &&
-        is_connected(add_0, 0, softmax, 0) &&
-        is_connected(softmax, 0, slice_0, 0) &&
-        is_connected(softmax, 0, slice_1, 0) &&
-        is_connected(slice_0, 0, matmul_v0, 0) &&
-        is_connected(slice_1, 0, matmul_v1, 0) &&
-        is_connected(matmul_v0, 0, add_1, 0) &&
-        is_connected(matmul_v1, 0, add_1, 1) &&
-        is_connected(add_1, 0, reshape_1, 0) &&
-        is_connected(reshape_1, 0, transpose_1, 0) &&
-        is_connected(transpose_1, 0, reshape_2, 0) &&
-        IsElementWiseMultiply(mul) && IsElementWiseAdd(add_0) &&
-        IsElementWiseAdd(add_1))) {
-    return false;
-  }
-
-  QNN_LOG_INFO("[G2G] MHA optimization (TinyGemma Prefill)");
-  const auto& pattern_input = mul.GetInputTensor(0);
-  const auto& pattern_output = reshape_2.GetOutputTensor(0);
-
-  // Transpose
-  auto transpose_output_dims = transpoe_0.GetOutputTensor(0).GetDimensions();
-  const auto& transpose_output =
-      tensor_pool.CloneNativeTensorFrom(pattern_input, transpose_output_dims);
-  const std::array<ConstTensorWrapperRef, 1> transpose_inputs = {pattern_input};
-  const std::array<ConstTensorWrapperRef, 1> transpose_outputs = {
-      transpose_output};
-  auto& new_transpose_0 = new_ops.emplace_back(
-      CreateOpWithSameParams(transpoe_0, transpose_inputs, transpose_outputs));
-
-  // Process MHA to SHA transformation.
-  const int num_heads = pattern_input.GetDimension(2);
-  const auto& mha_input = new_transpose_0.GetOutputTensor(0);
-
-  // Prepare inputs for num_heads SHAs.
-  std::vector<ConstTensorWrapperRef> sha_inputs;
-  sha_inputs.reserve(num_heads);
-  auto sha_input_dims = mha_input.GetDimensions();
-  sha_input_dims[1] /= num_heads;
-  for (size_t i = 0; i < num_heads; ++i) {
-    const auto& sha_input =
-        tensor_pool.CloneNativeTensorFrom(mha_input, sha_input_dims);
-    sha_inputs.emplace_back(sha_input);
-  }
-
-  // Split
-  std::vector<std::uint32_t> split_indice;
-  split_indice.reserve(num_heads);
-  for (std::uint32_t i = 1; i < num_heads; i++) {
-    split_indice.emplace_back(i * mha_input.GetDimension(1) / num_heads);
-  }
-  const auto& split_indice_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, {},
-      {static_cast<std::uint32_t>(split_indice.size())},
-      sizeof(std::uint32_t) * split_indice.size(), split_indice.data());
-  auto& split = new_ops.emplace_back(
-      CreateSplitOp(mha_input, sha_inputs, 1, split_indice_tensor));
-  CloneNamespace(mul, split);
-
-  // Split Mask for Add
-  std::vector<ConstTensorWrapperRef> splited_masks;
-  splited_masks.reserve(num_heads);
-  const auto& concated_mask = add_0.GetInputTensor(1);
-  auto splited_mask_dims = concated_mask.GetDimensions();
-  splited_mask_dims[2] /= num_heads;
-  for (size_t i = 0; i < num_heads; ++i) {
-    splited_masks.emplace_back(
-        tensor_pool.CloneNativeTensorFrom(concated_mask, splited_mask_dims));
-  }
-  std::vector<std::uint32_t> split_mask_indice;
-  split_mask_indice.reserve(num_heads);
-  for (std::uint32_t i = 1; i < num_heads; i++) {
-    split_mask_indice.emplace_back(i * concated_mask.GetDimension(2) /
-                                   num_heads);
-  }
-  const auto& split_mask_indice_tensor = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_UINT_32, {},
-      {static_cast<std::uint32_t>(split_mask_indice.size())},
-      sizeof(std::uint32_t) * split_mask_indice.size(),
-      split_mask_indice.data());
-  new_ops.emplace_back(
-      CreateSplitOp(concated_mask, splited_masks, 2, split_mask_indice_tensor));
-
-  // build num_head SHAs
-  std::vector<ConstTensorWrapperRef> sha_outputs;
-  sha_outputs.reserve(num_heads);
-  for (size_t i = 0; i < num_heads; ++i) {
-    const auto& sha_output =
-        BuildSingleSHA(new_ops, tensor_pool, sha_inputs[i], splited_masks[i],
-                       num_heads, mul, matmul_k0, matmul_k1, concat, add_0,
-                       softmax, slice_0, slice_1, matmul_v0, matmul_v1, add_1);
-    sha_outputs.emplace_back(sha_output);
-  }
-
-  // Concat
-  auto concat_output_dims = sha_outputs[0].get().GetDimensions();
-  concat_output_dims[3] *= num_heads;
-  const auto& concat_output =
-      tensor_pool.CloneNativeTensorFrom(sha_outputs[0], concat_output_dims);
-  auto& concat_sha_output = new_ops.emplace_back(
-      CreateConcatenationOp(sha_outputs, concat_output, 3));
-  CloneNamespace(mul, concat_sha_output);
-
-  // Reshape
-  auto& new_reshape =
-      new_ops.emplace_back(CreateReshapeOp(concat_output, pattern_output));
-  CloneNamespace(mul, new_reshape);
-  return true;
-}
-
-}  // namespace
-
-size_t OptimizeMHATinyGemmaPrefillPatternWithGlobalMask(
-    std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
-  constexpr size_t kMulIndex = 0;
-  constexpr size_t kTranspose0Index = 1;
-  constexpr size_t kReshape0Index = 2;
-  constexpr size_t kMatmulK0Index = 3;
-  constexpr size_t kMatmulK1Index = 4;
-  constexpr size_t kConcatIndex = 5;
-  constexpr size_t kConcatMaskIndex = 6;
-  constexpr size_t kReshapeMaskIndex = 7;
-  constexpr size_t kAdd0Index = 8;
-  constexpr size_t kSoftmaxIndex = 9;
-  constexpr size_t kSlice0Index = 10;
-  constexpr size_t kSlice1Index = 11;
-  constexpr size_t kMatmulV0Index = 12;
-  constexpr size_t kMatmulV1Index = 13;
-  constexpr size_t kAdd1Index = 14;
-  constexpr size_t kReshape1Index = 15;
-  constexpr size_t kTranspose1Index = 16;
-  constexpr size_t kReshape2Index = 17;
-
-  const auto& mul = ops[start_index + kMulIndex];
-  const auto& transpose_0 = ops[start_index + kTranspose0Index];
-  const auto& reshape_0 = ops[start_index + kReshape0Index];
-  const auto& matmul_k0 = ops[start_index + kMatmulK0Index];
-  const auto& matmul_k1 = ops[start_index + kMatmulK1Index];
-  const auto& concat = ops[start_index + kConcatIndex];
-  const auto& add_0 = ops[start_index + kAdd0Index];
-  const auto& softmax = ops[start_index + kSoftmaxIndex];
-  const auto& slice_0 = ops[start_index + kSlice0Index];
-  const auto& slice_1 = ops[start_index + kSlice1Index];
-  const auto& matmul_v0 = ops[start_index + kMatmulV0Index];
-  const auto& matmul_v1 = ops[start_index + kMatmulV1Index];
-  const auto& add_1 = ops[start_index + kAdd1Index];
-  const auto& reshape_1 = ops[start_index + kReshape1Index];
-  const auto& transpose_1 = ops[start_index + kTranspose1Index];
-  const auto& reshape_2 = ops[start_index + kReshape2Index];
-
-  const auto& mask_concat = ops[start_index + kConcatMaskIndex];
-  const auto& mask_reshape = ops[start_index + kReshapeMaskIndex];
-  if (mask_concat.GetOutputTensor(0) != mask_reshape.GetInputTensor(0) ||
-      mask_reshape.GetOutputTensor(0) != add_0.GetInputTensor(1)) {
-    return 1;
-  }
-
-  std::vector<OpWrapper> new_ops;
-  if (!OptimizeMHATinyGemmaPrefill(
-          new_ops, tensor_pool, mul, transpose_0, reshape_0, matmul_k0,
-          matmul_k1, concat, add_0, softmax, slice_0, slice_1, matmul_v0,
-          matmul_v1, add_1, reshape_1, transpose_1, reshape_2)) {
-    return 1;
-  }
-
-  const bool is_valid =
-      std::all_of(new_ops.begin(), new_ops.end(),
-                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
-                    return validate_op_config(op_wrapper);
-                  });
-  if (is_valid) {
-    // Adjust the name to avoid a name collision in the Qnn JSON dump.
-    for (size_t i = 0; i < new_ops.size(); ++i) {
-      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
-    }
-    // Replace the matched pattern with a newly generated subgraph.
-    size_t step_size = new_ops.size() + 2;
-    ops.insert(ops.begin() + start_index + pattern_size,
-               std::make_move_iterator(new_ops.begin()),
-               std::make_move_iterator(new_ops.end()));
-    // Only keep mask_concat and mask_reshape
-    ops.erase(ops.begin() + start_index + kAdd0Index,
-              ops.begin() + start_index + pattern_size);
-    ops.erase(ops.begin() + start_index,
-              ops.begin() + start_index + kConcatMaskIndex);
-    return step_size;
-  }
-  QNN_LOG_WARNING(
-      "[G2G] Validation failed in "
-      "OptimizeMHATinyGemmaPrefillPatternWithGlobalMask. Rolling back to the "
-      "original graph.");
-  return 1;
-}
-
-size_t OptimizeMHATinyGemmaPrefillPattern(
-    std::function<bool(OpWrapper&)> validate_op_config,
-    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
-    size_t pattern_size) {
-  constexpr size_t kMulIndex = 0;
-  constexpr size_t kTranspose0Index = 1;
-  constexpr size_t kReshape0Index = 2;
-  constexpr size_t kMatmulK0Index = 3;
-  constexpr size_t kMatmulK1Index = 4;
-  constexpr size_t kConcatIndex = 5;
-  constexpr size_t kAdd0Index = 6;
-  constexpr size_t kSoftmaxIndex = 7;
-  constexpr size_t kSlice0Index = 8;
-  constexpr size_t kSlice1Index = 9;
-  constexpr size_t kMatmulV0Index = 10;
-  constexpr size_t kMatmulV1Index = 11;
-  constexpr size_t kAdd1Index = 12;
-  constexpr size_t kReshape1Index = 13;
-  constexpr size_t kTranspose1Index = 14;
-  constexpr size_t kReshape2Index = 15;
-  const auto& mul = ops[start_index + kMulIndex];
-  const auto& transpose_0 = ops[start_index + kTranspose0Index];
-  const auto& reshape_0 = ops[start_index + kReshape0Index];
-  const auto& matmul_k0 = ops[start_index + kMatmulK0Index];
-  const auto& matmul_k1 = ops[start_index + kMatmulK1Index];
-  const auto& concat = ops[start_index + kConcatIndex];
-  const auto& add_0 = ops[start_index + kAdd0Index];
-  const auto& softmax = ops[start_index + kSoftmaxIndex];
-  const auto& slice_0 = ops[start_index + kSlice0Index];
-  const auto& slice_1 = ops[start_index + kSlice1Index];
-  const auto& matmul_v0 = ops[start_index + kMatmulV0Index];
-  const auto& matmul_v1 = ops[start_index + kMatmulV1Index];
-  const auto& add_1 = ops[start_index + kAdd1Index];
-  const auto& reshape_1 = ops[start_index + kReshape1Index];
-  const auto& transpose_1 = ops[start_index + kTranspose1Index];
-  const auto& reshape_2 = ops[start_index + kReshape2Index];
-
-  std::vector<OpWrapper> new_ops;
-  if (!OptimizeMHATinyGemmaPrefill(
-          new_ops, tensor_pool, mul, transpose_0, reshape_0, matmul_k0,
-          matmul_k1, concat, add_0, softmax, slice_0, slice_1, matmul_v0,
-          matmul_v1, add_1, reshape_1, transpose_1, reshape_2)) {
-    return 1;
-  }
-
-  const bool is_valid =
-      std::all_of(new_ops.begin(), new_ops.end(),
-                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
-                    return validate_op_config(op_wrapper);
-                  });
-  if (is_valid) {
-    // Adjust the name to avoid a name collision in the Qnn JSON dump.
-    for (size_t i = 0; i < new_ops.size(); ++i) {
-      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
-    }
-    // Replace the matched pattern with a newly generated subgraph.
-    size_t step_size = new_ops.size();
-    ops.insert(ops.begin() + start_index + pattern_size,
-               std::make_move_iterator(new_ops.begin()),
-               std::make_move_iterator(new_ops.end()));
-    ops.erase(ops.begin() + start_index,
-              ops.begin() + start_index + pattern_size);
-    return step_size;
-  }
-  QNN_LOG_WARNING(
-      "[G2G] Validation failed in OptimizeMHATinyGemmaPrefillPattern. Rolling "
-      "back to the original graph.");
   return 1;
 }
 
@@ -1529,4 +1059,444 @@ size_t OptimizeMHAAttn(std::function<bool(OpWrapper&)> validate_op_config,
   return 1;
 }
 
+size_t SimplifyMaskingAdd(std::function<bool(OpWrapper&)> validate_op_config,
+                          std::vector<OpWrapper>& ops, size_t start_index,
+                          TensorPool& tensor_pool, size_t pattern_size) {
+  constexpr size_t kMaskingPreReshapeIndex = 0;
+  constexpr size_t kMaskingAddIndex = 1;
+  constexpr size_t kMaskingPostReshapeIndex = 2;
+  if (!(IS_CONNECTED(kMaskingPreReshapeIndex, 0, kMaskingAddIndex, 0)) &&
+      (IS_CONNECTED(kMaskingAddIndex, 0, kMaskingPostReshapeIndex, 0))) {
+    return 1;
+  }
+  auto& add_input =
+      ops[start_index + kMaskingPreReshapeIndex].GetInputTensor(0);
+  auto mask = &ops[start_index + kMaskingAddIndex].GetInputTensor(1);
+  QNN_LOG_INFO("[G2G] Simplify masking");
+  std::vector<OpWrapper> new_ops;
+  for (size_t index = 0; index < mask->GetRank(); ++index) {
+    size_t mask_dim = mask->GetDimension(index);
+    size_t input_dim = add_input.GetDimension(index);
+    if (!(mask_dim == input_dim || mask_dim == 1 || input_dim == 1)) {
+      std::vector<qnn::ConstTensorWrapperRef> inputs;
+      size_t broadcast_size = input_dim / mask_dim;
+      inputs.reserve(broadcast_size);
+      for (size_t i = 0; i < broadcast_size; ++i) {
+        inputs.emplace_back(*mask);
+      }
+      auto new_dims = mask->GetDimensions();
+      new_dims[index] = input_dim;
+      mask = &tensor_pool.CloneNativeTensorFrom(*mask, new_dims);
+      new_ops.emplace_back(CreateConcatenationOp(inputs, *mask, index));
+      QNN_LOG_INFO("[G2G] Simplify masking w/ Add @ %d", index);
+      break;
+    }
+  }
+  new_ops.emplace_back(CreateElementWiseAddOp(
+      add_input, *mask,
+      ops[start_index + kMaskingPostReshapeIndex].GetOutputTensor(0)));
+  CloneNamespace(ops[start_index], new_ops);
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    // Adjust the name to avoid a name collision in the Qnn JSON dump.
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+    // Replace the matched pattern with a newly generated subgraph.
+    size_t step_size = new_ops.size();
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + pattern_size);
+  } else {
+    QNN_LOG_WARNING(
+        "[G2G] Validation failed. Rolling back to the original graph.");
+  }
+  return 1;
+}
+
+size_t DuplicateOrRemoveConcate(
+    std::function<bool(OpWrapper&)> validate_op_config,
+    std::vector<OpWrapper>& ops, size_t start_index, TensorPool& tensor_pool,
+    size_t pattern_size) {
+  constexpr size_t kMaskingConcatIndex = 0;
+  constexpr size_t kMaskingAddIndex = 1;
+  const auto& concat_op = ops[start_index + kMaskingConcatIndex];
+  const auto& concat_op_name = concat_op.GetName();
+  const auto& mask = concat_op.GetInputTensor(0);
+  const auto& concat_output = concat_op.GetOutputTensor(0);
+  const auto& add_op = ops[start_index + kMaskingAddIndex];
+  if (!(IS_CONNECTED(kMaskingConcatIndex, 0, kMaskingAddIndex, 1) &&
+        IsElementWiseAdd(add_op))) {
+    return 1;
+  }
+  // Check if this concat is only for broadcast.
+  size_t num_elements = concat_output.GetTensorNumElements();
+  size_t input_cnt = 0;
+  while (num_elements > 0) {
+    auto& concat_input = concat_op.GetInputTensor(input_cnt);
+    if (concat_input != mask) {
+      return 1;
+    }
+    num_elements -= concat_input.GetTensorNumElements();
+    input_cnt++;
+  }
+
+  // Find all add indices.
+  std::vector<size_t> indices;
+  for (size_t i = ops.size() - 1; i-- > 0;) {
+    if (IsElementWiseAdd(ops[i]) && concat_output == ops[i].GetInputTensor(1)) {
+      indices.push_back(i);
+    }
+  }
+  if (indices.size() <= 1) {
+    return 1;
+  }
+
+  bool can_remove_concat = true;
+  for (size_t index = 0; index < mask.GetRank(); ++index) {
+    size_t mask_dim = mask.GetDimension(index);
+    size_t input_dim = add_op.GetInputTensor(0).GetDimension(index);
+    if (!(mask_dim == input_dim || mask_dim == 1 || input_dim == 1)) {
+      can_remove_concat = false;
+      break;
+    }
+  }
+
+  QNN_LOG_INFO("[G2G] %s concat", can_remove_concat ? "Remove" : "Duplicate");
+  if (can_remove_concat) {
+    for (size_t i : indices) {
+      // Add
+      auto add = CreateElementWiseAddOp(ops[i].GetInputTensor(0), mask,
+                                        ops[i].GetOutputTensor(0));
+      CloneNamespace(ops[i], add);
+      ops[i] = std::move(add);
+      ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+      validate_op_config(ops[i]);
+    }
+  } else {
+    // Add concat ops.
+    const std::vector<qnn::ConstTensorWrapperRef> concat_inputs(
+        input_cnt, concat_op.GetInputTensor(0));
+    for (size_t i : indices) {
+      const auto& duplicated_concat_output =
+          tensor_pool.CloneNativeTensorFrom(concat_output);
+      // Add
+      auto add = CreateElementWiseAddOp(ops[i].GetInputTensor(0),
+                                        duplicated_concat_output,
+                                        ops[i].GetOutputTensor(0));
+      CloneNamespace(ops[i], add);
+      ops[i] = std::move(add);
+      ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+      validate_op_config(ops[i]);
+
+      // Concat
+      auto concat = CreateOpWithSameParams(concat_op, concat_inputs,
+                                           {duplicated_concat_output});
+      CloneNamespace(ops[i], concat);
+      ops.insert(ops.begin() + i, concat);
+      validate_op_config(ops[i]);
+      ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+  }
+  // TODO(jiunkaiy): Can be more efficient, but keep this saftest way for now.
+  ops.erase(std::remove_if(ops.begin(), ops.end(),
+                           [&ops, &concat_op_name](const auto& op) {
+                             return op.GetName() == concat_op_name;
+                           }),
+            ops.end());
+  return pattern_size;
+}
+
+size_t FuseConcatReshape(std::function<bool(OpWrapper&)> validate_op_config,
+                         std::vector<OpWrapper>& ops, size_t start_index,
+                         TensorPool& tensor_pool, size_t pattern_size) {
+  constexpr size_t kFusedConcatIndex = 0;
+  constexpr size_t kFusedReshapeIndex = 1;
+  auto& concat = ops[start_index + kFusedConcatIndex];
+  auto& reshape = ops[start_index + kFusedReshapeIndex];
+
+  // Connection check
+  if (!IS_CONNECTED(kFusedConcatIndex, 0, kFusedReshapeIndex, 0)) {
+    return 1;
+  }
+  // Check the indcies with different dim.
+  const auto& reshape_input_dims = reshape.GetInputTensor(0).GetDimensions();
+  const auto& reshape_output_dims = reshape.GetOutputTensor(0).GetDimensions();
+  std::vector<size_t> diff_indices;
+  diff_indices.reserve(
+      std::max(reshape_output_dims.size(), reshape_output_dims.size()));
+  for (size_t i = 0; i < reshape_input_dims.size(); ++i) {
+    if (reshape_input_dims[i] != reshape_output_dims[i]) {
+      diff_indices.emplace_back(i);
+    }
+  }
+  constexpr size_t kDiffIndices = 2;
+  if (diff_indices.size() != kDiffIndices ||
+      reshape_output_dims[diff_indices[0]] != 1) {
+    return 1;
+  }
+
+  // Change concat axis form diff_indices[0] to diff_indices[1], and remove
+  // reshape. Example: 2, 128 -> 1, 256 => concat at the 2nd axis instead of the
+  // 1st.
+  QNN_LOG_INFO("[G2G] convert-reshape fusion");
+  std::vector<ConstTensorWrapperRef> concat_inputs;
+  concat_inputs.reserve(concat.GetInputTensorSize());
+  for (size_t i = 0; i < concat.GetInputTensorSize(); ++i) {
+    concat_inputs.emplace_back(concat.GetInputTensor(i));
+  }
+  auto new_concat = CreateConcatenationOp(
+      concat_inputs, {reshape.GetOutputTensor(0)}, diff_indices[1]);
+  new_concat.AddSuffixToName(absl::StrCat("_qcg2g_0"));
+  CloneNamespace(concat, new_concat);
+  if (validate_op_config(new_concat)) {
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + pattern_size);
+    ops.emplace(ops.begin() + start_index, std::move(new_concat));
+  } else {
+    QNN_LOG_WARNING(
+        "[G2G] Validation failed. Rolling back to the original graph.");
+  }
+  return 1;
+}
+
+size_t TileMatMul(std::function<bool(OpWrapper&)> validate_op_config,
+                  std::vector<OpWrapper>& ops, size_t start_index,
+                  TensorPool& tensor_pool, size_t pattern_size) {
+  constexpr size_t kLargeMatMulIndex = 0;
+  auto& matmul = ops[start_index + kLargeMatMulIndex];
+  auto& input = matmul.GetInputTensor(0);
+  auto& input_dims = input.GetDimensions();
+  auto& large_cache = matmul.GetInputTensor(1);
+  auto& large_cache_dims = large_cache.GetDimensions();
+  auto& output = matmul.GetOutputTensor(0);
+  // Size check
+  if (large_cache_dims.size() != 4) {
+    return 1;
+  }
+  std::vector<OpWrapper> new_ops;
+  // Orignal graph:
+  // In[0]: [..., M, K]
+  // In[1]: [..., K, N]
+  // Out[0]: [..., M, N]
+  QNN_LOG_INFO("(M, K, N) = (%d, %d, %d)", input_dims[2], input_dims[3], large_cache_dims[3]);
+  using GemmDim = std::tuple<size_t, size_t, size_t>;
+  GemmDim mkn(input_dims[2], input_dims[3], large_cache_dims[3]);
+  size_t tiling_size = 0;
+//   if (mkn == GemmDim(128, 256, 4095)) {
+//     tiling_size = 32;
+//   } else if (mkn == GemmDim(128, 4095, 256)) {
+//     tiling_size = 128;
+//   } else if (mkn == GemmDim(128, 4095, 512)) {
+//     tiling_size = 64;
+//   } else if (mkn == GemmDim(128, 512, 4095)) {
+//     tiling_size = 32;
+//   } else if (mkn == GemmDim(1, 256, 4095)) {
+//     tiling_size = 0;
+//   } else if (mkn == GemmDim(1, 4095, 256)) {
+//     tiling_size = 64;
+//   } else if (mkn == GemmDim(1, 4095, 512)) {
+//     tiling_size = 64;
+//   } else if (mkn == GemmDim(1, 512, 4095)) {
+//     tiling_size = 32;
+//   }
+  if (mkn == GemmDim(128, 4095, 512)) {
+    tiling_size = 256;
+  }
+  if (mkn == GemmDim(128, 4095, 256)) {
+    tiling_size = 256;
+  }
+  if (tiling_size == 0) {
+    QNN_LOG_WARNING("tiling size = 0, skipping G2G");
+  }
+  if (large_cache_dims[3] == 4095) {
+    QNN_LOG_INFO(
+        "Found MatMul (Tile axis: 3):\n>> Name: %s\n  In[0] Dims: [%d, %d, "
+        "%d, %d]\n  In[1] Dims: [%d, %d, %d, %d]",
+        matmul.GetName().data(), input_dims[0], input_dims[1], input_dims[2],
+        input_dims[3], large_cache_dims[0], large_cache_dims[1],
+        large_cache_dims[2], large_cache_dims[3]);
+    static constexpr size_t kSplitMatMulConcatTileSize = 32;
+    size_t tsize = (tiling_size) ? tiling_size : kSplitMatMulConcatTileSize;
+    // After G2G:
+    // Concat(
+    //   ([..., M, K] * [..., K, Nt]),
+    //   ([..., M, K] * [..., K, Nt]),
+    //   ...,)
+    // = [..., M, N]
+    auto k = SplitTensor(tensor_pool, new_ops, matmul.GetInputTensor(1), 3, tsize);
+    std::vector<ConstTensorWrapperRef> matmul_outputs;
+    for (size_t i = 0; i < k.size(); ++i) {
+      auto output_dims = output.GetDimensions();
+      output_dims[3] = k[i].get().GetDimension(3);
+      auto& matmul_output = matmul_outputs.emplace_back(
+          tensor_pool.CloneNativeTensorFrom(output, output_dims));
+      new_ops.emplace_back(CreateOpWithSameParams(
+          matmul, {matmul.GetInputTensor(0), k[i]}, {matmul_output}));
+    }
+    new_ops.emplace_back(CreateConcatenationOp(matmul_outputs, output, 3));
+  } else if (input_dims[3] == 4095 && large_cache_dims[2] == 4095) {
+    QNN_LOG_INFO(
+        "Found MatMul (Tile axis: 2):\n>> Name: %s\n  In[0] Dims: [%d, %d, %d, "
+        "%d]\n  In[1] Dims: [%d, %d, %d, %d]",
+        matmul.GetName().data(), input_dims[0], input_dims[1], input_dims[2],
+        input_dims[3], large_cache_dims[0], large_cache_dims[1],
+        large_cache_dims[2], large_cache_dims[3]);
+    // After G2G:
+    // ([..., M, Kt] * [..., Kt, N])
+    // + ([..., M, Kt] * [..., Kt, N])
+    // + ...
+    // = [..., M, N]
+    static constexpr size_t kSplitMatMulAddTileSize = 128;
+    size_t tsize = (tiling_size) ? tiling_size : kSplitMatMulAddTileSize;
+    auto inputs =
+        SplitTensor(tensor_pool, new_ops, matmul.GetInputTensor(0), 3, tsize);
+    auto v =
+        SplitTensor(tensor_pool, new_ops, matmul.GetInputTensor(1), 2, tsize);
+    // Create one MatMul per (inputs[i], v[i]) split pair.
+    // Each produces [..., M, N] — same shape as the full output.
+    std::vector<ConstTensorWrapperRef> matmul_outputs;
+    matmul_outputs.reserve(inputs.size());
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      auto& mm_output = matmul_outputs.emplace_back(
+          tensor_pool.CloneNativeTensorFrom(output, output.GetDimensions()));
+      new_ops.emplace_back(
+          CreateOpWithSameParams(matmul, {inputs[i], v[i]}, {mm_output}));
+    }
+    // Define QNN_MATMUL_ADDER_TREE to use a balanced binary adder tree
+    // (lower graph depth, better parallelism on NPU).
+    // Leave undefined to use a sequential left-to-right reduction chain
+    // (simpler graph, same arithmetic result).
+// #define QNN_MATMUL_ADDER_TREE
+    if (matmul_outputs.size() == 1) {
+      // Only one tile (K <= kSplitMatMulAddTileSize): redo the sole matmul
+      // directly into `output` instead of the intermediate tensor.
+      new_ops.pop_back();
+      new_ops.emplace_back(
+          CreateOpWithSameParams(matmul, {inputs[0], v[0]}, {output}));
+    } else {
+#ifdef QNN_MATMUL_ADDER_TREE
+      // Binary adder tree: pair up results level by level until one remains.
+      // Depth = ceil(log2(N)); odd element at each level is promoted as-is.
+      std::vector<ConstTensorWrapperRef> add_level = matmul_outputs;
+      while (add_level.size() > 2) {
+        std::vector<ConstTensorWrapperRef> next_level;
+        next_level.reserve((add_level.size() + 1) / 2);
+        for (size_t i = 0; i + 1 < add_level.size(); i += 2) {
+          auto& add_output = next_level.emplace_back(
+              tensor_pool.CloneNativeTensorFrom(output, output.GetDimensions()));
+          new_ops.emplace_back(CreateElementWiseAddOp(
+              add_level[i], add_level[i + 1], add_output));
+        }
+        if (add_level.size() % 2 == 1) {
+          next_level.push_back(add_level.back());
+        }
+        add_level = std::move(next_level);
+      }
+      // Final pair — wire directly to the original `output` tensor.
+      new_ops.emplace_back(
+          CreateElementWiseAddOp(add_level[0], add_level[1], output));
+#else
+      // Sequential chain: accumulate left-to-right.
+      // acc = matmul_outputs[0] + matmul_outputs[1] + ... + matmul_outputs[N-1]
+      ConstTensorWrapperRef acc = matmul_outputs[0];
+      for (size_t i = 1; i + 1 < matmul_outputs.size(); ++i) {
+        auto& add_output =
+            tensor_pool.CloneNativeTensorFrom(output, output.GetDimensions());
+        new_ops.emplace_back(
+            CreateElementWiseAddOp(acc, matmul_outputs[i], add_output));
+        acc = add_output;
+      }
+      // Final add — wire directly to the original `output` tensor.
+      new_ops.emplace_back(CreateElementWiseAddOp(
+          acc, matmul_outputs.back(), output));
+#endif  // QNN_MATMUL_ADDER_TREE
+    }
+  } else {
+    return 1;
+  }
+  static size_t matmul_tiling_cnt = 0;
+  CloneNamespace(matmul, new_ops,
+                 absl::StrCat("matmul_tiling_", matmul_tiling_cnt++));
+  // Validate new graph.
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](::qnn::OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    // Adjust the name to avoid a name collision in the Qnn JSON dump.
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(
+          absl::StrCat("_qcg2g_", i * matmul_tiling_cnt));
+    }
+    // Replace the matched pattern with a newly generated subgraph.
+    size_t step_size = new_ops.size();
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + pattern_size);
+    QNN_LOG_INFO("[G2G] Matmul Tiling done.");
+    return step_size;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed. Rolling back to the original graph.");
+  return 1;
+}
+
+size_t RevertMulTranspose(std::function<bool(OpWrapper&)> validate_op_config,
+                          std::vector<OpWrapper>& ops, size_t start_index,
+                          TensorPool& tensor_pool, size_t pattern_size) {
+  static constexpr size_t kRevertedMulIndex = 0;
+  static constexpr size_t kRevertedTransposeIndex = 1;
+  const auto& mul = ops[start_index + kRevertedMulIndex];
+  const auto& transpose = ops[start_index + kRevertedTransposeIndex];
+
+  if (!IsElementWiseMultiply(mul)) return 1;
+  if (!IS_CONNECTED(kRevertedMulIndex, 0, kRevertedTransposeIndex, 0)) return 1;
+  const auto& const_val =
+      ops[start_index + kRevertedMulIndex].GetInputTensor(1);
+  if (!const_val.IsTensorStatic()) return 1;
+  const auto& const_val_dims = const_val.GetDimensions();
+  if (!(const_val_dims.size() == 1 && const_val_dims[0] == 1)) return 1;
+  QNN_LOG_INFO("[G2G] Revert Mul Transpose");
+  const auto& transpose_out = tensor_pool.CloneNativeTensorFrom(
+      mul.GetInputTensor(0), transpose.GetOutputTensor(0).GetDimensions());
+  std::vector<OpWrapper> new_ops =
+      MakeVector(CreateOpWithSameParams(transpose, {mul.GetInputTensor(0)},
+                                        {transpose_out}),
+                 CreateElementWiseMulOp(transpose_out, const_val,
+                                        transpose.GetOutputTensor(0)));
+  // Validate new graph.
+  const bool is_valid =
+      std::all_of(new_ops.begin(), new_ops.end(),
+                  [validate_op_config](::qnn::OpWrapper& op_wrapper) -> bool {
+                    return validate_op_config(op_wrapper);
+                  });
+  if (is_valid) {
+    // Adjust the name to avoid a name collision in the Qnn JSON dump.
+    for (size_t i = 0; i < new_ops.size(); ++i) {
+      new_ops[i].AddSuffixToName(absl::StrCat("_qcg2g_", i));
+    }
+    // Replace the matched pattern with a newly generated subgraph.
+    size_t step_size = new_ops.size();
+    ops.insert(ops.begin() + start_index + pattern_size,
+               std::make_move_iterator(new_ops.begin()),
+               std::make_move_iterator(new_ops.end()));
+    ops.erase(ops.begin() + start_index,
+              ops.begin() + start_index + pattern_size);
+    QNN_LOG_INFO("[G2G] Revert Mul Transpose done.");
+    return step_size;
+  }
+  QNN_LOG_WARNING(
+      "[G2G] Validation failed. Rolling back to the original graph.");
+  return 1;
+}
 }  // namespace qnn
