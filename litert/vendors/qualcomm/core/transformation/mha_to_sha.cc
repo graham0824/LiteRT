@@ -244,9 +244,13 @@ const TensorWrapper& BuildDotProductAttention(
       q_kcache_matmul.GetOutputTensor(0), q_kcache_matmul_output_dims);
   const size_t k_cache_concat_axis = k_cache.GetRank() - 1;
   const size_t k_cache_tiling_dim = k_cache.GetDimension(k_cache_concat_axis);
-  if (k_cache_tiling_dim > kTilingSize &&
-      k_cache_tiling_dim % kTilingSize == 0) {
-    const size_t num_k_cache_tiles = k_cache_tiling_dim / kTilingSize;
+  if (k_cache_tiling_dim > kTilingSize) {
+    const size_t num_full_tiles = k_cache_tiling_dim / kTilingSize;
+    const size_t k_cache_remainder = k_cache_tiling_dim % kTilingSize;
+    const size_t num_k_cache_tiles =
+        num_full_tiles + (k_cache_remainder == 0 ? 0 : 1);
+    QNN_LOG_INFO("tile k cache into %d tiles", num_k_cache_tiles);
+
     auto k_cache_tile_dims = k_cache.GetDimensions();
     k_cache_tile_dims[k_cache_concat_axis] = kTilingSize;
     auto q_kcache_matmul_tile_output_dims =
@@ -256,11 +260,23 @@ const TensorWrapper& BuildDotProductAttention(
     std::vector<ConstTensorWrapperRef> q_kcache_matmul_tile_outputs;
     q_kcache_matmul_tile_outputs.reserve(num_k_cache_tiles);
 
-    for (size_t i = 0; i < num_k_cache_tiles; ++i) {
+    for (size_t i = 0; i < num_full_tiles; ++i) {
       const auto& k_cache_tile =
           tensor_pool.CloneNativeTensorFrom(k_cache, k_cache_tile_dims);
       k_cache_tiles.emplace_back(k_cache_tile);
 
+      const auto& q_kcache_matmul_tile_output =
+          tensor_pool.CloneNativeTensorFrom(q_kcache_matmul.GetOutputTensor(0),
+                                            q_kcache_matmul_tile_output_dims);
+      q_kcache_matmul_tile_outputs.emplace_back(q_kcache_matmul_tile_output);
+    }
+    if (k_cache_remainder != 0) {
+      k_cache_tile_dims[k_cache_concat_axis] = k_cache_remainder;
+      q_kcache_matmul_tile_output_dims = InferMatmulOutputDimensions(
+          q_input.GetDimensions(), k_cache_tile_dims);
+      const auto& k_cache_tile =
+          tensor_pool.CloneNativeTensorFrom(k_cache, k_cache_tile_dims);
+      k_cache_tiles.emplace_back(k_cache_tile);
       const auto& q_kcache_matmul_tile_output =
           tensor_pool.CloneNativeTensorFrom(q_kcache_matmul.GetOutputTensor(0),
                                             q_kcache_matmul_tile_output_dims);
@@ -390,15 +406,19 @@ const TensorWrapper& BuildDotProductAttention(
   const auto& qk_vcache_matmul_output = tensor_pool.CloneNativeTensorFrom(
       qk_vcache_matmul.GetOutputTensor(0), qk_vcache_matmul_output_dims);
 
-  constexpr size_t kVCacheTilingSize = 1024;
+  constexpr size_t kVCacheTilingSize = 256;
   const size_t v_cache_tiling_axis = v_cache.GetRank() - 2;
   const size_t v_cache_tiling_dim = v_cache.GetDimension(v_cache_tiling_axis);
   const size_t qk_slice_tiling_dim =
       qk_vcache_slice_output.GetDimension(qk_vcache_slice_output.GetRank() - 1);
   if (v_cache_tiling_dim == qk_slice_tiling_dim &&
-      v_cache_tiling_dim > kVCacheTilingSize &&
-      v_cache_tiling_dim % kVCacheTilingSize == 0) {
-    const size_t num_v_cache_tiles = v_cache_tiling_dim / kVCacheTilingSize;
+      v_cache_tiling_dim > kVCacheTilingSize) {
+    const size_t num_full_tiles = v_cache_tiling_dim / kVCacheTilingSize;
+    const size_t v_cache_remainder = v_cache_tiling_dim % kVCacheTilingSize;
+    const size_t num_v_cache_tiles =
+        num_full_tiles + (v_cache_remainder == 0 ? 0 : 1);
+    QNN_LOG_INFO("tile v cache into %d tiles", num_v_cache_tiles);
+
     auto qk_slice_tile_dims = qk_vcache_slice_output.GetDimensions();
     qk_slice_tile_dims.back() = kVCacheTilingSize;
     auto v_cache_tile_dims = v_cache.GetDimensions();
@@ -411,10 +431,24 @@ const TensorWrapper& BuildDotProductAttention(
     std::vector<ConstTensorWrapperRef> qk_vcache_matmul_tile_outputs;
     qk_vcache_matmul_tile_outputs.reserve(num_v_cache_tiles);
 
-    for (size_t i = 0; i < num_v_cache_tiles; ++i) {
+    for (size_t i = 0; i < num_full_tiles; ++i) {
       const auto& qk_slice_tile = tensor_pool.CloneNativeTensorFrom(
           qk_vcache_slice_output, qk_slice_tile_dims);
       qk_slice_tiles.emplace_back(qk_slice_tile);
+      const auto& v_cache_tile =
+          tensor_pool.CloneNativeTensorFrom(v_cache, v_cache_tile_dims);
+      v_cache_tiles.emplace_back(v_cache_tile);
+      const auto& qk_vcache_matmul_tile_output =
+          tensor_pool.CloneNativeTensorFrom(qk_vcache_matmul.GetOutputTensor(0),
+                                            qk_vcache_matmul_output_dims);
+      qk_vcache_matmul_tile_outputs.emplace_back(qk_vcache_matmul_tile_output);
+    }
+    if (v_cache_remainder != 0) {
+      qk_slice_tile_dims.back() = v_cache_remainder;
+      const auto& qk_slice_tile = tensor_pool.CloneNativeTensorFrom(
+          qk_vcache_slice_output, qk_slice_tile_dims);
+      qk_slice_tiles.emplace_back(qk_slice_tile);
+      v_cache_tile_dims[v_cache_tiling_axis] = v_cache_remainder;
       const auto& v_cache_tile =
           tensor_pool.CloneNativeTensorFrom(v_cache, v_cache_tile_dims);
       v_cache_tiles.emplace_back(v_cache_tile);
