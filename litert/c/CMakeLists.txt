@@ -184,7 +184,7 @@ target_include_directories(litert_c_api
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}>
         $<BUILD_INTERFACE:${TFLITE_SOURCE_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/opencl_headers>
+        $<BUILD_INTERFACE:${LITERT_OPENCL_HEADERS_INCLUDE_DIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -256,7 +256,7 @@ target_include_directories(litert_runtime_c_api_shared_lib
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}>
         $<BUILD_INTERFACE:${TFLITE_SOURCE_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/opencl_headers>
+        $<BUILD_INTERFACE:${LITERT_OPENCL_HEADERS_INCLUDE_DIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )

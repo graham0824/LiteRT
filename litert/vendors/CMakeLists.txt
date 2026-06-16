@@ -64,7 +64,10 @@ endif()
 if(NOT QAIRT_HEADERS_DIR)
   if(NOT QAIRT_HEADERS_URL AND NOT QAIRT_GIT_REPO)
     set(QAIRT_HEADERS_URL "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.47.0.260601/v2.47.0.260601.zip")
-    set(QAIRT_HEADERS_SUBDIR "qairt/2.47.0.260601")
+    # NOTE: no leading "qairt/" here. FetchContent strips the archive's single
+    # top-level directory on extract, so the SDK lands at <src>/2.46.0.260424,
+    # not <src>/qairt/2.46.0.260424 (unlike the old file(ARCHIVE_EXTRACT) path).
+    set(QAIRT_HEADERS_SUBDIR "2.47.0.260601")
   endif()
   if(QAIRT_HEADERS_URL)
     # Use FetchContent so the archive is cached under FETCHCONTENT_BASE_DIR and

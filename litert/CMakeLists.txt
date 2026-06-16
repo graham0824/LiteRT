@@ -209,8 +209,19 @@ include_directories(
 
 list(APPEND CMAKE_MODULE_PATH "${TFLITE_SOURCE_DIR}/tools/cmake/modules")
 
-if(EXISTS "${CMAKE_BINARY_DIR}/opencl_headers")
-    include_directories(${CMAKE_BINARY_DIR}/opencl_headers)
+# OpenCL headers come from the TFLite FetchContent dependency (opencl_headers).
+# Its source no longer lives at ${CMAKE_BINARY_DIR}/opencl_headers (the old
+# SOURCE_DIR layout); resolve the populated source dir from FetchContent so
+# LiteRT targets can find <CL/cl.h>. Fall back to the legacy build-dir location.
+include(FetchContent)
+FetchContent_GetProperties(opencl_headers SOURCE_DIR _litert_opencl_headers_src)
+if(_litert_opencl_headers_src AND EXISTS "${_litert_opencl_headers_src}/CL/cl.h")
+    set(LITERT_OPENCL_HEADERS_INCLUDE_DIR "${_litert_opencl_headers_src}")
+elseif(EXISTS "${CMAKE_BINARY_DIR}/opencl_headers/CL/cl.h")
+    set(LITERT_OPENCL_HEADERS_INCLUDE_DIR "${CMAKE_BINARY_DIR}/opencl_headers")
+endif()
+if(LITERT_OPENCL_HEADERS_INCLUDE_DIR)
+    include_directories(${LITERT_OPENCL_HEADERS_INCLUDE_DIR})
 endif()
 
 # Add FP16 headers include directory. FP16_SOURCE_DIR is set by the TFLite
