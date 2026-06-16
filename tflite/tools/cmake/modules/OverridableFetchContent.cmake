@@ -380,6 +380,16 @@ function(OverridableFetchContent_Declare CONTENT_NAME)
   endforeach()
   list(APPEND OUTPUT_ARGS ${ARGS_UNPARSED_ARGUMENTS})
 
+  # Optionally route the source into the persistent LiteRT deps cache (and reuse
+  # it if already present). Guarded so this vendored module still works without
+  # the LiteRT helper on the module path.
+  if(COMMAND LiteRtDepsCache_SourceDirArgs)
+    LiteRtDepsCache_SourceDirArgs("${CONTENT_NAME}" _LITERT_DEPS_CACHE_ARGS)
+    if(_LITERT_DEPS_CACHE_ARGS)
+      list(APPEND OUTPUT_ARGS ${_LITERT_DEPS_CACHE_ARGS})
+    endif()
+  endif()
+
   # Add all defined packages to a global property.
   get_property(OVERRIDABLE_FETCH_CONTENT_LIST GLOBAL PROPERTY
     OVERRIDABLE_FETCH_CONTENT_LIST

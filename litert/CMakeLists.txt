@@ -75,6 +75,20 @@ option(LITERT_DISABLE_KLEIDIAI "Disable KleidiAI delegate when bundling host TFL
 set(LITERT_HOST_C_COMPILER "" CACHE FILEPATH "Host C compiler used for helper host-side tools (e.g. FlatBuffers flatc)")
 set(LITERT_HOST_CXX_COMPILER "" CACHE FILEPATH "Host C++ compiler used for helper host-side tools (e.g. FlatBuffers flatc)")
 
+# Persistent cache for third-party dependency *sources* only. When set, the
+# fetched <name>-src trees are routed here (and reused on later configures),
+# while the disposable <name>-build / <name>-subbuild trees stay under
+# FETCHCONTENT_BASE_DIR (i.e. the build dir). This lets a fresh build dir reuse
+# already-downloaded sources without re-cloning/re-extracting them. Leave empty
+# to keep the default FetchContent layout (everything under FETCHCONTENT_BASE_DIR).
+set(LITERT_DEPS_CACHE_DIR "" CACHE PATH "Directory to cache third-party dependency sources (xxx-src) across builds")
+
+# Defines LiteRtDepsCache_SourceDirArgs(), used by both TFLite's
+# OverridableFetchContent wrapper and LiteRT's own FetchContent_Declare calls to
+# route dependency sources into LITERT_DEPS_CACHE_DIR. Included before the TFLite
+# add_subdirectory() below so the function exists when those modules run.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiteRtDepsCache.cmake")
+
 set(LITERT_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/include")
 set(LITERT_BUILD_COMMON_GENERATED_DIR "${LITERT_GENERATED_INCLUDE_DIR}/litert/build_common")
 file(MAKE_DIRECTORY "${LITERT_BUILD_COMMON_GENERATED_DIR}")

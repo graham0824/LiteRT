@@ -37,9 +37,11 @@ endif()
 if(NOT FLATC_EXECUTABLE)
   message(STATUS "flatc not found in PATH; fetching FlatBuffers to build flatc")
   include(FetchContent)
+  LiteRtDepsCache_SourceDirArgs(flatbuffers _flatbuffers_cache_args)
   FetchContent_Declare(flatbuffers
     GIT_REPOSITORY https://github.com/google/flatbuffers.git
     GIT_TAG v25.9.23
+    ${_flatbuffers_cache_args}
   )
   set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(flatbuffers)

@@ -16,10 +16,16 @@ cmake_minimum_required(VERSION 3.20)
 
 include(FetchContent)
 
+if(COMMAND LiteRtDepsCache_SourceDirArgs)
+    LiteRtDepsCache_SourceDirArgs(stb _stb_cache_args)
+else()
+    set(_stb_cache_args "")
+endif()
 FetchContent_Declare(
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
     GIT_TAG c0c982601f40183e74d84a61237e968dca08380e
+    ${_stb_cache_args}
 )
 
 FetchContent_GetProperties(stb)

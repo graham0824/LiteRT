@@ -22,10 +22,16 @@ function(_litert_gemma3_prepare_sentencepiece)
         return()
     endif()
 
+    if(COMMAND LiteRtDepsCache_SourceDirArgs)
+        LiteRtDepsCache_SourceDirArgs(litert_sentencepiece _litert_sentencepiece_cache_args)
+    else()
+        set(_litert_sentencepiece_cache_args "")
+    endif()
     FetchContent_Declare(
         litert_sentencepiece
         URL https://github.com/google/sentencepiece/archive/refs/tags/v0.2.0.tar.gz
         URL_HASH SHA256=9970f0a0afee1648890293321665e5b2efa04eaec9f1671fcf8048f456f5bb86
+        ${_litert_sentencepiece_cache_args}
     )
 
     FetchContent_GetProperties(litert_sentencepiece)

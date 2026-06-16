@@ -106,10 +106,16 @@ if(LITERT_ENABLE_GPU)
         # DOWNLOAD_NO_EXTRACT because this is a single shared library, not an
         # archive (the default extract step would otherwise fail).
         include(FetchContent)
+        if(COMMAND LiteRtDepsCache_SourceDirArgs)
+            LiteRtDepsCache_SourceDirArgs(litert_gpu_accelerator _litert_gpu_accelerator_cache_args)
+        else()
+            set(_litert_gpu_accelerator_cache_args "")
+        endif()
         FetchContent_Declare(litert_gpu_accelerator
             URL "${_litert_gpu_accelerator_url}"
             DOWNLOAD_NO_EXTRACT TRUE
-            TLS_VERIFY ON)
+            TLS_VERIFY ON
+            ${_litert_gpu_accelerator_cache_args})
         message(STATUS
             "Downloading LiteRT GPU accelerator from ${_litert_gpu_accelerator_url}")
         FetchContent_GetProperties(litert_gpu_accelerator)

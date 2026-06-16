@@ -25,14 +25,17 @@ if(NOT NEUROPILOT_HEADERS_DIR)
     set(NEUROPILOT_HEADERS_URL "https://s3.ap-southeast-1.amazonaws.com/mediatek.neuropilot.com/66f2c33a-2005-4f0b-afef-2053c8654e4f.gz")
   endif()
   if(NEUROPILOT_HEADERS_URL OR NEUROPILOT_GIT_REPO)
+    LiteRtDepsCache_SourceDirArgs(neuro_pilot _neuro_pilot_cache_args)
     if(NEUROPILOT_HEADERS_URL)
       FetchContent_Declare(neuro_pilot
         URL ${NEUROPILOT_HEADERS_URL}
+        ${_neuro_pilot_cache_args}
       )
     else()
       FetchContent_Declare(neuro_pilot
         GIT_REPOSITORY ${NEUROPILOT_GIT_REPO}
         GIT_TAG        ${NEUROPILOT_GIT_TAG}
+        ${_neuro_pilot_cache_args}
       )
     endif()
     FetchContent_MakeAvailable(neuro_pilot)
@@ -68,9 +71,11 @@ if(NOT QAIRT_HEADERS_DIR)
     # only re-downloaded/re-extracted when QAIRT_HEADERS_URL changes. Populate
     # only (no MakeAvailable) so the SDK's own CMake files are not pulled into
     # the build via add_subdirectory.
+    LiteRtDepsCache_SourceDirArgs(qairt_headers _qairt_headers_cache_args)
     FetchContent_Declare(qairt_headers
       URL ${QAIRT_HEADERS_URL}
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      ${_qairt_headers_cache_args}
     )
     FetchContent_GetProperties(qairt_headers)
     if(NOT qairt_headers_POPULATED)
@@ -78,7 +83,8 @@ if(NOT QAIRT_HEADERS_DIR)
     endif()
     set(QAIRT_HEADERS_DIR "${qairt_headers_SOURCE_DIR}")
   elseif(QAIRT_GIT_REPO)
-    FetchContent_Declare(qairt_headers GIT_REPOSITORY ${QAIRT_GIT_REPO} GIT_TAG ${QAIRT_GIT_TAG})
+    LiteRtDepsCache_SourceDirArgs(qairt_headers _qairt_headers_cache_args)
+    FetchContent_Declare(qairt_headers GIT_REPOSITORY ${QAIRT_GIT_REPO} GIT_TAG ${QAIRT_GIT_TAG} ${_qairt_headers_cache_args})
     FetchContent_MakeAvailable(qairt_headers)
     set(QAIRT_HEADERS_DIR ${qairt_headers_SOURCE_DIR})
   endif()
@@ -118,9 +124,11 @@ if(NOT LITECORE_HEADERS_DIR)
     # only re-downloaded/re-extracted when LITECORE_HEADERS_URL changes.
     # Populate only (no MakeAvailable) so the package's own CMake files are not
     # pulled into the build via add_subdirectory.
+    LiteRtDepsCache_SourceDirArgs(litecore_headers _litecore_headers_cache_args)
     FetchContent_Declare(litecore_headers
       URL ${LITECORE_HEADERS_URL}
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      ${_litecore_headers_cache_args}
     )
     FetchContent_GetProperties(litecore_headers)
     if(NOT litecore_headers_POPULATED)
@@ -128,7 +136,8 @@ if(NOT LITECORE_HEADERS_DIR)
     endif()
     set(LITECORE_HEADERS_DIR "${litecore_headers_SOURCE_DIR}")
   elseif(LITECORE_GIT_REPO)
-    FetchContent_Declare(litecore_headers GIT_REPOSITORY ${LITECORE_GIT_REPO} GIT_TAG ${LITECORE_GIT_TAG})
+    LiteRtDepsCache_SourceDirArgs(litecore_headers _litecore_headers_cache_args)
+    FetchContent_Declare(litecore_headers GIT_REPOSITORY ${LITECORE_GIT_REPO} GIT_TAG ${LITECORE_GIT_TAG} ${_litecore_headers_cache_args})
     FetchContent_MakeAvailable(litecore_headers)
     set(LITECORE_HEADERS_DIR ${litecore_headers_SOURCE_DIR})
   endif()
@@ -200,9 +209,11 @@ function(_litert_add_dispatch_so VENDOR DIR OUTPUT_BASENAME)
     endif()
     if(NOT FLATC_EXECUTABLE)
       message(STATUS "flatc not found in PATH; fetching FlatBuffers to build flatc")
+      LiteRtDepsCache_SourceDirArgs(flatbuffers _flatbuffers_cache_args)
       FetchContent_Declare(flatbuffers
         GIT_REPOSITORY https://github.com/google/flatbuffers.git
         GIT_TAG v25.9.23
+        ${_flatbuffers_cache_args}
       )
       set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
       FetchContent_MakeAvailable(flatbuffers)

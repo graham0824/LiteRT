@@ -48,6 +48,11 @@ set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
 )
 if(NOT TENSORFLOW_SOURCE_DIR)
   message(STATUS "Downloading TensorFlow repository...")
+  if(COMMAND LiteRtDepsCache_SourceDirArgs)
+    LiteRtDepsCache_SourceDirArgs(tensorflow _tensorflow_cache_args)
+  else()
+    set(_tensorflow_cache_args "")
+  endif()
   FetchContent_Declare(
     tensorflow
     GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
@@ -55,6 +60,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
     GIT_TAG v2.21.0-rc0
     GIT_SHALLOW TRUE
     GIT_PROGRESS TRUE
+    ${_tensorflow_cache_args}
   )
   FetchContent_GetProperties(tensorflow)
   if(NOT tensorflow_POPULATED)
@@ -209,10 +215,16 @@ if(TFLITE_ENABLE_XNNPACK)
       # pthreadpool is driven by the add_subdirectory() call below, not here.
       # Keep URL/URL_HASH in sync with cmake/DownloadPThreadPool.cmake.
       message(STATUS "Downloading pthreadpool (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
+      if(COMMAND LiteRtDepsCache_SourceDirArgs)
+        LiteRtDepsCache_SourceDirArgs(pthreadpool _pthreadpool_cache_args)
+      else()
+        set(_pthreadpool_cache_args "")
+      endif()
       FetchContent_Declare(pthreadpool
         URL https://github.com/google/pthreadpool/archive/9003ee6c137cea3b94161bd5c614fb43be523ee1.zip
         URL_HASH SHA256=00a9a1c633f62290a22ea1db42c4401dffe9f05645fb66d6609ae46a05333a2a
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        ${_pthreadpool_cache_args}
       )
       FetchContent_GetProperties(pthreadpool)
       if(NOT pthreadpool_POPULATED)
@@ -237,10 +249,16 @@ if(TFLITE_ENABLE_XNNPACK)
     # is consumed as headers via include dirs, not as a CMake subproject.
     # Keep URL/URL_HASH in sync with cmake/DownloadFP16.cmake.
     MESSAGE(STATUS "Downloading FP16 (define FP16_SOURCE_DIR to avoid it)")
+    if(COMMAND LiteRtDepsCache_SourceDirArgs)
+      LiteRtDepsCache_SourceDirArgs(fp16 _fp16_cache_args)
+    else()
+      set(_fp16_cache_args "")
+    endif()
     FetchContent_Declare(fp16
       URL https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip
       URL_HASH SHA256=e66e65515fa09927b348d3d584c68be4215cfe664100d01c9dbc7655a5716d70
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      ${_fp16_cache_args}
     )
     FetchContent_GetProperties(fp16)
     if(NOT fp16_POPULATED)

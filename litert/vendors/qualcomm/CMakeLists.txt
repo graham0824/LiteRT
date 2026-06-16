@@ -23,20 +23,26 @@ message(STATUS "Configuring Qualcomm QNN support")
 # Fetch dependencies needed by core libraries (dump needs nlohmann_json)
 include(FetchContent)
 
+LiteRtDepsCache_SourceDirArgs(nlohmann_json _nlohmann_json_cache_args)
+LiteRtDepsCache_SourceDirArgs(googletest _googletest_cache_args)
+LiteRtDepsCache_SourceDirArgs(googlebenchmark _googlebenchmark_cache_args)
 FetchContent_Declare(
         nlohmann_json
         GIT_REPOSITORY https://github.com/nlohmann/json.git
         GIT_TAG v3.11.3
+        ${_nlohmann_json_cache_args}
     )
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG v1.12.x
+        ${_googletest_cache_args}
     )
     FetchContent_Declare(
         googlebenchmark
         GIT_REPOSITORY https://github.com/google/benchmark.git
         GIT_TAG 0d98dba29d66e93259db7daa53a9327df767a415 # v1.6.1
+        ${_googlebenchmark_cache_args}
 )
 
 FetchContent_MakeAvailable(nlohmann_json)
