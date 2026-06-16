@@ -25,7 +25,6 @@ OverridableFetchContent_Declare(
   GIT_TAG release-1.12.1
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/googletest"
 )
 OverridableFetchContent_GetProperties(googletest)
 if(NOT googletest_POPULATED)

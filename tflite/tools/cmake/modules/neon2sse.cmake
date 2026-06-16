@@ -29,7 +29,6 @@ OverridableFetchContent_Declare(
   URL_HASH SHA256=019fbc7ec25860070a1d90e12686fc160cfb33e22aa063c80f52b363f1361e9d
   LICENSE_FILE LICENSE
   LICENSE_URL "${NEON2SSE_URL}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/neon2sse"
 )
 
 OverridableFetchContent_GetProperties(neon2sse)

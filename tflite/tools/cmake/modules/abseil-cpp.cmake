@@ -28,7 +28,6 @@ OverridableFetchContent_Declare(
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/abseil-cpp"
 )
 OverridableFetchContent_GetProperties(abseil-cpp)
 if(NOT abseil-cpp_POPULATED)

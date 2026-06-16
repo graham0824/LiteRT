@@ -25,7 +25,6 @@ OverridableFetchContent_Declare(
   # Sync with tensorflow/workspace2.bzl
   GIT_TAG bc3c01e230c6974283e4b89421cfb0e232435589
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/cpuinfo"
 )
 OverridableFetchContent_GetProperties(cpuinfo)
 if(NOT cpuinfo_POPULATED)

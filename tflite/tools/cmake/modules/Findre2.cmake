@@ -25,7 +25,6 @@ OverridableFetchContent_Declare(
   GIT_TAG 2021-02-02
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/re2"
 )
 OverridableFetchContent_GetProperties(re2)
 if(NOT re2_POPULATED)

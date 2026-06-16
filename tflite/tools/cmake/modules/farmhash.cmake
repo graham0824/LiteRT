@@ -30,7 +30,6 @@ OverridableFetchContent_Declare(
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17770
   # GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/farmhash"
 )
 OverridableFetchContent_GetProperties(farmhash)
 if(NOT farmhash_POPULATED)

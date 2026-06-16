@@ -32,7 +32,6 @@ OverridableFetchContent_Declare(
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17770
   # GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/ml_dtypes"
 )
 OverridableFetchContent_GetProperties(ml_dtypes)
 if(NOT ml_dtypes_POPULATED)

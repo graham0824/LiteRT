@@ -55,7 +55,6 @@ if(NOT TENSORFLOW_SOURCE_DIR)
     GIT_TAG v2.21.0-rc0
     GIT_SHALLOW TRUE
     GIT_PROGRESS TRUE
-    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorflow-src
   )
   FetchContent_GetProperties(tensorflow)
   if(NOT tensorflow_POPULATED)
@@ -63,6 +62,8 @@ if(NOT TENSORFLOW_SOURCE_DIR)
   endif()
   set(TENSORFLOW_SOURCE_DIR "${tensorflow_SOURCE_DIR}")
 endif()
+# Propagate the resolved TF source dir up to the parent (litert) project.
+set(TENSORFLOW_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}" PARENT_SCOPE)
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
 set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
 set(XLA_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/")

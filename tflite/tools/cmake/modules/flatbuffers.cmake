@@ -29,7 +29,6 @@ OverridableFetchContent_Declare(
   # you need to also change the line below to `GIT_SHALLOW FALSE`.
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
 )
 
 OverridableFetchContent_GetProperties(flatbuffers)

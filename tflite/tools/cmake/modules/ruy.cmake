@@ -25,7 +25,6 @@ OverridableFetchContent_Declare(
   # Sync with tensorflow/third_party/ruy/workspace.bzl
   GIT_TAG 3286a34cc8de6149ac6844107dfdffac91531e72
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
 )
 OverridableFetchContent_GetProperties(ruy)
 if(NOT ruy_POPULATED)

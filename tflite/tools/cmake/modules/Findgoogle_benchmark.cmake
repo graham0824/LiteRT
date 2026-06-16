@@ -25,7 +25,6 @@ OverridableFetchContent_Declare(
   GIT_TAG v1.7.0
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/google_benchmark"
 )
 OverridableFetchContent_GetProperties(google_benchmark)
 if(NOT google_benchmark_POPULATED)
