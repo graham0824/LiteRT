@@ -21,7 +21,6 @@ OverridableFetchContent_Declare(
   # Sync with tensorflow/third_party/protobuf/protobuf.patch
   GIT_TAG 90b73ac3f0b10320315c2ca0d03a5a9b095d2f66
   GIT_PROGRESS TRUE
-  PREFIX "${CMAKE_BINARY_DIR}"
 )
 
 set(protobuf_ABSL_PROVIDER "package" CACHE STRING "" FORCE)

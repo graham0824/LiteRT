@@ -25,7 +25,12 @@ OverridableFetchContent_Declare(
   # Sync with tensorflow/workspace2.bzl
   GIT_TAG 76de13802d1c1b286b21694734d87f1683767b8f
   GIT_PROGRESS TRUE
-  PREFIX "${CMAKE_BINARY_DIR}"
+  # NOTE: do not set PREFIX to ${CMAKE_BINARY_DIR}. Doing so puts the populate
+  # stamp dir in the build tree while the source lives under
+  # FETCHCONTENT_BASE_DIR, so a fresh build dir finds no stamp and re-clones
+  # (wiping the cached source first). Letting FetchContent default the prefix
+  # keeps stamp and source together under FETCHCONTENT_BASE_DIR, so the clone
+  # is cached across builds like the other dependencies.
 )
 OverridableFetchContent_GetProperties(xnnpack)
 if(NOT xnnpack_POPULATED)
