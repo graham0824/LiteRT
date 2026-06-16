@@ -204,13 +204,21 @@ if(TFLITE_ENABLE_XNNPACK)
   if(SYSTEM_PTHREADPOOL)
     find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
   elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
-      message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
-      configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
-      execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
-      execute_process(COMMAND "${CMAKE_COMMAND}" --build .
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
-      set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
+      # Use FetchContent so pthreadpool is cached under FETCHCONTENT_BASE_DIR and
+      # is not re-downloaded on every configure. Populate only: the build of
+      # pthreadpool is driven by the add_subdirectory() call below, not here.
+      # Keep URL/URL_HASH in sync with cmake/DownloadPThreadPool.cmake.
+      message(STATUS "Downloading pthreadpool (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
+      FetchContent_Declare(pthreadpool
+        URL https://github.com/google/pthreadpool/archive/9003ee6c137cea3b94161bd5c614fb43be523ee1.zip
+        URL_HASH SHA256=00a9a1c633f62290a22ea1db42c4401dffe9f05645fb66d6609ae46a05333a2a
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      )
+      FetchContent_GetProperties(pthreadpool)
+      if(NOT pthreadpool_POPULATED)
+        FetchContent_Populate(pthreadpool)
+      endif()
+      set(PTHREADPOOL_SOURCE_DIR "${pthreadpool_SOURCE_DIR}" CACHE STRING "pthreadpool source directory")
   endif()
   # Configure pthreadpool
   if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
@@ -224,13 +232,21 @@ if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_TARGET_DEPENDENCIES pthreadpool)
 
   IF(NOT DEFINED FP16_SOURCE_DIR)
-    MESSAGE(STATUS "Downloading FP16 to ${CMAKE_BINARY_DIR}/FP16-source (define FP16_SOURCE_DIR to avoid it)")
-    CONFIGURE_FILE(cmake/DownloadFP16.cmake "${CMAKE_BINARY_DIR}/FP16-download/CMakeLists.txt")
-    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/FP16-download")
-    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" --build .
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/FP16-download")
-    SET(FP16_SOURCE_DIR "${CMAKE_BINARY_DIR}/FP16-source" CACHE STRING "FP16 source directory")
+    # Use FetchContent so FP16 is cached under FETCHCONTENT_BASE_DIR and is not
+    # re-downloaded on every configure. Populate only (no MakeAvailable): FP16
+    # is consumed as headers via include dirs, not as a CMake subproject.
+    # Keep URL/URL_HASH in sync with cmake/DownloadFP16.cmake.
+    MESSAGE(STATUS "Downloading FP16 (define FP16_SOURCE_DIR to avoid it)")
+    FetchContent_Declare(fp16
+      URL https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip
+      URL_HASH SHA256=e66e65515fa09927b348d3d584c68be4215cfe664100d01c9dbc7655a5716d70
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_GetProperties(fp16)
+    if(NOT fp16_POPULATED)
+      FetchContent_Populate(fp16)
+    endif()
+    SET(FP16_SOURCE_DIR "${fp16_SOURCE_DIR}" CACHE STRING "FP16 source directory")
   ENDIF()
 endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")

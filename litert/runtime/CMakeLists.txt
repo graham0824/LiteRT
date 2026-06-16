@@ -64,7 +64,14 @@ set(LITERT_RUNTIME_SOURCES
 add_library(litert_runtime STATIC ${LITERT_RUNTIME_SOURCES})
 
 set(LITERT_XNNPACK_INCLUDE_DIR "${CMAKE_BINARY_DIR}/xnnpack/include" CACHE PATH "Path to XNNPACK public headers used by LiteRT")
-set(LITERT_PTHREADPOOL_INCLUDE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source/include" CACHE PATH "Path to pthreadpool headers used by LiteRT")
+# PTHREADPOOL_SOURCE_DIR is set by the TFLite subdirectory (now via FetchContent,
+# so it may live under FETCHCONTENT_BASE_DIR rather than the build dir); fall back
+# to the legacy build-dir location.
+if(PTHREADPOOL_SOURCE_DIR)
+  set(LITERT_PTHREADPOOL_INCLUDE_DIR "${PTHREADPOOL_SOURCE_DIR}/include" CACHE PATH "Path to pthreadpool headers used by LiteRT")
+else()
+  set(LITERT_PTHREADPOOL_INCLUDE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source/include" CACHE PATH "Path to pthreadpool headers used by LiteRT")
+endif()
 
 # Optional GPU-related sources
 if(APPLE)

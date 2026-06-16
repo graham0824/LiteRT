@@ -64,12 +64,19 @@ if(NOT QAIRT_HEADERS_DIR)
     set(QAIRT_HEADERS_SUBDIR "qairt/2.47.0.260601")
   endif()
   if(QAIRT_HEADERS_URL)
-    set(_qnn_archive "${CMAKE_BINARY_DIR}/_deps/qnn_headers.zip")
-    file(DOWNLOAD "${QAIRT_HEADERS_URL}" "${_qnn_archive}" SHOW_PROGRESS)
-    set(_qnn_extract_dir "${CMAKE_BINARY_DIR}/_deps/qnn_headers")
-    file(MAKE_DIRECTORY "${_qnn_extract_dir}")
-    file(ARCHIVE_EXTRACT INPUT "${_qnn_archive}" DESTINATION "${_qnn_extract_dir}")
-    set(QAIRT_HEADERS_DIR "${_qnn_extract_dir}")
+    # Use FetchContent so the archive is cached under FETCHCONTENT_BASE_DIR and
+    # only re-downloaded/re-extracted when QAIRT_HEADERS_URL changes. Populate
+    # only (no MakeAvailable) so the SDK's own CMake files are not pulled into
+    # the build via add_subdirectory.
+    FetchContent_Declare(qairt_headers
+      URL ${QAIRT_HEADERS_URL}
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_GetProperties(qairt_headers)
+    if(NOT qairt_headers_POPULATED)
+      FetchContent_Populate(qairt_headers)
+    endif()
+    set(QAIRT_HEADERS_DIR "${qairt_headers_SOURCE_DIR}")
   elseif(QAIRT_GIT_REPO)
     FetchContent_Declare(qairt_headers GIT_REPOSITORY ${QAIRT_GIT_REPO} GIT_TAG ${QAIRT_GIT_TAG})
     FetchContent_MakeAvailable(qairt_headers)
@@ -107,12 +114,19 @@ if(NOT LITECORE_HEADERS_DIR)
     set(LITECORE_HEADERS_URL "https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/1.1.0/ai-litecore-ubuntu2404-v1.1.0.tar.gz")
   endif()
   if(LITECORE_HEADERS_URL)
-    set(_litecore_archive "${CMAKE_BINARY_DIR}/_deps/litecore_headers.tar.gz")
-    file(DOWNLOAD "${LITECORE_HEADERS_URL}" "${_litecore_archive}" SHOW_PROGRESS)
-    set(_litecore_extract_dir "${CMAKE_BINARY_DIR}/_deps/litecore_headers")
-    file(MAKE_DIRECTORY "${_litecore_extract_dir}")
-    file(ARCHIVE_EXTRACT INPUT "${_litecore_archive}" DESTINATION "${_litecore_extract_dir}")
-    set(LITECORE_HEADERS_DIR "${_litecore_extract_dir}")
+    # Use FetchContent so the archive is cached under FETCHCONTENT_BASE_DIR and
+    # only re-downloaded/re-extracted when LITECORE_HEADERS_URL changes.
+    # Populate only (no MakeAvailable) so the package's own CMake files are not
+    # pulled into the build via add_subdirectory.
+    FetchContent_Declare(litecore_headers
+      URL ${LITECORE_HEADERS_URL}
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_GetProperties(litecore_headers)
+    if(NOT litecore_headers_POPULATED)
+      FetchContent_Populate(litecore_headers)
+    endif()
+    set(LITECORE_HEADERS_DIR "${litecore_headers_SOURCE_DIR}")
   elseif(LITECORE_GIT_REPO)
     FetchContent_Declare(litecore_headers GIT_REPOSITORY ${LITECORE_GIT_REPO} GIT_TAG ${LITECORE_GIT_TAG})
     FetchContent_MakeAvailable(litecore_headers)

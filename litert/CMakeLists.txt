@@ -199,8 +199,12 @@ if(EXISTS "${CMAKE_BINARY_DIR}/opencl_headers")
     include_directories(${CMAKE_BINARY_DIR}/opencl_headers)
 endif()
 
-# Add FP16 headers include directory
-if(EXISTS "${CMAKE_BINARY_DIR}/FP16-source/include")
+# Add FP16 headers include directory. FP16_SOURCE_DIR is set by the TFLite
+# subdirectory (now via FetchContent, so it may live under FETCHCONTENT_BASE_DIR
+# rather than the build dir); fall back to the legacy build-dir location.
+if(FP16_SOURCE_DIR AND EXISTS "${FP16_SOURCE_DIR}/include")
+    include_directories(${FP16_SOURCE_DIR}/include)
+elseif(EXISTS "${CMAKE_BINARY_DIR}/FP16-source/include")
     include_directories(${CMAKE_BINARY_DIR}/FP16-source/include)
 endif()
 
