@@ -27,7 +27,6 @@ OverridableFetchContent_Declare(
   GIT_TAG 0a92994d729ff76a58f692d3028ca1b64b145d91
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/fp16_headers"
 )
 
 OverridableFetchContent_GetProperties(fp16_headers)

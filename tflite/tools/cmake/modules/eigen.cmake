@@ -31,7 +31,6 @@ OverridableFetchContent_Declare(
   # GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/eigen"
   LICENSE_FILE "COPYING.MPL2"
 )
 OverridableFetchContent_GetProperties(eigen)

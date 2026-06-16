@@ -26,7 +26,6 @@ OverridableFetchContent_Declare(
   GIT_TAG dcd5bede6859d26833cd85f0d6bbcee7382dc9b3
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/opencl_headers"
 )
 
 OverridableFetchContent_GetProperties(opencl_headers)

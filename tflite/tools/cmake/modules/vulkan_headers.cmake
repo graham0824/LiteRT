@@ -26,7 +26,6 @@ OverridableFetchContent_Declare(
   GIT_TAG 32c07c0c5334aea069e518206d75e002ccd85389
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/vulkan_headers"
 )
 
 OverridableFetchContent_GetProperties(vulkan_headers)

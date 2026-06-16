@@ -26,7 +26,6 @@ OverridableFetchContent_Declare(
   GIT_TAG 76de13802d1c1b286b21694734d87f1683767b8f
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
-  SOURCE_DIR "${CMAKE_BINARY_DIR}/xnnpack"
 )
 OverridableFetchContent_GetProperties(xnnpack)
 if(NOT xnnpack_POPULATED)
