@@ -93,33 +93,28 @@ if(LITERT_ENABLE_GPU)
     endif()
 
     if(_litert_segmentation_gpu_accelerator_relpath)
-        set(_litert_segmentation_gpu_accelerator
-            "${CMAKE_CURRENT_BINARY_DIR}/litert_prebuilts/${_litert_segmentation_gpu_accelerator_relpath}")
         set(_litert_segmentation_gpu_accelerator_url
             "https://storage.googleapis.com/litert/binaries/latest/${_litert_segmentation_gpu_accelerator_relpath}")
         get_filename_component(_litert_segmentation_gpu_accelerator_name
-            "${_litert_segmentation_gpu_accelerator}" NAME)
-        get_filename_component(_litert_segmentation_gpu_accelerator_dir
-            "${_litert_segmentation_gpu_accelerator}" DIRECTORY)
+            "${_litert_segmentation_gpu_accelerator_relpath}" NAME)
 
-        file(MAKE_DIRECTORY "${_litert_segmentation_gpu_accelerator_dir}")
+        # Use FetchContent so the prebuilt accelerator is cached under
+        # FETCHCONTENT_BASE_DIR and only re-downloaded when the URL changes.
+        # DOWNLOAD_NO_EXTRACT because this is a single shared library, not an
+        # archive (the default extract step would otherwise fail).
+        include(FetchContent)
+        FetchContent_Declare(litert_segmentation_gpu_accelerator
+            URL "${_litert_segmentation_gpu_accelerator_url}"
+            DOWNLOAD_NO_EXTRACT TRUE
+            TLS_VERIFY ON)
         message(STATUS
             "Downloading LiteRT GPU accelerator from ${_litert_segmentation_gpu_accelerator_url}")
-        file(DOWNLOAD
-            "${_litert_segmentation_gpu_accelerator_url}"
-            "${_litert_segmentation_gpu_accelerator}"
-            STATUS _litert_segmentation_download_status
-            TLS_VERIFY ON
-            SHOW_PROGRESS)
-        list(GET _litert_segmentation_download_status 0
-            _litert_segmentation_download_code)
-        list(GET _litert_segmentation_download_status 1
-            _litert_segmentation_download_message)
-        if(NOT _litert_segmentation_download_code EQUAL 0)
-            message(FATAL_ERROR
-                "Failed to download LiteRT GPU accelerator: "
-                "${_litert_segmentation_download_message}")
+        FetchContent_GetProperties(litert_segmentation_gpu_accelerator)
+        if(NOT litert_segmentation_gpu_accelerator_POPULATED)
+            FetchContent_Populate(litert_segmentation_gpu_accelerator)
         endif()
+        set(_litert_segmentation_gpu_accelerator
+            "${litert_segmentation_gpu_accelerator_SOURCE_DIR}/${_litert_segmentation_gpu_accelerator_name}")
 
         add_custom_command(TARGET litert_tensor_segmentation_example POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
