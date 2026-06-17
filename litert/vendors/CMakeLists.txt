@@ -74,7 +74,7 @@ if(NOT QAIRT_HEADERS_DIR)
     # only re-downloaded/re-extracted when QAIRT_HEADERS_URL changes. Populate
     # only (no MakeAvailable) so the SDK's own CMake files are not pulled into
     # the build via add_subdirectory.
-    LiteRtDepsCache_SourceDirArgs(qairt_headers _qairt_headers_cache_args)
+    LiteRtDepsCache_SourceDirArgs(qairt_headers _qairt_headers_cache_args "${QAIRT_HEADERS_SUBDIR}")
     FetchContent_Declare(qairt_headers
       URL ${QAIRT_HEADERS_URL}
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
@@ -86,7 +86,7 @@ if(NOT QAIRT_HEADERS_DIR)
     endif()
     set(QAIRT_HEADERS_DIR "${qairt_headers_SOURCE_DIR}")
   elseif(QAIRT_GIT_REPO)
-    LiteRtDepsCache_SourceDirArgs(qairt_headers _qairt_headers_cache_args)
+    LiteRtDepsCache_SourceDirArgs(qairt_headers _qairt_headers_cache_args "${QAIRT_GIT_TAG}")
     FetchContent_Declare(qairt_headers GIT_REPOSITORY ${QAIRT_GIT_REPO} GIT_TAG ${QAIRT_GIT_TAG} ${_qairt_headers_cache_args})
     FetchContent_MakeAvailable(qairt_headers)
     set(QAIRT_HEADERS_DIR ${qairt_headers_SOURCE_DIR})

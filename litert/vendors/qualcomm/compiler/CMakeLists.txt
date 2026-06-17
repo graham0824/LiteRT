@@ -20,7 +20,7 @@ target_include_directories(qnn_compiler_plugin
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
     PRIVATE
-        ${CMAKE_BINARY_DIR}/flatbuffers/include
+        ${LITERT_FLATBUFFERS_INCLUDE_DIR}
 )
 
 target_link_libraries(qnn_compiler_plugin

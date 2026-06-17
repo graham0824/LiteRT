@@ -243,6 +243,21 @@ endif()
 # qnn_flexbuffer_helpers) rather than transitively through tensorflow-lite.
 set(LITERT_FLATBUFFERS_DIR "${CMAKE_BINARY_DIR}/flatbuffers")
 set(LITERT_FLATBUFFERS_BUILD_DIR "${CMAKE_BINARY_DIR}/_deps/flatbuffers-build")
+
+# Resolve the FlatBuffers header include dir. The headers no longer live at
+# ${CMAKE_BINARY_DIR}/flatbuffers/include (that path is never created); the
+# FetchContent source may live under FETCHCONTENT_BASE_DIR or LITERT_DEPS_CACHE_DIR.
+# Resolve the populated source dir from FetchContent, falling back to the legacy
+# build-dir location. LiteRT targets use LITERT_FLATBUFFERS_INCLUDE_DIR to find
+# <flatbuffers/flexbuffers.h> et al. directly (rather than transitively via TFLite).
+include(FetchContent)
+FetchContent_GetProperties(flatbuffers SOURCE_DIR _litert_flatbuffers_src)
+if(_litert_flatbuffers_src AND EXISTS "${_litert_flatbuffers_src}/include/flatbuffers/flexbuffers.h")
+    set(LITERT_FLATBUFFERS_INCLUDE_DIR "${_litert_flatbuffers_src}/include")
+else()
+    set(LITERT_FLATBUFFERS_INCLUDE_DIR "${LITERT_FLATBUFFERS_DIR}/include")
+endif()
+
 find_package(flatbuffers QUIET
     PATHS
       ${LITERT_FLATBUFFERS_BUILD_DIR}
@@ -255,7 +270,7 @@ if(NOT TARGET flatbuffers::flatbuffers)
   add_library(flatbuffers::flatbuffers STATIC IMPORTED)
   set_target_properties(flatbuffers::flatbuffers PROPERTIES
     IMPORTED_LOCATION "${LITERT_FLATBUFFERS_BUILD_DIR}/libflatbuffers.a"
-    INTERFACE_INCLUDE_DIRECTORIES "${LITERT_FLATBUFFERS_DIR}/include"
+    INTERFACE_INCLUDE_DIRECTORIES "${LITERT_FLATBUFFERS_INCLUDE_DIR}"
   )
 endif()
 

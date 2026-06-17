@@ -77,5 +77,5 @@ target_sources(qnn_flexbuffer_helpers PRIVATE flexbuffer_helpers.cc)
 target_include_directories(qnn_flexbuffer_helpers
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-        ${CMAKE_BINARY_DIR}/flatbuffers/include
+        ${LITERT_FLATBUFFERS_INCLUDE_DIR}
 )

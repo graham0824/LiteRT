@@ -43,6 +43,13 @@
 #               extra arguments to splice into FetchContent_Declare(). It is set
 #               to an empty list when caching is disabled or when the source is
 #               reused via FETCHCONTENT_SOURCE_DIR_<N>.
+# VERSION (optional, 3rd arg): a version/tag string for the dependency. When
+#               given, the cache dir is keyed by it (<name>-<version>-src) so a
+#               version bump maps to a *different* directory and is fetched
+#               automatically instead of silently reusing the old source. When
+#               omitted the dir is just <name>-src (callers with no clean
+#               version string, e.g. opaque URLs or git hashes, omit it and keep
+#               the original behavior, including the manual-clear-on-bump caveat).
 function(LiteRtDepsCache_SourceDirArgs CONTENT_NAME OUT_VAR)
   set(${OUT_VAR} "" PARENT_SCOPE)
 
@@ -50,9 +57,21 @@ function(LiteRtDepsCache_SourceDirArgs CONTENT_NAME OUT_VAR)
     return()
   endif()
 
+  # Optional VERSION (3rd positional arg) keys the cache dir by version.
+  set(_version "")
+  if(ARGC GREATER 2)
+    set(_version "${ARGV2}")
+  endif()
+
   string(TOLOWER "${CONTENT_NAME}" _name_lower)
   string(TOUPPER "${CONTENT_NAME}" _name_upper)
-  set(_cached_src "${LITERT_DEPS_CACHE_DIR}/${_name_lower}-src")
+  if(_version)
+    # Sanitize so the version is safe as a single path segment.
+    string(REGEX REPLACE "[^A-Za-z0-9._-]" "_" _version_sanitized "${_version}")
+    set(_cached_src "${LITERT_DEPS_CACHE_DIR}/${_name_lower}-${_version_sanitized}-src")
+  else()
+    set(_cached_src "${LITERT_DEPS_CACHE_DIR}/${_name_lower}-src")
+  endif()
 
   # If the cached source already has content, reuse it as-is and skip download.
   # FetchContent matches FETCHCONTENT_SOURCE_DIR_<uppercaseName>.
@@ -67,8 +86,15 @@ function(LiteRtDepsCache_SourceDirArgs CONTENT_NAME OUT_VAR)
     endif()
   endif()
 
-  # First fetch: route the populated source into the cache. The download step
-  # (and its stamps) still runs under FETCHCONTENT_BASE_DIR/<name>-subbuild.
+  # First fetch (or the cached source was cleared, e.g. after a version bump):
+  # route the populated source into the cache. The download step (and its
+  # stamps) still runs under FETCHCONTENT_BASE_DIR/<name>-subbuild.
+  #
+  # Clear any stale FETCHCONTENT_SOURCE_DIR_<N> override left in the CMake cache
+  # by a previous "reuse" configure. Without this, deleting the cached source
+  # (to force a re-download) leaves a dangling override and FetchContent fails
+  # with "Manually specified source directory is missing".
+  unset(FETCHCONTENT_SOURCE_DIR_${_name_upper} CACHE)
   message(STATUS
     "LiteRT deps cache: routing ${CONTENT_NAME} source to ${_cached_src}")
   set(${OUT_VAR} SOURCE_DIR "${_cached_src}" PARENT_SCOPE)
