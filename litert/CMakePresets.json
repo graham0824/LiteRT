@@ -32,11 +32,12 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_C_COMPILER": "$env{LITERT_CLANG}",
         "CMAKE_CXX_COMPILER": "$env{LITERT_CLANG_PP}",
-	"CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+	      "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
         "QAIRT_HEADERS_DIR": "$env{QAIRT_HEADERS_DIR}",
         "LITERT_ENABLE_GPU": "OFF",
         "LITERT_BUILD_TESTS": "ON",
         "LITERT_ENABLE_MEDIATEK": "OFF",
+        "LITERT_ENABLE_SAMSUNG": "OFF",
         "CMAKE_CXX_FLAGS": "$env{CMAKE_BUILD_TYPE} -fpermissive"
       }
     },
@@ -59,6 +60,7 @@
         "CMAKE_CXX_FLAGS": "-DABSL_FLAGS_STRIP_NAMES=0",
         "LITERT_BUILD_TESTS": "ON",
         "LITERT_ENABLE_MEDIATEK": "OFF",
+        "LITERT_ENABLE_SAMSUNG": "OFF",
         "QAIRT_HEADERS_DIR": "$env{QAIRT_HEADERS_DIR}"
       }
     },
@@ -105,6 +107,26 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "LITERT_AUTO_BUILD_TFLITE": "ON"
+      }
+    },
+    {
+      "name": "toolchain-based",
+      "displayName": "Toolchain based",
+      "generator": "Unix Makefiles",
+      "binaryDir": "$env{LITERT_CMAKE_BUILD_DIR}",
+      "toolchainFile": "$env{TOOLCHAIN_PATH}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LITERT_AUTO_BUILD_TFLITE": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "LITERT_HOST_C_COMPILER": "$env{LITERT_CLANG}",
+        "LITERT_HOST_CXX_COMPILER": "$env{LITERT_CLANG_PP}",
+        "LITERT_ENABLE_GPU": "OFF",
+        "CMAKE_CXX_FLAGS": "-DABSL_FLAGS_STRIP_NAMES=0",
+        "LITERT_BUILD_TESTS": "ON",
+        "LITERT_ENABLE_MEDIATEK": "OFF",
+        "LITERT_ENABLE_SAMSUNG": "OFF",
+        "QAIRT_HEADERS_DIR": "$env{QAIRT_HEADERS_DIR}"
       }
     }
   ]
