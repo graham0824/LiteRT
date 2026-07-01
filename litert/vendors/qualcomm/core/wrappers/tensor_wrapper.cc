@@ -256,8 +256,8 @@ void TensorWrapper::SetDataBy(std::uint32_t bytes, const void* data,
                               bool copy_data) {
   if (bytes != GetTensorBytes()) {
     QNN_LOG_WARNING(
-        "Bytes: %d != GetTensorBytes(): %d, use GetTensorBytes() instead.",
-        bytes, GetTensorBytes());
+        "%s Bytes: %d != GetTensorBytes(): %d, use GetTensorBytes() instead.",
+        name_.c_str(), bytes, GetTensorBytes());
     bytes = GetTensorBytes();
   }
   if (copy_data) {

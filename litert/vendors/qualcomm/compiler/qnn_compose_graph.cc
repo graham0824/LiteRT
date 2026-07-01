@@ -559,6 +559,33 @@ LiteRtStatus BuildAddOp(const litert::compiler::Op& litert_op,
 
   auto& activation_input = ::qnn::CreateFusedActivationInputTensor(
       tensor_pool, fused_activation, output_tensors);
+
+  if (input_tensors.size() == 2) {
+    const auto& input_0 = input_tensors[0].get();
+    const auto& input_1 = input_tensors[1].get();
+    if (input_0.IsPerTensorQuant() && input_1.IsPerTensorQuant() &&
+        input_1.IsTensorNative() && input_1.IsQuantI8()) {
+      const auto& quant_param_0 =
+          std::get<::qnn::ScaleOffsetQuantizeParamsWrapper>(
+              input_0.GetQuantParams());
+      const auto& quant_param_1 =
+          std::get<::qnn::ScaleOffsetQuantizeParamsWrapper>(
+              input_1.GetQuantParams());
+      if (quant_param_0.GetScale() > quant_param_1.GetScale() * 5e5) {
+        std::vector<int8_t> zero_data(input_1.GetTensorNumElements(),
+                                      -quant_param_1.GetZeroPoint());
+        auto& zero = tensor_pool.CreateStaticTensor(
+            input_1.GetDataType(), input_1.GetQuantParams(),
+            input_1.GetDimensions(), sizeof(int8_t) * zero_data.size(),
+            zero_data.data());
+        input_tensors[1] = zero;
+        LITERT_LOG(
+            LITERT_ERROR,
+            "Replace small scale input_1 tensor with zero tensor for Add.");
+      }
+    }
+  }
+
   op_wrappers.clear();
   op_wrappers.emplace_back(::qnn::CreateElementWiseAddOp(
       input_tensors[0], input_tensors[1], activation_input));

@@ -47,6 +47,11 @@ OpWrapper CreateElementWiseBinaryOp(const TensorWrapper& input_0,
 OpWrapper CreateElementWiseAddOp(const TensorWrapper& input_0,
                                  const TensorWrapper& input_1,
                                  const TensorWrapper& output_0) {
+  // OpWrapper op(GetUniqueOpName(QNN_OP_ELEMENT_WISE_ADD),
+  //              QNN_OP_ELEMENT_WISE_ADD, QnnOpCode::kElementWiseAdd);
+  // op.AddInputTensor(input_0);
+  // op.AddInputTensor(input_1);
+  // op.AddOutputTensor(output_0);
   return CreateElementWiseBinaryOp(input_0, input_1, output_0,
                                    QNN_OP_ELEMENT_WISE_BINARY_OPERATION_ADD);
 }

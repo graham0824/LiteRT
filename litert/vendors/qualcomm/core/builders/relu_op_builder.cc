@@ -23,7 +23,9 @@ std::vector<OpWrapper> BuildReluOp(
   elementwise_op.AddScalarParam<std::uint32_t>(
       QNN_OP_ELEMENT_WISE_NEURON_PARAM_OPERATION,
       QNN_OP_ELEMENT_WISE_NEURON_OPERATION_RELU);
-
+  // auto& elementwise_op = CreateOpWrapper(res, QNN_OP_RELU);
+  // elementwise_op.AddInputTensor(inputs[0]);
+  // elementwise_op.AddOutputTensor(outputs[0]);
   return res;
 }
 
