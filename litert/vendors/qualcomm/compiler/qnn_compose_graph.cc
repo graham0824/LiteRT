@@ -106,6 +106,7 @@
 #include "litert/vendors/qualcomm/core/builders/unpack_op_builder.h"
 #include "litert/vendors/qualcomm/core/common.h"
 #include "litert/vendors/qualcomm/core/dump/dump_graph.h"
+#include "litert/vendors/qualcomm/core/schema/soc_table.h"
 #include "litert/vendors/qualcomm/core/transformation/graph_to_graph.h"
 #include "litert/vendors/qualcomm/core/utils/flexbuffer_helpers.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
@@ -1698,13 +1699,16 @@ LiteRtStatus AddTensorToQnn(
 }
 
 LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
+                      ::qnn::QnnBackend& qnn_backend,
                       Qnn_ContextHandle_t context_handle,
                       Qnn_ProfileHandle_t profile_handle,
                       LiteRtSubgraph subgraph, absl::string_view qnn_graph_name,
                       const ::qnn::Options& options,
                       std::vector<::qnn::TensorWrapper>* inputs = nullptr,
                       std::vector<::qnn::TensorWrapper>* outputs = nullptr) {
-  GraphMapper graph_mapper(ctx, subgraph, qnn, context_handle, profile_handle);
+  GraphMapper graph_mapper(ctx, subgraph, qnn,
+                           ::qnn::IsFp16Supported(qnn_backend.GetSocInfo()),
+                           context_handle, profile_handle);
   LITERT_RETURN_IF_ERROR(graph_mapper.InitQnnGraph(qnn_graph_name, options));
 
   //
@@ -1808,8 +1812,9 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
   // TODO (jiunkaiy): Set this graph-to-graph transformation as a compile flag.
   const ::qnn::G2GConfig g2g_option = ::qnn::G2GConfig::kMHAOptPrefill;
   GraphToGraphTransform(g2g_option, graph_op_wrappers, tensor_pool,
-                        [&qnn](::qnn::OpWrapper& op) -> bool {
-                          return qnn.ValidateOp(op) == kLiteRtStatusOk;
+                        [&qnn, &qnn_backend](::qnn::OpWrapper& op) -> bool {
+                          return qnn.ValidateOp(qnn_backend, op) ==
+                                 kLiteRtStatusOk;
                         });
 
   // Create ops and their corresponding tensors.
@@ -1888,6 +1893,7 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
 //===----------------------------------------------------------------------===//
 
 LiteRtStatus ComposeGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
+                          ::qnn::QnnBackend& qnn_backend,
                           Qnn_ContextHandle_t context_handle,
                           Qnn_ProfileHandle_t profile_handle,
                           LiteRtSubgraph subgraph,
@@ -1895,9 +1901,9 @@ LiteRtStatus ComposeGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
                           const ::qnn::Options& options,
                           std::vector<::qnn::TensorWrapper>* inputs,
                           std::vector<::qnn::TensorWrapper>* outputs) {
-  LITERT_RETURN_IF_ERROR(MapGraph(ctx, qnn, context_handle, profile_handle,
-                                  subgraph, qnn_graph_name, options, inputs,
-                                  outputs));
+  LITERT_RETURN_IF_ERROR(MapGraph(ctx, qnn, qnn_backend, context_handle,
+                                  profile_handle, subgraph, qnn_graph_name,
+                                  options, inputs, outputs));
   return kLiteRtStatusOk;
 }
 

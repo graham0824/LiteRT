@@ -30,10 +30,12 @@ namespace litert::qnn {
 class GraphMapper {
  public:
   GraphMapper(const LiteRtCompilerContext* ctx, LiteRtSubgraph subgraph,
-              QnnManager& qnn, Qnn_ContextHandle_t context_handle,
+              QnnManager& qnn, bool is_fp16_supported,
+              Qnn_ContextHandle_t context_handle,
               Qnn_ProfileHandle_t profile_handle)
       : subgraph_(litert::compiler::Subgraph(ctx, subgraph)),
         qnn_(qnn),
+        is_fp16_supported_(is_fp16_supported),
         context_handle_(context_handle),
         profile_handle_(profile_handle) {}
 
@@ -70,6 +72,7 @@ class GraphMapper {
   // QNN Sdk State
   //
   QnnManager& qnn_;
+  bool is_fp16_supported_;
   Qnn_ContextHandle_t context_handle_;
   Qnn_ProfileHandle_t profile_handle_;
   Qnn_GraphHandle_t qnn_graph_ = nullptr;

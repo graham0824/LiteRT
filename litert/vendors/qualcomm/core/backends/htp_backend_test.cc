@@ -315,6 +315,9 @@ TEST_F(HtpBackendTest, DISABLED_InitializeWithLogLevelOffTest) {
 
   ASSERT_TRUE(backend_->GetBackendHandle());
   ASSERT_FALSE(backend_->GetLogHandle());
+#if defined(__x86_64__) || defined(_M_X64)
+  EXPECT_EQ(backend_->GetSocInfo().soc_model, kDefaultSocInfo.soc_model);
+#endif
 }
 
 TEST_F(HtpBackendTest, DISABLED_InitializeWithLogLevelVerboseTest) {
@@ -327,6 +330,7 @@ TEST_F(HtpBackendTest, DISABLED_InitializeWithLogLevelVerboseTest) {
 
   ASSERT_TRUE(backend_->GetBackendHandle());
   ASSERT_TRUE(backend_->GetLogHandle());
+  EXPECT_EQ(backend_->GetSocInfo().soc_model, kDefaultSocInfo.soc_model);
 }
 
 // SETPERFORMANCEMODE /////////////////////////////////////////////////////////
