@@ -51,6 +51,10 @@ provides the corresponding QNN operation it is legalized to.
 | `kLiteRtOpCodeTflAveragePool2d`         | Legalized to `QNN_OP_POOL_AVG_2D`. |
 :                                         : Supports fused activation.         :
 | `kLiteRtOpCodeTflBatchMatmul`           | Legalized to `QNN_OP_MAT_MUL`.     |
+| `kLiteRtOpCodeTflBatchToSpaceNd`        | Legalized to                       |
+:                                         : `QNN_OP_BATCH_TO_SPACE` with       :
+:                                         : static `block_size` and `crops`    :
+:                                         : tensor params.                     :
 | `kLiteRtOpCodeTflBroadcastTo`           | Legalized to                       |
 :                                         : `QNN_OP_ELEMENT_WISE_BINARY` (ADD) :
 :                                         : or `QNN_OP_ELEMENT_WISE_BINARY`    :
@@ -236,6 +240,10 @@ provides the corresponding QNN operation it is legalized to.
 | `kLiteRtOpCodeTflSlice`                 | Legalized to                       |
 :                                         : `QNN_OP_STRIDED_SLICE`.            :
 | `kLiteRtOpCodeTflSoftmax`               | Legalized to `QNN_OP_SOFTMAX`.     |
+| `kLiteRtOpCodeTflSpaceToBatchNd`        | Legalized to                       |
+:                                         : `QNN_OP_SPACE_TO_BATCH` with       :
+:                                         : static `block_size` and            :
+:                                         : `pad_amount` tensor params.        :
 | `kLiteRtOpCodeTflSpaceToDepth`          | Legalized to                       |
 :                                         : `QNN_OP_SPACE_TO_DEPTH`.           :
 | `kLiteRtOpCodeTflSplit`                 | Legalized to `QNN_OP_SPLIT`.       |
