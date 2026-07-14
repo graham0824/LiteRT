@@ -14,7 +14,7 @@
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/slice_op_builder.h"
-#include "litert/vendors/qualcomm/core/builders/unpack_op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "litert/vendors/qualcomm/core/op_code.h"
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/utils/log.h"
@@ -225,24 +225,35 @@ size_t FuseRotaryEmbeddingWithTranspose(
   new_ops.emplace_back(CreateSliceOp(cos_sq, cos_half_t, cos_slice_ranges));
   new_ops.emplace_back(CreateSliceOp(sin_sq, sin_half_t, sin_slice_ranges));
 
-  // --- Step 3: Unpack x [B,S,H,D] along axis=2 → H × [B,S,D]. ---
-  const std::vector<std::uint32_t> bsd = {B, S, D};
-  std::vector<ConstTensorWrapperRef> unpack_outs;
-  unpack_outs.reserve(H);
-  for (std::uint32_t h = 0; h < H; ++h) {
-    unpack_outs.emplace_back(tensor_pool.CloneNativeTensorFrom(x, bsd));
-  }
-  new_ops.emplace_back(CreateUnpackOp(x, unpack_outs, 2));
-
-  // --- Step 4: For each head, Reshape [B,S,D]→[B,1,S,D] then RotaryEmbedding. ---
+  // --- Step 3: Split x [B,S,H,D] along axis=2 → H × [B,S,1,D]. ---
+  // Split preserves rank so each output is [B,S,1,D].  No Reshape needed before
+  // RotaryEmbedding: [B,S,1,D] and [B,1,S,D] have identical row-major layout
+  // (element [b,s,0,d] and [b,0,s,d] share offset b*S*D + s*D + d), so we
+  // just emit a Reshape to relabel the dims as [B,1,S,D] for QNN.
+  const std::vector<std::uint32_t> bs1d = {B, S, 1, D};
   const std::vector<std::uint32_t> b1sd = {B, 1, S, D};
 
+  std::vector<ConstTensorWrapperRef> split_outs;
+  split_outs.reserve(H);
+  for (std::uint32_t h = 0; h < H; ++h) {
+    split_outs.emplace_back(tensor_pool.CloneNativeTensorFrom(x, bs1d));
+  }
+  // Build split_index tensor: cut points {1, 2, ..., H-1}.
+  std::vector<std::uint32_t> split_indices;
+  split_indices.reserve(H - 1);
+  for (std::uint32_t h = 1; h < H; ++h) split_indices.emplace_back(h);
+  auto& split_index_t = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_UINT_32, {}, {H - 1},
+      sizeof(std::uint32_t) * split_indices.size(), split_indices.data());
+  new_ops.emplace_back(CreateSplitOp(x, split_outs, 2, split_index_t));
+
+  // --- Step 4: For each head, Reshape [B,S,1,D]→[B,1,S,D] then RotaryEmbedding. ---
   std::vector<ConstTensorWrapperRef> concat_inputs;
   concat_inputs.reserve(H);
   for (std::uint32_t h = 0; h < H; ++h) {
-    // Reshape [B,S,D] → [B,1,S,D]
+    // Reshape [B,S,1,D] → [B,1,S,D]  (same memory layout, relabels dims)
     auto& head_reshaped = tensor_pool.CloneNativeTensorFrom(x, b1sd);
-    new_ops.emplace_back(CreateReshapeOp(unpack_outs[h].get(), head_reshaped));
+    new_ops.emplace_back(CreateReshapeOp(split_outs[h].get(), head_reshaped));
 
     // RotaryEmbedding
     auto& rope_out = tensor_pool.CloneNativeTensorFrom(x, b1sd);
@@ -294,7 +305,7 @@ size_t FuseRotaryEmbeddingWithTranspose(
   ops.erase(ops.begin() + start_index + kSlice1Idx,
             ops.begin() + start_index + pattern_size);
 
-  QNN_LOG_INFO("[G2G] RoPE+Transpose → %u × QNN RotaryEmbedding + Concat + Convert fusion success.", H);
+  QNN_LOG_INFO("[G2G] RoPE+Transpose → Split + %u × [Reshape+RotaryEmbedding] + Concat + Convert fusion success.", H);
   return new_ops.size();
 }
 
