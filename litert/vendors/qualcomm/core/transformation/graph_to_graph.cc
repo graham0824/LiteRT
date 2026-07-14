@@ -15,6 +15,7 @@
 #include "litert/vendors/qualcomm/core/transformation/matmul_convert.h"
 #include "litert/vendors/qualcomm/core/transformation/mha_to_sha.h"
 #include "litert/vendors/qualcomm/core/transformation/rotation_quant.h"
+#include "litert/vendors/qualcomm/core/transformation/rotary_embedding.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 
 namespace qnn {
@@ -293,6 +294,23 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   Transform(validate_op_config, ops, tensor_pool,
             build_gqa_gemma4b_prefill_pattern(false, false, true),
             OptimizeGQAGemma4BPrefill);
+
+  // RoPE + Transpose fusion:
+  //   Convert → Slice → Slice → Concat → Mul(cos) → Mul(sin) → Add → Convert → Transpose
+  // Replaced by: Unpack → H × [Reshape + RotaryEmbedding + Convert] → Pack(axis=1)
+  const std::vector<QnnOpCode> rope_transpose_pattern = {
+      QnnOpCode::kConvert,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kStridedSlice,
+      QnnOpCode::kConcat,
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kElementWiseBinary,
+      QnnOpCode::kConvert,
+      QnnOpCode::kTranspose,
+  };
+  Transform(validate_op_config, ops, tensor_pool, rope_transpose_pattern,
+            FuseRotaryEmbeddingWithTranspose);
 
   // Fast Vlm Optimization
   const std::vector<QnnOpCode> fast_vlm_mha_prefill = {

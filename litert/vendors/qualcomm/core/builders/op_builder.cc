@@ -203,6 +203,7 @@ OpWrapper& CreateOpWrapper(std::vector<OpWrapper>& ops, const char* op_type) {
           {QNN_OP_RMS_NORM, QnnOpCode::kRmsNorm},
           {QNN_OP_ROI_ALIGN, QnnOpCode::kRoiAlign},
           {QNN_OP_ROI_POOLING, QnnOpCode::kRoiPooling},
+          {QNN_OP_ROTARY_EMBEDDING, QnnOpCode::kRotaryEmbedding},
           {QNN_OP_SCATTER_ELEMENTS, QnnOpCode::kScatterElements},
           {QNN_OP_SCATTER_ND, QnnOpCode::kScatterNd},
           {QNN_OP_SHAPE, QnnOpCode::kShape},

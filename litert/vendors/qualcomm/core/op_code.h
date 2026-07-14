@@ -140,6 +140,7 @@ enum class QnnOpCode {
   kRmsNorm,
   kRoiAlign,
   kRoiPooling,
+  kRotaryEmbedding,
   kScatterElements,
   kScatterNd,
   kShape,
