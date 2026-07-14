@@ -7,12 +7,15 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
+#include "litert/vendors/qualcomm/core/wrappers/quantize_params_wrapper.h"
 #include "litert/vendors/qualcomm/core/builders/slice_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/split_op_builder.h"
 #include "litert/vendors/qualcomm/core/op_code.h"
@@ -50,6 +53,27 @@ std::optional<std::vector<std::int32_t>> ReadSliceRanges(
   auto span = slice.GetTensorParam(0).GetTensor().GetTensorData<std::int32_t>();
   if (!span) return std::nullopt;
   return std::vector<std::int32_t>(span->begin(), span->end());
+}
+
+// Creates a UFIXED8 counterpart for a SFIXED8 tensor and emits the Convert.
+// SFIXED8 zero_point z maps to UFIXED8 zero_point z+128 with the same scale.
+// Returns the UFIXED8 output tensor; pushes the Convert op into new_ops.
+const TensorWrapper& ToUFixed8(
+    const TensorWrapper& src, std::vector<OpWrapper>& new_ops,
+    TensorPool& tensor_pool) {
+  const auto* so =
+      std::get_if<ScaleOffsetQuantizeParamsWrapper>(&src.GetQuantParams());
+  if (!so) {
+    QNN_LOG_ERROR("[G2G] RoPE+T: ToUFixed8 called on non-scale-offset tensor.");
+    return src;
+  }
+  QuantizeParamsWrapperVariant ufixed_quant;
+  ufixed_quant.emplace<ScaleOffsetQuantizeParamsWrapper>(
+      so->GetScale(), so->GetOffset() + 128);
+  auto& dst = tensor_pool.CreateNativeTensor(QNN_DATATYPE_UFIXED_POINT_8,
+                                             ufixed_quant, src.GetDimensions());
+  new_ops.emplace_back(CreateConvertOp(src, dst));
+  return dst;
 }
 
 // Returns true if the Transpose op has perm [0,2,1,3].
@@ -104,6 +128,10 @@ size_t FuseRotaryEmbeddingWithTranspose(
   const std::uint32_t B = x_dims[0], S = x_dims[1];
   const std::uint32_t H = x_dims[2], D = x_dims[3];
   const std::int32_t half = static_cast<std::int32_t>(D / 2);
+
+  // Detect whether inputs are SFIXED8 (needs Convert→UFIXED8 before
+  // RotaryEmbedding and back after) or already UFIXED8/UFIXED16 (no Cast needed).
+  const bool needs_cast = x.IsQuantI8();  // SFIXED_POINT_8 = 0x0308
 
   // Both slices must consume x.
   if (slice1.GetInputTensor(0) != x || slice2.GetInputTensor(0) != x) {
@@ -180,7 +208,9 @@ size_t FuseRotaryEmbeddingWithTranspose(
     return 1;
   }
 
-  // cos/sin are [B, S, 1, D]; reshape to [B,S,D] then slice to [B,S,D/2].
+  // cos/sin are [B, S, 1, D]; use a single StridedSlice with shrink_axes=4
+  // (bit 2 squeezes the H=1 dim) while also slicing D, giving [B,S,D/2]
+  // directly — no Reshape needed.
   const auto cos_dims = cos_tensor.GetDimensions();
   const auto sin_dims = sin_tensor.GetDimensions();
   if (cos_dims.size() != 4 || sin_dims.size() != 4) {
@@ -191,39 +221,57 @@ size_t FuseRotaryEmbeddingWithTranspose(
   std::vector<OpWrapper> new_ops;
   const std::uint32_t seq_len = cos_dims[1];
 
-  // --- Step 1: Squeeze cos/sin [B,S,1,D] → [B,S,D]. ---
-  const std::vector<std::uint32_t> cs_3d = {B, seq_len, D};
-  auto& cos_sq = tensor_pool.CloneNativeTensorFrom(cos_tensor, cs_3d);
-  auto& sin_sq = tensor_pool.CloneNativeTensorFrom(sin_tensor, cs_3d);
-  new_ops.emplace_back(CreateReshapeOp(cos_tensor, cos_sq));
-  new_ops.emplace_back(CreateReshapeOp(sin_tensor, sin_sq));
-
-  // --- Step 2: Slice cos D[0:D/2] and sin D[D/2:D] → [B,S,D/2]. ---
-  // cos_stored = [cos(θ), cos(θ)]: first half works.
-  // sin_stored = [−sin(θ), +sin(θ)]: take D[D/2:D] for +sin(θ).
+  // --- Step 1: StridedSlice cos/sin [B,S,1,D] → [B,S,D/2] with shrink_axes=4.
+  // ranges: [B:0..1, S:0..seq_len, H:0..1 (shrunk), D:0..half or half..D]
+  // shrink_axes bit mask 0b0100 = 4 squeezes dim 2.
   const std::vector<std::int32_t> cos_ranges = {
-      0, 1, 1,
+      0, 1,    1,
       0, static_cast<std::int32_t>(seq_len), 1,
+      0, 1,    1,   // dim 2 is squeezed by shrink_axes
       0, half, 1,
   };
   const std::vector<std::int32_t> sin_ranges = {
-      0, 1, 1,
+      0, 1,    1,
       0, static_cast<std::int32_t>(seq_len), 1,
+      0, 1,    1,   // dim 2 is squeezed by shrink_axes
       half, static_cast<std::int32_t>(D), 1,
   };
-  const std::vector<std::uint32_t> ranges_dims_3d = {3, 3};
+  const std::vector<std::uint32_t> ranges_dims_4d = {4, 3};
   auto& cos_slice_ranges = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, {}, ranges_dims_3d,
+      QNN_DATATYPE_INT_32, {}, ranges_dims_4d,
       sizeof(std::int32_t) * cos_ranges.size(), cos_ranges.data());
   auto& sin_slice_ranges = tensor_pool.CreateStaticTensor(
-      QNN_DATATYPE_INT_32, {}, ranges_dims_3d,
+      QNN_DATATYPE_INT_32, {}, ranges_dims_4d,
       sizeof(std::int32_t) * sin_ranges.size(), sin_ranges.data());
 
   const std::vector<std::uint32_t> cs_half = {B, seq_len, static_cast<std::uint32_t>(half)};
   auto& cos_half_t = tensor_pool.CloneNativeTensorFrom(cos_tensor, cs_half);
   auto& sin_half_t = tensor_pool.CloneNativeTensorFrom(sin_tensor, cs_half);
-  new_ops.emplace_back(CreateSliceOp(cos_sq, cos_half_t, cos_slice_ranges));
-  new_ops.emplace_back(CreateSliceOp(sin_sq, sin_half_t, sin_slice_ranges));
+
+  constexpr std::uint32_t kShrinkAxesBit2 = 4;  // 0b0100: squeeze dim 2
+  auto make_shrink_slice = [&](const TensorWrapper& src,
+                               const TensorWrapper& ranges,
+                               const TensorWrapper& dst) {
+    OpWrapper op(GetUniqueOpName(QNN_OP_STRIDED_SLICE), QNN_OP_STRIDED_SLICE,
+                 QnnOpCode::kStridedSlice);
+    op.AddInputTensor(src);
+    op.AddOutputTensor(dst);
+    op.AddTensorParam(QNN_OP_STRIDED_SLICE_PARAM_RANGES, ranges);
+    op.AddScalarParam<std::uint32_t>(QNN_OP_STRIDED_SLICE_PARAM_SHRINK_AXES,
+                                     kShrinkAxesBit2);
+    return op;
+  };
+  new_ops.emplace_back(make_shrink_slice(cos_tensor, cos_slice_ranges, cos_half_t));
+  new_ops.emplace_back(make_shrink_slice(sin_tensor, sin_slice_ranges, sin_half_t));
+
+  // --- Step 1b: If SFIXED8, cast cos/sin and x to UFIXED8 for RotaryEmbedding. ---
+  // After RotaryEmbedding, cast output back to SFIXED8 for the Concat.
+  const TensorWrapper* cos_rope = &cos_half_t;
+  const TensorWrapper* sin_rope = &sin_half_t;
+  if (needs_cast) {
+    cos_rope = &ToUFixed8(cos_half_t, new_ops, tensor_pool);
+    sin_rope = &ToUFixed8(sin_half_t, new_ops, tensor_pool);
+  }
 
   // --- Step 3: Split x [B,S,H,D] along axis=2 → H × [B,S,1,D]. ---
   // Split preserves rank so each output is [B,S,1,D].  No Reshape needed before
@@ -247,7 +295,8 @@ size_t FuseRotaryEmbeddingWithTranspose(
       sizeof(std::uint32_t) * split_indices.size(), split_indices.data());
   new_ops.emplace_back(CreateSplitOp(x, split_outs, 2, split_index_t));
 
-  // --- Step 4: For each head, Reshape [B,S,1,D]→[B,1,S,D] then RotaryEmbedding. ---
+  // --- Step 4: For each head, [optional SFIXED→UFIXED cast], Reshape
+  //             [B,S,1,D]→[B,1,S,D], RotaryEmbedding, [optional UFIXED→SFIXED]. ---
   std::vector<ConstTensorWrapperRef> concat_inputs;
   concat_inputs.reserve(H);
   for (std::uint32_t h = 0; h < H; ++h) {
@@ -255,12 +304,26 @@ size_t FuseRotaryEmbeddingWithTranspose(
     auto& head_reshaped = tensor_pool.CloneNativeTensorFrom(x, b1sd);
     new_ops.emplace_back(CreateReshapeOp(split_outs[h].get(), head_reshaped));
 
-    // RotaryEmbedding
-    auto& rope_out = tensor_pool.CloneNativeTensorFrom(x, b1sd);
+    // If SFIXED8: cast the head input to UFIXED8 before RotaryEmbedding.
+    const TensorWrapper* rope_in = &head_reshaped;
+    if (needs_cast) {
+      rope_in = &ToUFixed8(head_reshaped, new_ops, tensor_pool);
+    }
+
+    // RotaryEmbedding: inputs are UFIXED8 (or original dtype if no cast needed).
+    auto& rope_out_u = tensor_pool.CloneNativeTensorFrom(*rope_in, b1sd);
     new_ops.emplace_back(
-        CreateRotaryEmbeddingOp(head_reshaped, cos_half_t, sin_half_t,
-                                rope_out, D));
-    concat_inputs.emplace_back(rope_out);
+        CreateRotaryEmbeddingOp(*rope_in, *cos_rope, *sin_rope, rope_out_u, D));
+
+    // If SFIXED8: cast RotaryEmbedding output back to SFIXED8 for Concat.
+    if (needs_cast) {
+      // Reuse the quant params of the original x (same scale/offset as SFIXED8 head).
+      auto& rope_out_s = tensor_pool.CloneNativeTensorFrom(x, b1sd);
+      new_ops.emplace_back(CreateConvertOp(rope_out_u, rope_out_s));
+      concat_inputs.emplace_back(rope_out_s);
+    } else {
+      concat_inputs.emplace_back(rope_out_u);
+    }
   }
 
   // --- Step 5: Concat(axis=1) all H × [B,1,S,D] → [B,H,S,D]. ---
@@ -268,16 +331,15 @@ size_t FuseRotaryEmbeddingWithTranspose(
   auto& rope_concat_out = tensor_pool.CloneNativeTensorFrom(x, bhsd);
   new_ops.emplace_back(CreateConcatenationOp(concat_inputs, rope_concat_out, 1));
 
-  // --- Step 6: Single Convert for the whole [B,H,S,D] output. ---
-  // Write directly into transpose's output tensor, eliminating the Transpose.
+  // --- Step 6: Single output Convert → transpose's output tensor. ---
+  // (The pattern's convert_out carries the correct quant params for downstream ops.)
   new_ops.emplace_back(
       CreateOpWithSameParams(convert_out, {rope_concat_out},
                              {transpose.GetOutputTensor(0)}));
 
-  // --- Validate (skip RotaryEmbedding — device-specific op). ---
+  // --- Validate all new ops including RotaryEmbedding. ---
   bool is_valid = true;
   for (size_t i = 0; i < new_ops.size(); ++i) {
-    if (new_ops[i].GetOpCode() == QnnOpCode::kRotaryEmbedding) continue;
     if (!validate_op_config(new_ops[i])) {
       const auto cfg = new_ops[i].GetOpConfig();
       QNN_LOG_WARNING(
