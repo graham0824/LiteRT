@@ -18,8 +18,11 @@ include(FetchContent)
 
 FetchContent_Declare(
     stb
-    GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG c0c982601f40183e74d84a61237e968dca08380e
+    # Offline build: use the source vendored in LiteRT_Tools instead of
+    # cloning from GitHub. Keep in sync with upstream:
+    # https://github.com/nothings/stb.git @ c0c982601f40183e74d84a61237e968dca08380e
+    URL ${LITERT_TOOLS_DEP}/stb
+    SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/stb-src"
 )
 
 FetchContent_GetProperties(stb)
@@ -104,29 +107,39 @@ if(LITERT_ENABLE_GPU)
             "${_litert_segmentation_gpu_accelerator}" DIRECTORY)
 
         file(MAKE_DIRECTORY "${_litert_segmentation_gpu_accelerator_dir}")
-        message(STATUS
-            "Downloading LiteRT GPU accelerator from ${_litert_segmentation_gpu_accelerator_url}")
-        file(DOWNLOAD
-            "${_litert_segmentation_gpu_accelerator_url}"
-            "${_litert_segmentation_gpu_accelerator}"
-            STATUS _litert_segmentation_download_status
-            TLS_VERIFY ON
-            SHOW_PROGRESS)
-        list(GET _litert_segmentation_download_status 0
-            _litert_segmentation_download_code)
-        list(GET _litert_segmentation_download_status 1
-            _litert_segmentation_download_message)
-        if(NOT _litert_segmentation_download_code EQUAL 0)
-            message(FATAL_ERROR
-                "Failed to download LiteRT GPU accelerator: "
-                "${_litert_segmentation_download_message}")
+
+        # Offline build: never reach out to storage.googleapis.com. If the
+        # prebuilt GPU accelerator has been vendored under ${LITERT_TOOLS_DEP},
+        # copy it from there; otherwise warn and skip the copy step rather than
+        # downloading / hard-failing. (CI builds with LITERT_ENABLE_GPU=OFF, so
+        # this path is inert there; this guard is for GPU=ON offline builds.)
+        set(_litert_segmentation_local_gpu_accelerator "")
+        if(DEFINED ENV{LITERT_TOOLS_DEP})
+            set(_litert_segmentation_local_gpu_accelerator
+                "$ENV{LITERT_TOOLS_DEP}/litert_prebuilts/${_litert_segmentation_gpu_accelerator_relpath}")
         endif()
 
-        add_custom_command(TARGET litert_tensor_segmentation_example POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${_litert_segmentation_gpu_accelerator}"
-                "$<TARGET_FILE_DIR:litert_tensor_segmentation_example>/${_litert_segmentation_gpu_accelerator_name}"
-            COMMENT "Copying LiteRT GPU accelerator next to segmentation example")
+        if(_litert_segmentation_local_gpu_accelerator AND
+           EXISTS "${_litert_segmentation_local_gpu_accelerator}")
+            message(STATUS
+                "Using vendored LiteRT GPU accelerator: "
+                "${_litert_segmentation_local_gpu_accelerator}")
+            file(COPY "${_litert_segmentation_local_gpu_accelerator}"
+                DESTINATION "${_litert_segmentation_gpu_accelerator_dir}")
+
+            add_custom_command(TARGET litert_tensor_segmentation_example POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_litert_segmentation_gpu_accelerator}"
+                    "$<TARGET_FILE_DIR:litert_tensor_segmentation_example>/${_litert_segmentation_gpu_accelerator_name}"
+                COMMENT "Copying LiteRT GPU accelerator next to segmentation example")
+        else()
+            message(WARNING
+                "Skipping LiteRT GPU accelerator for segmentation example: not "
+                "found locally at ${_litert_segmentation_local_gpu_accelerator}. "
+                "Offline builds do not download it from "
+                "${_litert_segmentation_gpu_accelerator_url}. Vendor it under "
+                "\${LITERT_TOOLS_DEP}/litert_prebuilts to bundle it.")
+        endif()
     else()
         message(WARNING
             "LITERT_ENABLE_GPU=ON, but the segmentation example does not know "

@@ -24,8 +24,13 @@ function(_litert_gemma3_prepare_sentencepiece)
 
     FetchContent_Declare(
         litert_sentencepiece
-        URL https://github.com/google/sentencepiece/archive/refs/tags/v0.2.0.tar.gz
-        URL_HASH SHA256=9970f0a0afee1648890293321665e5b2efa04eaec9f1671fcf8048f456f5bb86
+        # Offline build: use the source vendored in LiteRT_Tools instead of
+        # downloading from GitHub. FetchContent copies this local directory
+        # into SOURCE_DIR, so the in-tree source is never modified by the
+        # include-patching below. Keep in sync with the URL/SHA that upstream
+        # uses: google/sentencepiece v0.2.0.
+        URL ${LITERT_TOOLS_DEP}/sentencepiece
+        SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/litert_sentencepiece-src"
     )
 
     FetchContent_GetProperties(litert_sentencepiece)
@@ -212,20 +217,32 @@ function(_litert_gemma3_copy_gpu_accelerator target_name)
         "${_litert_gemma3_gpu_accelerator}" DIRECTORY)
 
     file(MAKE_DIRECTORY "${_litert_gemma3_gpu_accelerator_dir}")
-    message(STATUS
-        "Downloading LiteRT GPU accelerator from ${_litert_gemma3_gpu_accelerator_url}")
-    file(DOWNLOAD
-        "${_litert_gemma3_gpu_accelerator_url}"
-        "${_litert_gemma3_gpu_accelerator}"
-        STATUS _litert_gemma3_download_status
-        TLS_VERIFY ON
-        SHOW_PROGRESS)
-    list(GET _litert_gemma3_download_status 0 _litert_gemma3_download_code)
-    list(GET _litert_gemma3_download_status 1 _litert_gemma3_download_message)
-    if(NOT _litert_gemma3_download_code EQUAL 0)
-        message(FATAL_ERROR
-            "Failed to download LiteRT GPU accelerator: "
-            "${_litert_gemma3_download_message}")
+
+    # Offline build: never reach out to storage.googleapis.com. If the prebuilt
+    # GPU accelerator has been vendored under ${LITERT_TOOLS_DEP}, copy it from
+    # there; otherwise warn and skip the copy step rather than downloading /
+    # hard-failing. (CI builds with LITERT_ENABLE_GPU=OFF, so this path is inert
+    # there; this guard is for GPU=ON offline builds.)
+    set(_litert_gemma3_local_gpu_accelerator "")
+    if(DEFINED ENV{LITERT_TOOLS_DEP})
+        set(_litert_gemma3_local_gpu_accelerator
+            "$ENV{LITERT_TOOLS_DEP}/litert_prebuilts/${_litert_gemma3_gpu_accelerator_relpath}")
+    endif()
+
+    if(_litert_gemma3_local_gpu_accelerator AND
+       EXISTS "${_litert_gemma3_local_gpu_accelerator}")
+        message(STATUS
+            "Using vendored LiteRT GPU accelerator: "
+            "${_litert_gemma3_local_gpu_accelerator}")
+        file(COPY "${_litert_gemma3_local_gpu_accelerator}"
+            DESTINATION "${_litert_gemma3_gpu_accelerator_dir}")
+    else()
+        message(WARNING
+            "Skipping LiteRT GPU accelerator for Gemma3: not found locally at "
+            "${_litert_gemma3_local_gpu_accelerator}. Offline builds do not "
+            "download it from ${_litert_gemma3_gpu_accelerator_url}. Vendor it "
+            "under \${LITERT_TOOLS_DEP}/litert_prebuilts to bundle it.")
+        return()
     endif()
 
     add_custom_command(TARGET ${target_name} POST_BUILD

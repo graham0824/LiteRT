@@ -24,9 +24,7 @@ set(OVERRIDABLE_FETCH_CONTENT_LICENSE_CHECK OFF)
 OverridableFetchContent_Declare(
   abseil-cpp
   URL "${LITERT_TOOLS_DEP}/abseil-cpp"
-  
-  # GIT_REPOSITORY https://github.com/abseil/abseil-cpp
-  # Sync with tensorflow/third_party/absl/workspace.bzl
+
   # GIT_REPOSITORY https://github.com/abseil/abseil-cpp
   # Sync with tensorflow/third_party/absl/workspace.bzl
   # GIT_TAG 20260526.0
@@ -46,4 +44,3 @@ add_subdirectory(
   "${abseil-cpp_SOURCE_DIR}"
   "${abseil-cpp_BINARY_DIR}"
 )
-
