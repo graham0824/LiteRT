@@ -1667,6 +1667,26 @@ LiteRtStatus ConvertOp(const ::qnn::Options& options,
                        size_t op_index, ::qnn::SdkVersion sdk_version) {
   const auto& builders = GetOpBuilders();
   const auto op_code = litert_op.Code();
+
+  // Special-case: EmbeddingLookup with int2 per-channel weight + fp32 output.
+  // Route to the HVX custom op package instead of the standard Gather path.
+  if (op_code == kLiteRtOpCodeTflEmbeddingLookup &&
+      input_tensors.size() >= 2 && !output_tensors.empty()) {
+    const auto& weight = input_tensors[1].get();
+    const auto& output = output_tensors[0].get();
+    if (std::holds_alternative<::qnn::BwAxisScaleOffsetQuantizeParamsWrapper>(
+            weight.GetQuantParams()) &&
+        weight.IsQuantBitwidth(::qnn::kQuantBitWidth2) && output.IsF32()) {
+      auto ops = ::qnn::BuildEmbeddingLookupFpa2wOp(
+          tensor_pool, input_tensors, output_tensors,
+          options.GetCustomOpPackage());
+      op_wrappers.insert(op_wrappers.end(),
+                         std::make_move_iterator(ops.begin()),
+                         std::make_move_iterator(ops.end()));
+      return kLiteRtStatusOk;
+    }
+  }
+
   if (op_code < builders.size() && builders[op_code]) {
     return builders[op_code](litert_op, tensor_pool, input_tensors,
                              output_tensors, op_wrappers,

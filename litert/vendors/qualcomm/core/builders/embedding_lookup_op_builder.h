@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
+#include "litert/vendors/qualcomm/core/common.h"
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "litert/vendors/qualcomm/core/wrappers/tensor_wrapper.h"
@@ -21,6 +22,15 @@ OpWrapper CreateGatherOp(const TensorWrapper& table,
 std::vector<OpWrapper> BuildEmbeddingLookupOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs);
+
+// Handles the fp32-activation / int2-per-channel-weight variant of
+// EmbeddingLookup by emitting a QNN custom op for the HVX op package.
+// The weight is converted to self-packed uint8 with tile permutation at
+// compile time; per-channel scales become an explicit fp32 input tensor.
+std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs,
+    const CustomOpPackage& custom_op_package);
 
 }  // namespace qnn
 

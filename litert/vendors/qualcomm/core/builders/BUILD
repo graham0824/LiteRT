@@ -71,13 +71,18 @@ cc_library(
     srcs = ["embedding_lookup_op_builder.cc"],
     hdrs = ["embedding_lookup_op_builder.h"],
     deps = [
+        ":custom_op_builder",
         ":op_builder",
         ":quantize_op_builder",
+        "//litert/vendors/qualcomm/core:common",
         "//litert/vendors/qualcomm/core:op_code",
         "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/utils:log",
+        "//litert/vendors/qualcomm/core/utils:miscs",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+        "@com_google_absl//absl/types:span",
         "@qairt//:qnn_lib_headers",
     ],
 )
