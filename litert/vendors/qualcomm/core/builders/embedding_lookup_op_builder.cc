@@ -38,24 +38,40 @@ constexpr uint32_t kTileSize = 512;
 // Tile permutation: stored_pos_in_tile = (d_in_tile % 64) * 8 + (d_in_tile / 64)
 // Crumb encoding:   crumb = ((code + 2) ^ 2) & 0x3
 // Byte packing:     little-endian crumbs, 4 per byte
-static std::vector<uint8_t> PackWeightToTilePermuted(
+std::vector<uint8_t> PackWeightToTilePermuted(
     absl::Span<const int8_t> codes, uint32_t V, uint32_t D) {
-  const uint32_t bytes_per_row = D / 4;
-  std::vector<uint8_t> packed(static_cast<size_t>(V) * bytes_per_row, 0);
-
-  for (uint32_t v = 0; v < V; ++v) {
-    uint8_t* row = packed.data() + v * bytes_per_row;
-    const int8_t* src = codes.data() + v * D;
-    for (uint32_t d = 0; d < D; ++d) {
-      const uint8_t crumb =
-          static_cast<uint8_t>((static_cast<int32_t>(src[d]) + 2) ^ 2) & 0x3u;
-      const uint32_t d_in_tile = d % kTileSize;
-      const uint32_t tile_base = (d / kTileSize) * kTileSize;
-      const uint32_t stored_pos =
-          tile_base + (d_in_tile % 64u) * 8u + (d_in_tile / 64u);
-      row[stored_pos / 4u] |= crumb << ((stored_pos % 4u) * 2u);
-    }
+  QNN_LOG_INFO("(V ,D) = (%u, %u)", V, D);
+  QNN_LOG_INFO("Codes size = %zu", codes.size());
+  for (size_t i=0; i< 10; ++i) {
+    QNN_LOG_INFO(">> %d", codes[i]);
   }
+  // const uint32_t bytes_per_row = D / 4;
+  std::vector<uint8_t> packed(codes.size()/4, 0);
+  static constexpr size_t kNumCodesPerInt8 = 4;
+  for (size_t i = 0; i < packed.size(); ++i) {
+    for (size_t j = 0; j < kNumCodesPerInt8; ++j) {
+      // tile[ (q%8)·64 + q/8 ]
+      size_t index = i * kNumCodesPerInt8 + j;
+    }
+    packed[i] = 
+  }
+  for (auto& c: packed) {
+
+  }
+
+  // for (uint32_t v = 0; v < V; ++v) {
+  //   uint8_t* row = packed.data() + v * bytes_per_row;
+  //   const int8_t* src = codes.data() + v * D;
+  //   for (uint32_t d = 0; d < D; ++d) {
+  //     const uint8_t crumb =
+  //         static_cast<uint8_t>((static_cast<int32_t>(src[d]) + 2) ^ 2) & 0x3u;
+  //     const uint32_t d_in_tile = d % kTileSize;
+  //     const uint32_t tile_base = (d / kTileSize) * kTileSize;
+  //     const uint32_t stored_pos =
+  //         tile_base + (d_in_tile % 64u) * 8u + (d_in_tile / 64u);
+  //     row[stored_pos / 4u] |= crumb << ((stored_pos % 4u) * 2u);
+  //   }
+  // }
   return packed;
 }
 }  // namespace
