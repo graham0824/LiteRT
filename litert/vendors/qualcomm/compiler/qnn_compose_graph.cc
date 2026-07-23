@@ -51,6 +51,7 @@
 #include "litert/vendors/cc/namespace_heuristics.h"
 #include "litert/vendors/qualcomm/common.h"
 #include "litert/vendors/qualcomm/compiler/graph_mapper.h"
+#include "litert/vendors/qualcomm/core/backends/qnn_backend.h"
 #include "litert/vendors/qualcomm/core/builders/arg_min_max_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/broadcast_to_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/cast_op_builder.h"
@@ -421,6 +422,7 @@ REGISTER_SIMPLE_OP_BUILDER(BuildMaximumOp, BuildElementwiseMaximumOp)
 REGISTER_SIMPLE_OP_BUILDER(BuildEluOp, BuildElementwiseEluOp)
 REGISTER_SIMPLE_OP_BUILDER(BuildFloorOp, BuildElementwiseFloorOp)
 REGISTER_SIMPLE_OP_BUILDER(BuildFloorDivOp, BuildElementwiseFloorDivOp)
+REGISTER_SIMPLE_OP_BUILDER(BuildFloorModOp, BuildElementwiseFloorModOp)
 REGISTER_SIMPLE_OP_BUILDER(BuildLogicalOrOp, BuildElementwiseOrOp)
 REGISTER_SIMPLE_OP_BUILDER(BuildEmbeddingLookupOp, BuildEmbeddingLookupOp)
 REGISTER_SIMPLE_OP_BUILDER(BuildGeluOp, BuildGeluOp)
@@ -1453,6 +1455,7 @@ GetOpBuilders() {
   builders[kLiteRtOpCodeTflUnpack] = Adapt<BuildUnpackOp>;
   builders[kLiteRtOpCodeTflReduceMin] = Adapt<BuildReduceMinOp>;
   builders[kLiteRtOpCodeTflFloorDiv] = Adapt<BuildFloorDivOp>;
+  builders[kLiteRtOpCodeTflFloorMod] = Adapt<BuildFloorModOp>;
   builders[kLiteRtOpCodeTflReduceAny] = Adapt<BuildReduceAnyOp>;
   builders[kLiteRtOpCodeTflSquare] = Adapt<BuildSquareOp>;
   builders[kLiteRtOpCodeTflResizeNearestNeighbor] =
@@ -1495,6 +1498,13 @@ LiteRtStatus BuildCustomOp(const litert::compiler::Op& litert_op,
                            std::vector<::qnn::TensorWrapperRef>& output_tensors,
                            std::vector<::qnn::OpWrapper>& op_wrappers,
                            const ::qnn::CustomOpPackage& custom_op_package) {
+  if (custom_op_package.name.empty()) {
+    LITERT_LOG(LITERT_WARNING,
+               "No custom package registered for custom op, won't create QNN "
+               "custom op.");
+    return kLiteRtStatusOk;
+  }
+
   // Use tflite custom code as op type in QNN custom op package.
   auto custom_code = litert_op.CustomCode();
   if (!custom_code.HasValue() || custom_code->empty()) {
@@ -1508,9 +1518,7 @@ LiteRtStatus BuildCustomOp(const litert::compiler::Op& litert_op,
     return kLiteRtStatusErrorInvalidArgument;
   }
 
-  const char* package_name = custom_op_package.name.empty()
-                                 ? QNN_OP_PACKAGE_NAME_QTI_AISW
-                                 : custom_op_package.name.c_str();
+  const char* package_name = custom_op_package.name.c_str();
   auto& custom_op = op_wrappers.emplace_back(
       ::qnn::CreateCustomOp(package_name, custom_code->data(),
                             std::vector<::qnn::ConstTensorWrapperRef>(
@@ -1618,6 +1626,8 @@ LiteRtStatus BuildCustomOp(const litert::compiler::Op& litert_op,
   return kLiteRtStatusOk;
 }
 
+}  // namespace
+
 std::string DescribeUnsupportedOp(size_t op_index,
                                   const litert::compiler::Op& litert_op) {
   const auto op_code = litert_op.Code();
@@ -1642,8 +1652,6 @@ std::string DescribeUnsupportedOp(size_t op_index,
   }
   return dump.str();
 }
-
-}  // namespace
 
 LiteRtStatus ConvertOp(const ::qnn::Options& options,
                        const litert::compiler::Op& litert_op,
@@ -1698,6 +1706,7 @@ LiteRtStatus AddTensorToQnn(
 }
 
 LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
+                      ::qnn::QnnBackend& qnn_backend,
                       Qnn_ContextHandle_t context_handle,
                       Qnn_ProfileHandle_t profile_handle,
                       LiteRtSubgraph subgraph, absl::string_view qnn_graph_name,
@@ -1705,7 +1714,8 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
                       std::vector<::qnn::TensorWrapper>* inputs = nullptr,
                       std::vector<::qnn::TensorWrapper>* outputs = nullptr) {
   GraphMapper graph_mapper(ctx, subgraph, qnn, context_handle, profile_handle);
-  LITERT_RETURN_IF_ERROR(graph_mapper.InitQnnGraph(qnn_graph_name, options));
+  LITERT_RETURN_IF_ERROR(
+      graph_mapper.InitQnnGraph(qnn_graph_name, qnn_backend, options));
 
   //
   // Legalize subgraph inputs and update tensors in scope
@@ -1808,8 +1818,9 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
   // TODO (jiunkaiy): Set this graph-to-graph transformation as a compile flag.
   const ::qnn::G2GConfig g2g_option = ::qnn::G2GConfig::kMHAOptPrefill;
   GraphToGraphTransform(g2g_option, graph_op_wrappers, tensor_pool,
-                        [&qnn](::qnn::OpWrapper& op) -> bool {
-                          return qnn.ValidateOp(op) == kLiteRtStatusOk;
+                        [&qnn, &qnn_backend](::qnn::OpWrapper& op) -> bool {
+                          return qnn.ValidateOp(qnn_backend, op) ==
+                                 kLiteRtStatusOk;
                         });
 
   // Create ops and their corresponding tensors.
@@ -1888,6 +1899,7 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
 //===----------------------------------------------------------------------===//
 
 LiteRtStatus ComposeGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
+                          ::qnn::QnnBackend& qnn_backend,
                           Qnn_ContextHandle_t context_handle,
                           Qnn_ProfileHandle_t profile_handle,
                           LiteRtSubgraph subgraph,
@@ -1895,9 +1907,9 @@ LiteRtStatus ComposeGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
                           const ::qnn::Options& options,
                           std::vector<::qnn::TensorWrapper>* inputs,
                           std::vector<::qnn::TensorWrapper>* outputs) {
-  LITERT_RETURN_IF_ERROR(MapGraph(ctx, qnn, context_handle, profile_handle,
-                                  subgraph, qnn_graph_name, options, inputs,
-                                  outputs));
+  LITERT_RETURN_IF_ERROR(MapGraph(ctx, qnn, qnn_backend, context_handle,
+                                  profile_handle, subgraph, qnn_graph_name,
+                                  options, inputs, outputs));
   return kLiteRtStatusOk;
 }
 

@@ -51,7 +51,7 @@
 #include "ml_drift_delegate/delegate/gpu_backend.h"
 #include "ml_drift_delegate/tflite/model_builder_helper.h"
 #include "tflite/core/c/common.h"
-#include "util/task/status_macros.h"
+// copybara:uncomment #include "util/task/status_macros.h"
 
 namespace litert::ml_drift {
 namespace {
@@ -315,6 +315,13 @@ absl::Status DelegateKernelLiteRt::UploadOrBindTensorBuffer(
           output_ids_[i], output_tensor_descriptors_[i], gpu_memory,
           output_tensors_));
     }
+  }
+
+  // Handle input events for Metal backend before conversion.
+  // TODO: b/537754749 - Refactor delegate kernel to order operations correctly
+  // for all backends.
+  if (is_metal_backend_) {
+    ABSL_RETURN_IF_ERROR(HandleInputEvents(context));
   }
 
   // PreConvert after all inputs and outputs are registered.
