@@ -1,0 +1,88 @@
+name: Qualcomm Auto Uplevel
+
+on:
+  push:
+    branches:
+      - dev/hungjuiw/auto-upstream
+  schedule:
+    # Run daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  uplevel:
+    runs-on: ["self-hosted", "X64", "Linux"]
+    container:
+      image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
+    steps:
+      - name: Install gh CLI
+        run: |
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+          apt-get update -qq && apt-get install -y gh
+
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark workspace as safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/google-ai-edge/LiteRT.git || \
+            git remote set-url upstream https://github.com/google-ai-edge/LiteRT.git
+          git fetch upstream
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          UPSTREAM_SHA=$(git rev-parse upstream/main)
+          FORK_SHA=$(git rev-parse origin/main)
+          if [ "$UPSTREAM_SHA" = "$FORK_SHA" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+            echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update uplevel branch
+        if: steps.check.outputs.up_to_date == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="auto-uplevel/upstream-$(date -u +%Y%m%d)"
+          git checkout -B "$BRANCH" origin/main
+          git merge --no-edit upstream/main
+          git push origin "$BRANCH" --force
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: Open or update pull request
+        if: steps.check.outputs.up_to_date == 'false'
+        shell: bash
+        env:
+          GH_ENTERPRISE_TOKEN: ${{ secrets.GH_ENTERPRISE_TOKEN }}
+          GH_HOST: github.qualcomm.com
+        run: |
+          UPSTREAM_SHA="${{ steps.check.outputs.upstream_sha }}"
+          SHORT_SHA="${UPSTREAM_SHA:0:8}"
+          PR_TITLE="[Automated Job] Sync Upstream to ${SHORT_SHA} on $(date -u +%Y-%m-%d)"
+          PR_BODY="Automated uplevel from [google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) @ \`${UPSTREAM_SHA}\`.
+
+          Please review the changes and merge when ready."
+
+          EXISTING=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --repo "$GITHUB_REPOSITORY" --title "$PR_TITLE" --body "$PR_BODY"
+            echo "Updated existing PR #$EXISTING"
+          else
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$BRANCH" \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+          fi
