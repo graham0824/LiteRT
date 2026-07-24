@@ -34,44 +34,31 @@ constexpr uint32_t kTileSize = 512;
 
 // Converts V×D int2 codes (stored as int8, natural order) to the HVX kernel's
 // self-packed uint8 format: D/4 bytes per row, 512-code tile permutation.
-//
-// Tile permutation: stored_pos_in_tile = (d_in_tile % 64) * 8 + (d_in_tile / 64)
-// Crumb encoding:   crumb = ((code + 2) ^ 2) & 0x3
-// Byte packing:     little-endian crumbs, 4 per byte
-std::vector<uint8_t> PackWeightToTilePermuted(
+std::vector<std::uint8_t> PackWeightToTilePermuted(
     absl::Span<const int8_t> codes, uint32_t V, uint32_t D) {
   QNN_LOG_INFO("(V ,D) = (%u, %u)", V, D);
   QNN_LOG_INFO("Codes size = %zu", codes.size());
-  for (size_t i=0; i< 10; ++i) {
-    QNN_LOG_INFO(">> %d", codes[i]);
+  if (codes.size() % kTileSize != 0) {
+    QNN_LOG_ERROR("Only supported mod %u == 0", kTileSize);
+    return {};
   }
   // const uint32_t bytes_per_row = D / 4;
-  std::vector<uint8_t> packed(codes.size()/4, 0);
-  static constexpr size_t kNumCodesPerInt8 = 4;
-  for (size_t i = 0; i < packed.size(); ++i) {
-    for (size_t j = 0; j < kNumCodesPerInt8; ++j) {
-      // tile[ (q%8)·64 + q/8 ]
-      size_t index = i * kNumCodesPerInt8 + j;
-    }
-    packed[i] = 
+  std::vector<std::uint8_t> packed(codes.size() / 4, 0);
+  for (size_t i = 0; i < codes.size(); ++i) {
+    // QNN_LOG_INFO(">> %d", codes[i]);
+    size_t tile_index = i / kTileSize;
+    size_t ind = i - tile_index * kTileSize;
+    size_t new_index = (ind % 64) * 8 + ind / 64;
+    // For example, if i = 10,
+    // 10 / 4 = 2
+    // 0: [0][1][2][3], 1: [4][5][6][7], 2: [8][9][10][11]
+    size_t packed_index = new_index / 4 + tile_index * kTileSize / 4;
+    // 10 % 4 = 2
+    // 0b0000_00?? -> 0b00??_0000
+    size_t num_left_shift = 2 * (new_index % 4);
+    packed[packed_index] &= ~(0b11 << num_left_shift);
+    packed[packed_index] |= ((codes[i] & 0b11) << num_left_shift);
   }
-  for (auto& c: packed) {
-
-  }
-
-  // for (uint32_t v = 0; v < V; ++v) {
-  //   uint8_t* row = packed.data() + v * bytes_per_row;
-  //   const int8_t* src = codes.data() + v * D;
-  //   for (uint32_t d = 0; d < D; ++d) {
-  //     const uint8_t crumb =
-  //         static_cast<uint8_t>((static_cast<int32_t>(src[d]) + 2) ^ 2) & 0x3u;
-  //     const uint32_t d_in_tile = d % kTileSize;
-  //     const uint32_t tile_base = (d / kTileSize) * kTileSize;
-  //     const uint32_t stored_pos =
-  //         tile_base + (d_in_tile % 64u) * 8u + (d_in_tile / 64u);
-  //     row[stored_pos / 4u] |= crumb << ((stored_pos % 4u) * 2u);
-  //   }
-  // }
   return packed;
 }
 }  // namespace
@@ -133,17 +120,21 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
                                    kGatherDefaultAxis),
                     CreateConvertOp(gather_output, output_tensor));
 }
-
+// #define DQ_FC
 std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs,
     const CustomOpPackage& custom_op_package) {
+#ifndef DQ_FC
+  // The custom-HVX-op path needs a configured op package; the DQ_FC reference
+  // path (below) emits a plain Gather and does not.
   if (custom_op_package.name.empty()) {
     QNN_LOG_ERROR(
         "BuildEmbeddingLookupFpa2wOp: custom_op_package.name is empty. "
         "Set it via QualcommOptions::SetCustomOpPackage().");
     return {};
   }
+#endif  // !DQ_FC
 
   const TensorWrapper& indices_tensor = inputs[kIndicesIdx];
   const TensorWrapper& weight_tensor = inputs[kTableIdx];
@@ -166,13 +157,6 @@ std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
   }
   const uint32_t V = dims[0];
   const uint32_t D = dims[1];
-  if (D % 4 != 0) {
-    QNN_LOG_ERROR(
-        "BuildEmbeddingLookupFpa2wOp: embedding dimension D=%u is not "
-        "divisible by 4.",
-        D);
-    return {};
-  }
 
   // Extract int8 codes (already unpacked from int2 by TensorWrapper on load).
   const auto int8_data = weight_tensor.GetTensorData<int8_t>();
@@ -182,10 +166,7 @@ std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
     return {};
   }
 
-  // Pack weight to HVX self-packed tile-permuted uint8 format.
-  std::vector<uint8_t> packed = PackWeightToTilePermuted(*int8_data, V, D);
-
-  // Extract per-channel scales.
+  // Extract per-channel scales (one per row / channel on axis 0).
   std::vector<float> scales = bw_params->GetScales();
   if (scales.size() != V) {
     QNN_LOG_ERROR(
@@ -194,22 +175,78 @@ std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
     return {};
   }
 
+#ifdef DQ_FC
+  // Debug / accuracy-reference path: dequantize the per-channel int2 weight into
+  // a plain fp32 embedding table at compile time and emit a standard Gather.
+  // Selected by building with -DDQ_FC; needs no HVX custom op package.
+  const std::vector<int32_t> zero_points = bw_params->GetZeroPoints();
+  if (zero_points.size() != V) {
+    QNN_LOG_ERROR(
+        "BuildEmbeddingLookupFpa2wOp: expected %u per-channel zero points, got "
+        "%zu.",
+        V, zero_points.size());
+    return {};
+  }
+
+  // Dequantized weight is defined as: S * (q - Z), applied per channel (row).
+  std::vector<float> dequant(static_cast<size_t>(V) * D);
+  for (uint32_t v = 0; v < V; ++v) {
+    for (uint32_t d = 0; d < D; ++d) {
+      const size_t idx = static_cast<size_t>(v) * D + d;
+      dequant[idx] = Dequantize((*int8_data)[idx], scales[v], zero_points[v]);
+    }
+  }
+
+  // Create static fp32 embedding table: shape (V, D).
+  const std::vector<uint32_t> table_dims = {V, D};
+  const TensorWrapper& dequant_table_tensor = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_FLOAT_32, UndefinedQuantizeParamsWrapper{}, table_dims,
+      static_cast<uint32_t>(dequant.size() * sizeof(float)), dequant.data());
+
+  // Output is already fp32, so no Convert op is needed after the Gather.
+  return MakeVector(CreateGatherOp(dequant_table_tensor, indices_tensor,
+                                   output_tensor, kGatherDefaultAxis));
+#else   // DQ_FC
+  if (D % 4 != 0) {
+    QNN_LOG_ERROR(
+        "BuildEmbeddingLookupFpa2wOp: embedding dimension D=%u is not "
+        "divisible by 4.",
+        D);
+    return {};
+  }
+
+  // Pack weight to HVX self-packed tile-permuted uint8 format.
+  std::vector<uint8_t> packed = PackWeightToTilePermuted(*int8_data, V, D);
+  if (packed.empty()) {
+    QNN_LOG_ERROR("Pack weight failure...");
+    return {};
+  }
+  char packed0_bits[9];
+  for (int b = 0; b < 8; ++b) {
+    packed0_bits[b] = (packed[0] & (1 << (7 - b))) ? '1' : '0';
+  }
+  packed0_bits[8] = '\0';
+  QNN_LOG_INFO("packed[0] = 0b%s", packed0_bits);
+
   // Create static tensor for packed weight: shape (V, D/4), dtype uint8.
   const std::vector<uint32_t> packed_dims = {V, D / 4u};
+  QNN_LOG_INFO("checked packed: %d", packed.size() == V* D / 4u);
   const TensorWrapper& packed_weight_tensor = tensor_pool.CreateStaticTensor(
       QNN_DATATYPE_UINT_8, UndefinedQuantizeParamsWrapper{}, packed_dims,
       static_cast<uint32_t>(packed.size() * sizeof(uint8_t)), packed.data());
 
   // Create static tensor for scales: shape (V,), dtype float32.
   const std::vector<uint32_t> scales_dims = {V};
+  QNN_LOG_INFO("checked scale: %d", scales.size() == V);
   const TensorWrapper& scales_tensor = tensor_pool.CreateStaticTensor(
       QNN_DATATYPE_FLOAT_32, UndefinedQuantizeParamsWrapper{}, scales_dims,
       static_cast<uint32_t>(scales.size() * sizeof(float)), scales.data());
-
+  QNN_LOG_INFO("scales[0]: %f", scales[0]);
   return MakeVector(
       CreateCustomOp(custom_op_package.name.c_str(), kEmbeddingCustomOpType,
                      {indices_tensor, packed_weight_tensor, scales_tensor},
                      {output_tensor}));
+#endif  // DQ_FC
 }
 
 }  // namespace qnn

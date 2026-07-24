@@ -27,6 +27,13 @@ std::vector<OpWrapper> BuildEmbeddingLookupOp(
 // EmbeddingLookup by emitting a QNN custom op for the HVX op package.
 // The weight is converted to self-packed uint8 with tile permutation at
 // compile time; per-channel scales become an explicit fp32 input tensor.
+//
+// Debug / accuracy reference: when compiled with -DDQ_FC, this instead
+// dequantizes the per-channel int2 weight into a plain fp32 embedding table at
+// compile time (S * (q - Z) per channel) and emits a standard Gather. That path
+// requires no HVX custom op package and lets the custom kernel's numerics be
+// checked against a known-good float Gather. The two paths cannot coexist in one
+// binary.
 std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
     TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
     const std::vector<TensorWrapperRef>& outputs,
