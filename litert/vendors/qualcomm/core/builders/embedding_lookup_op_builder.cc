@@ -29,35 +29,57 @@ constexpr int kOutputIdx = 0;
 constexpr std::int32_t kGatherDefaultAxis = 0;
 // QNN op type name defined in the custom embedding op package XML.
 constexpr char kEmbeddingCustomOpType[] = "EMBEDDING";
-// Tile size (in codes) used by the HVX kernel's self-packed weight format.
-constexpr uint32_t kTileSize = 512;
+// The two HVX tiles the tile-generic kernel (4_hvx_tile_generic) decodes: full
+// 512-code tiles, then an OPTIONAL single 256-code tail. A row is laid out as
+// n512 = D/512 full tiles followed by one 256-tail iff D % 512 == 256, so D need
+// only be a multiple of 256.
+constexpr uint32_t kTile512 = 512;
+constexpr uint32_t kTile256 = 256;
 
-// Converts V×D int2 codes (stored as int8, natural order) to the HVX kernel's
-// self-packed uint8 format: D/4 bytes per row, 512-code tile permutation.
+// Logical in-row index L -> physical crumb position within the packed row, for a
+// row laid out as n512 full 512-tiles then an optional 256-tail. This is the
+// INVERSE (scatter form) of the kernel's tile_order_{512,256}() gather: within a
+// W-wide tile (W = tile/8: 64 for the 512 tile, 32 for the 256 tail),
+//     phys = tile_base + (l % W) * 8 + l / W.
+// For D % 512 == 0 this is byte-identical to the previous global-512 mapping
+// (ind%64)*8 + ind/64, so the existing D=multiple-of-512 path is unchanged.
+uint32_t LogicalToPhysicalInRow(uint32_t L, uint32_t D) {
+  const uint32_t n512 = D / kTile512;
+  const uint32_t tail_base = n512 * kTile512;
+  if (L < tail_base) {                              // inside a full 512-tile
+    const uint32_t tile = L / kTile512;
+    const uint32_t l = L % kTile512;
+    return tile * kTile512 + (l % 64u) * 8u + l / 64u;   // W = 64
+  }
+  const uint32_t l = L - tail_base;                 // inside the 256-tail, 0..255
+  return tail_base + (l % 32u) * 8u + l / 32u;      // W = 32
+}
+
+// Converts V×D int2 codes (stored as int8, natural/logical order) to the HVX
+// kernel's self-packed uint8 format: D/4 bytes per row, per-tile permutation.
+// Packs PER ROW (not over a global V*D flatten) so a 256-tail that ends mid-row
+// is handled correctly. D must be a multiple of 256.
 std::vector<std::uint8_t> PackWeightToTilePermuted(
     absl::Span<const int8_t> codes, uint32_t V, uint32_t D) {
   QNN_LOG_INFO("(V ,D) = (%u, %u)", V, D);
   QNN_LOG_INFO("Codes size = %zu", codes.size());
-  if (codes.size() % kTileSize != 0) {
-    QNN_LOG_ERROR("Only supported mod %u == 0", kTileSize);
+  if (D % kTile256 != 0) {
+    QNN_LOG_ERROR("D=%u must be a multiple of %u (n*512 + optional 256-tail)", D,
+                  kTile256);
     return {};
   }
-  // const uint32_t bytes_per_row = D / 4;
-  std::vector<std::uint8_t> packed(codes.size() / 4, 0);
-  for (size_t i = 0; i < codes.size(); ++i) {
-    // QNN_LOG_INFO(">> %d", codes[i]);
-    size_t tile_index = i / kTileSize;
-    size_t ind = i - tile_index * kTileSize;
-    size_t new_index = (ind % 64) * 8 + ind / 64;
-    // For example, if i = 10,
-    // 10 / 4 = 2
-    // 0: [0][1][2][3], 1: [4][5][6][7], 2: [8][9][10][11]
-    size_t packed_index = new_index / 4 + tile_index * kTileSize / 4;
-    // 10 % 4 = 2
-    // 0b0000_00?? -> 0b00??_0000
-    size_t num_left_shift = 2 * (new_index % 4);
-    packed[packed_index] &= ~(0b11 << num_left_shift);
-    packed[packed_index] |= ((codes[i] & 0b11) << num_left_shift);
+  const uint32_t bytes_per_row = D / 4u;
+  std::vector<std::uint8_t> packed(static_cast<size_t>(V) * bytes_per_row, 0);
+  for (uint32_t v = 0; v < V; ++v) {
+    const size_t code_base = static_cast<size_t>(v) * D;
+    const size_t byte_base = static_cast<size_t>(v) * bytes_per_row;
+    for (uint32_t L = 0; L < D; ++L) {
+      const uint32_t q = LogicalToPhysicalInRow(L, D);    // physical crumb pos
+      const size_t packed_index = byte_base + q / 4u;
+      const uint32_t num_left_shift = 2u * (q % 4u);
+      packed[packed_index] &= ~(0b11u << num_left_shift);
+      packed[packed_index] |= ((codes[code_base + L] & 0b11) << num_left_shift);
+    }
   }
   return packed;
 }
@@ -207,11 +229,11 @@ std::vector<OpWrapper> BuildEmbeddingLookupFpa2wOp(
   return MakeVector(CreateGatherOp(dequant_table_tensor, indices_tensor,
                                    output_tensor, kGatherDefaultAxis));
 #else   // DQ_FC
-  if (D % 4 != 0) {
+  if (D % kTile256 != 0) {
     QNN_LOG_ERROR(
         "BuildEmbeddingLookupFpa2wOp: embedding dimension D=%u is not "
-        "divisible by 4.",
-        D);
+        "a multiple of %u (n*512 full tiles + optional one 256-tail).",
+        D, kTile256);
     return {};
   }
 
