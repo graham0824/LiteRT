@@ -337,6 +337,13 @@ Expected<void> CompareSingleOutputBuffer(TensorBuffer& cpu_buffer,
   get_val(cpu_buffer, cpu_data);
   get_val(npu_buffer, npu_data);
 
+  // Print the first few output elements for a quick sanity check.
+  const size_t kNumFirstToPrint = std::min<size_t>(64, total_elements);
+  for (size_t i = 0; i < kNumFirstToPrint; ++i) {
+    std::cout << "First #" << i << ": CPU value - " << cpu_data[i]
+              << ", NPU value - " << npu_data[i] << std::endl;
+  }
+
   if (absl::GetFlag(FLAGS_print_distribution)) {
     PrintDistribution(cpu_data, npu_data);
   }

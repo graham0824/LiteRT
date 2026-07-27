@@ -294,15 +294,7 @@ inline Expected<void> FillBufferWithRandomData(TensorBuffer& buffer) {
     }
     buffer.Write<float>(absl::MakeConstSpan(data));
   } else if (type.ElementType() == ElementType::Int32) {
-    std::vector<int32_t> data(total_elements);
-    unsigned int seed = 7;
-    for (size_t i = 0; i < total_elements; ++i) {
-#if !defined(LITERT_WINDOWS_OS)
-      data[i] = rand_r(&seed) % 1024 + 1;
-#else   // !defined(LITERT_WINDOWS_OS)
-      data[i] = rand() % 1024 + 1;
-#endif  // !defined(LITERT_WINDOWS_OS)
-    }
+    std::vector<int32_t> data(total_elements, 0);
     buffer.Write<int32_t>(absl::MakeConstSpan(data));
   } else if (type.ElementType() == ElementType::Int16) {
     std::vector<int16_t> data(total_elements);
