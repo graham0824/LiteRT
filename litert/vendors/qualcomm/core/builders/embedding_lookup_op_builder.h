@@ -15,6 +15,10 @@
 
 namespace qnn {
 
+// QNN op type name defined in the custom embedding op package XML. Shared by the
+// builder that emits the custom op and the G2G transform that fuses it.
+inline constexpr char kEmbeddingCustomOpType[] = "EMBEDDING";
+
 OpWrapper CreateGatherOp(const TensorWrapper& table,
                          const TensorWrapper& indices,
                          const TensorWrapper& output, std::int32_t axis);

@@ -27,8 +27,6 @@ constexpr int kTableIdx = 1;
 constexpr int kIndicesIdx = 0;
 constexpr int kOutputIdx = 0;
 constexpr std::int32_t kGatherDefaultAxis = 0;
-// QNN op type name defined in the custom embedding op package XML.
-constexpr char kEmbeddingCustomOpType[] = "EMBEDDING";
 // The two HVX tiles the tile-generic kernel (4_hvx_tile_generic) decodes: full
 // 512-code tiles, then an OPTIONAL single 256-code tail. A row is laid out as
 // n512 = D/512 full tiles followed by one 256-tail iff D % 512 == 256, so D need

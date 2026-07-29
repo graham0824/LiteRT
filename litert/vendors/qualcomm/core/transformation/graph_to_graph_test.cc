@@ -16,7 +16,9 @@
 #include "absl/numeric/bits.h"  // from @com_google_absl
 #include "litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/custom_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/hadamard_transform_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
@@ -1629,6 +1631,117 @@ TEST(RotQuant, ConvertFcToHadamardTransform_WithBias_NoOp) {
 
   ASSERT_EQ(op_wrappers.size(), 1u);
   EXPECT_TRUE(op_wrappers[0].IsOpCode(QnnOpCode::kFullyConnected));
+}
+
+TEST(EmbedderMulFusion, FoldScalarMul) {
+  // G2G Test case:
+  //
+  // ----- Before -----          ----- After -----
+  //   EMBEDDING (custom)           EMBEDDING (custom)
+  //        |                            |
+  //       Mul (x scalar c)             Out0
+  //        |                     (scales input pre-multiplied by c)
+  //       Out0
+  //
+  constexpr uint32_t kV = 4;    // vocab size / per-channel scale count
+  constexpr uint32_t kD = 512;  // embedding dim
+  static constexpr char kPackageName[] = "TestEmbeddingPackage";
+  constexpr float kMulConst = 3.0f;
+
+  TensorPool tensor_pool;
+  std::vector<OpWrapper> op_wrappers;
+
+  // Custom "EMBEDDING" op inputs: indices, packed weight (V, D/4), scales (V,).
+  auto& indices = tensor_pool.CreateNativeTensor(QNN_DATATYPE_INT_32, {}, {1, 8});
+
+  std::vector<uint8_t> packed(static_cast<size_t>(kV) * (kD / 4u), 0);
+  auto& packed_weight = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_UINT_8, {}, {kV, kD / 4u},
+      packed.size() * sizeof(uint8_t), packed.data());
+
+  const std::array<float, kV> scales{0.5f, 1.5f, 2.0f, 4.0f};
+  auto& scales_tensor = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_FLOAT_32, {}, {kV}, scales.size() * sizeof(float),
+      scales.data());
+
+  auto& embed_out =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_FLOAT_32, {}, {1, 8, kD});
+  op_wrappers.emplace_back(
+      CreateCustomOp(kPackageName, kEmbeddingCustomOpType,
+                     {indices, packed_weight, scales_tensor}, {embed_out}));
+
+  // Scalar Mul that follows the embedder.
+  const std::array<float, 1> mul_val{kMulConst};
+  auto& mul_const = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_FLOAT_32, {}, {1}, mul_val.size() * sizeof(float),
+      mul_val.data());
+  auto& pattern_output =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_FLOAT_32, {}, {1, 8, kD});
+  op_wrappers.emplace_back(
+      CreateElementWiseMulOp(embed_out, mul_const, pattern_output));
+
+  GraphToGraphTransform(::qnn::G2GConfig::kMHAOpt, op_wrappers, tensor_pool,
+                        [](OpWrapper& op) { return true; });
+
+  // The Mul is folded away; a single EMBEDDING custom op remains.
+  ASSERT_EQ(op_wrappers.size(), 1u);
+  auto& fused = op_wrappers[0];
+  EXPECT_TRUE(fused.IsOpCode(QnnOpCode::kUnknown));
+  EXPECT_STREQ(fused.GetTypeName(), kEmbeddingCustomOpType);
+  ASSERT_EQ(fused.GetInputCount(), 3u);
+  // Output is inherited from the Mul.
+  EXPECT_TRUE(fused.GetOutputTensor(0) == pattern_output);
+  // Scales input is pre-multiplied by the constant.
+  const auto new_scales = fused.GetInputTensor(2).GetTensorData<float>();
+  ASSERT_TRUE(new_scales.has_value());
+  ASSERT_EQ(new_scales->size(), kV);
+  for (uint32_t i = 0; i < kV; ++i) {
+    EXPECT_FLOAT_EQ((*new_scales)[i], scales[i] * kMulConst);
+  }
+}
+
+TEST(EmbedderMulFusion, NonScalarMulNoFold) {
+  // A per-embedding-dim (non-scalar) Mul constant cannot fold into per-vocab
+  // scales, so the graph must be left unchanged.
+  constexpr uint32_t kV = 4;
+  constexpr uint32_t kD = 512;
+  static constexpr char kPackageName[] = "TestEmbeddingPackage";
+
+  TensorPool tensor_pool;
+  std::vector<OpWrapper> op_wrappers;
+
+  auto& indices = tensor_pool.CreateNativeTensor(QNN_DATATYPE_INT_32, {}, {1, 8});
+  std::vector<uint8_t> packed(static_cast<size_t>(kV) * (kD / 4u), 0);
+  auto& packed_weight = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_UINT_8, {}, {kV, kD / 4u},
+      packed.size() * sizeof(uint8_t), packed.data());
+  const std::array<float, kV> scales{0.5f, 1.5f, 2.0f, 4.0f};
+  auto& scales_tensor = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_FLOAT_32, {}, {kV}, scales.size() * sizeof(float),
+      scales.data());
+  auto& embed_out =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_FLOAT_32, {}, {1, 8, kD});
+  op_wrappers.emplace_back(
+      CreateCustomOp(kPackageName, kEmbeddingCustomOpType,
+                     {indices, packed_weight, scales_tensor}, {embed_out}));
+
+  // Per-D (multi-element) Mul constant.
+  std::vector<float> mul_val(kD, 2.0f);
+  auto& mul_const = tensor_pool.CreateStaticTensor(
+      QNN_DATATYPE_FLOAT_32, {}, {kD}, mul_val.size() * sizeof(float),
+      mul_val.data());
+  auto& pattern_output =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_FLOAT_32, {}, {1, 8, kD});
+  op_wrappers.emplace_back(
+      CreateElementWiseMulOp(embed_out, mul_const, pattern_output));
+
+  GraphToGraphTransform(::qnn::G2GConfig::kMHAOpt, op_wrappers, tensor_pool,
+                        [](OpWrapper& op) { return true; });
+
+  // No fusion: both ops remain.
+  ASSERT_EQ(op_wrappers.size(), 2u);
+  EXPECT_STREQ(op_wrappers[0].GetTypeName(), kEmbeddingCustomOpType);
+  EXPECT_TRUE(op_wrappers[1].IsOpCode(QnnOpCode::kElementWiseBinary));
 }
 }  // namespace
 }  // namespace qnn

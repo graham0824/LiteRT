@@ -9,6 +9,7 @@
 
 #include "litert/vendors/qualcomm/core/op_code.h"
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
+#include "litert/vendors/qualcomm/core/transformation/embedder_mul_fusion.h"
 #include "litert/vendors/qualcomm/core/transformation/embedding_gemma.h"
 #include "litert/vendors/qualcomm/core/transformation/kv_swapped_attn.h"
 #include "litert/vendors/qualcomm/core/transformation/mask.h"
@@ -241,6 +242,16 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   };
   Transform(validate_op_config, ops, tensor_pool, embedding_gemma,
             TransformEmbeddingGemma);
+
+  // Embedder + Mul fusion: fold a scalar Mul that follows the fp32-act /
+  // int2-per-channel-weight EmbeddingLookup custom op into the embedder's
+  // per-channel scales.
+  const std::vector<QnnOpCode> embedder_mul = {
+      QnnOpCode::kUnknown,            // EMBEDDING custom op
+      QnnOpCode::kElementWiseBinary,  // Mul
+  };
+  Transform(validate_op_config, ops, tensor_pool, embedder_mul,
+            FuseEmbedderMul);
 
   // Fast Vlm Optimization
   const std::vector<QnnOpCode> fast_vlm_mha_prefill = {

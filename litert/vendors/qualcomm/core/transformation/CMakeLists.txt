@@ -11,6 +11,7 @@ target_sources(qnn_transformation
         graph_to_graph.cc
         matmul_convert.cc
         embedding_gemma.cc
+        embedder_mul_fusion.cc
         mask.cc
         mha_to_sha.cc
         kv_swapped_attn.cc
