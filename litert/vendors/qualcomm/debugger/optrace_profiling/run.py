@@ -38,6 +38,31 @@ _QAIRT_SDK = flags.DEFINE_string("qairt_sdk", None, "Path to qairt sdk folder")
 _WEIGHT_SHARING = flags.DEFINE_bool(
     "weight_sharing", False, "Enable weight sharing in compilation"
 )
+_CUSTOM_OP_COMPILE_PACKAGE = flags.DEFINE_string(
+    "custom_op_compile_package",
+    None,
+    "Compile-side QNN custom op package passed to apply_plugin_main via "
+    "--qualcomm_custom_op_package. E.g. "
+    "'name:embedding_op_package;"
+    "interface_provider:embedding_op_packageInterfaceProvider;"
+    "compile_package_path:/path/to/x86/libQnnembedding_op_package.so'.",
+)
+_CUSTOM_OP_DISPATCH_LIB = flags.DEFINE_string(
+    "custom_op_dispatch_lib",
+    None,
+    "Local path to a custom op package .so to push to the device for "
+    "dispatch. Used together with --custom_op_dispatch_package.",
+)
+_CUSTOM_OP_DISPATCH_PACKAGE = flags.DEFINE_string(
+    "custom_op_dispatch_package",
+    None,
+    "Dispatch-side QNN custom op package. Converted into a qnn-net-run "
+    "--op_packages <so>:<interface_provider>:<target> argument. E.g. "
+    "'name:embedding_op_package;"
+    "interface_provider:embedding_op_packageInterfaceProvider;"
+    "dispatch_package_path:/data/local/tmp/<user>/litert/"
+    "libQnnembedding_op_package.so;target:HTP'.",
+)
 
 flags.mark_flag_as_required(_OUTPUT_DIR.name)
 flags.mark_flag_as_required(_SERIAL.name)
@@ -71,6 +96,46 @@ def _extract_build_id(build_id_hdr: str) -> Optional[str]:
     return match.group(1)
   else:
     return None
+
+
+def _parse_custom_op_package(package_str: str) -> dict[str, str]:
+  """Parse a custom op package string into its key/value fields.
+
+  Mirrors the LiteRT absl flag parser (litert/tools/flags/vendors/
+  qualcomm_flags.cc): the string is a ';'-separated list of 'key:value'
+  tokens, where each token is split on its first ':'. Only the five keys
+  understood by the LiteRT flag are accepted.
+
+  Args:
+      package_str (str): The custom op package string, e.g.
+        "name:pkg;interface_provider:provider;dispatch_package_path:/p/x.so;"
+        "target:HTP".
+
+  Returns:
+      dict[str, str]: The parsed fields.
+
+  Raises:
+      ValueError: If a token has no ':' separator or uses an unsupported key.
+  """
+  allowed_keys = {
+      "name",
+      "interface_provider",
+      "compile_package_path",
+      "dispatch_package_path",
+      "target",
+  }
+  fields = {}
+  for token in package_str.split(";"):
+    if not token:
+      continue
+    colon_pos = token.find(":")
+    if colon_pos == -1:
+      raise ValueError(f"Invalid custom op package flag: '{token}'")
+    key = token[:colon_pos]
+    if key not in allowed_keys:
+      raise ValueError(f"Unsupported key in custom op package flag: '{key}'")
+    fields[key] = token[colon_pos + 1 :]
+  return fields
 
 
 def _get_ctx_bin_info(ctx_bin_path: str, qairt_sdk: Path) -> dict[str, Any]:
@@ -237,6 +302,13 @@ def _push_so(adb_cmd: str, htp_arch: str, qairt_sdk: Path):
     logging.debug(cmd)
     subprocess.run(cmd, check=True, shell=True)
 
+  if _CUSTOM_OP_DISPATCH_LIB.value:
+    logging.info("Pushing custom op package .so to the target device...")
+    dispatch_lib = Path(_CUSTOM_OP_DISPATCH_LIB.value).resolve()
+    cmd = f"{adb_cmd} push {dispatch_lib} {_DEVICE_WORKING_DIR}"
+    logging.debug(cmd)
+    subprocess.run(cmd, check=True, shell=True)
+
 
 def _get_adb_cmd(hostname: str, serial: str) -> str:
   """Get adb command with hostname and serial.
@@ -310,6 +382,17 @@ def _run_ctx_bin(
   _push_so(adb_cmd, htp_arch, qairt_sdk)
   _push_target(adb_cmd, ctx_bin_path)
   logging.info("Exectuing qnn-net-run with the given context binary...")
+
+  op_packages_arg = ""
+  if _CUSTOM_OP_DISPATCH_PACKAGE.value:
+    fields = _parse_custom_op_package(_CUSTOM_OP_DISPATCH_PACKAGE.value)
+    so_path = fields.get("dispatch_package_path") or _CUSTOM_OP_DISPATCH_LIB.value
+    so_name = Path(so_path).name
+    op_packages_arg = (
+        f" --op_packages {so_name}:{fields['interface_provider']}:"
+        f"{fields.get('target', 'HTP')}"
+    )
+
   env_vars = (
       f"export LD_LIBRARY_PATH={_DEVICE_WORKING_DIR} && "
       f"export ADSP_LIBRARY_PATH={_DEVICE_WORKING_DIR} && "
@@ -326,6 +409,7 @@ def _run_ctx_bin(
       "--config_file config.json "
       "--profiling_option optrace "
       "--profiling_level detailed"
+      f"{op_packages_arg}"
   )
   full_cmd = f'{adb_cmd} shell "{env_vars} && {run_cmd}"'
   logging.debug(full_cmd)
@@ -458,6 +542,11 @@ def _generate_ctx_bin(
       f"--qualcomm_enable_weight_sharing={_WEIGHT_SHARING.value}",
   ]
 
+  if _CUSTOM_OP_COMPILE_PACKAGE.value:
+    apply_plugin_main_cmd.append(
+        f"--qualcomm_custom_op_package={_CUSTOM_OP_COMPILE_PACKAGE.value}"
+    )
+
   env = os.environ.copy()
   qairt_host_lib_path = qairt_sdk.resolve() / "lib" / "x86_64-linux-clang"
   env["LD_LIBRARY_PATH"] = (
@@ -506,6 +595,11 @@ def main(argv):
   if _CONTEXT_BINARY.value and not _SCHEMATIC_FILE.value:
     raise app.UsageError(
         "--schematic_file is required if --context_binary is provided."
+    )
+  if _CUSTOM_OP_DISPATCH_PACKAGE.value and not _CUSTOM_OP_DISPATCH_LIB.value:
+    raise app.UsageError(
+        "--custom_op_dispatch_lib is required if --custom_op_dispatch_package "
+        "is provided (the .so must be pushed to the device)."
     )
 
   working_dir = os.environ.get("BUILD_WORKING_DIRECTORY")
