@@ -106,6 +106,12 @@ bool IsElementWiseAdd(const OpWrapper& op);
 
 bool IsElementWiseNot(const OpWrapper& op);
 
+bool IsElementWiseGreaterEqual(const OpWrapper& op);
+
+bool IsElementWiseLess(const OpWrapper& op);
+
+bool IsElementWiseAnd(const OpWrapper& op);
+
 }  // namespace qnn
 
 #endif  // ODML_LITERT_LITERT_VENDORS_QUALCOMM_CORE_WRAPPERS_OP_WRAPPER_H_

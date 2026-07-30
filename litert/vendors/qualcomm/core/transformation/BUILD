@@ -69,6 +69,7 @@ cc_library(
         ":matmul_convert",
         ":mha_to_sha",
         ":rotation_quant",
+        ":select_reshape_fold",
         "//litert/vendors/qualcomm/core:op_code",
         "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
@@ -101,6 +102,19 @@ cc_library(
         "//litert/vendors/qualcomm/core/builders:op_builder",
         "//litert/vendors/qualcomm/core/utils:log",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+    ],
+)
+
+cc_library(
+    name = "select_reshape_fold",
+    srcs = ["select_reshape_fold.cc"],
+    hdrs = ["select_reshape_fold.h"],
+    deps = [
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/builders:reshape_op_builder",
+        "//litert/vendors/qualcomm/core/utils:log",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
 )
 

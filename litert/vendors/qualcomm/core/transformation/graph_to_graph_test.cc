@@ -1743,5 +1743,144 @@ TEST(EmbedderMulFusion, NonScalarMulNoFold) {
   EXPECT_STREQ(op_wrappers[0].GetTypeName(), kEmbeddingCustomOpType);
   EXPECT_TRUE(op_wrappers[1].IsOpCode(QnnOpCode::kElementWiseBinary));
 }
+
+TEST(SelectReshapeFold, FoldMaskSelectReshape) {
+  // G2G Test case:
+  //
+  // ----- Before -----                    ----- After -----
+  //   GreaterEqual   Less                    Reshape(input_1)
+  //         \        /                            |
+  //           And (cond)                        Out
+  //            |
+  //   input_1 Select input_2
+  //            |
+  //         Reshape
+  //            |
+  //           Out
+  //
+  TensorPool tensor_pool;
+  std::vector<OpWrapper> op_wrappers;
+
+  QuantizeParamsWrapperVariant quant_param;
+  quant_param.emplace<ScaleOffsetQuantizeParamsWrapper>(1e-4f, 0);
+
+  auto& ge_lhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                quant_param, {1, 8});
+  auto& ge_rhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                quant_param, {1, 8});
+  auto& ge_out =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_BOOL_8, {}, {1, 8});
+  {
+    auto ge = BuildElementwiseGreaterEqualOp(tensor_pool, {ge_lhs, ge_rhs},
+                                             {ge_out});
+    std::move(ge.begin(), ge.end(), std::back_inserter(op_wrappers));
+  }
+
+  auto& less_lhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                  quant_param, {1, 8});
+  auto& less_rhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                  quant_param, {1, 8});
+  auto& less_out =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_BOOL_8, {}, {1, 8});
+  {
+    auto less = BuildElementwiseLessOp(tensor_pool, {less_lhs, less_rhs},
+                                       {less_out});
+    std::move(less.begin(), less.end(), std::back_inserter(op_wrappers));
+  }
+
+  auto& cond = tensor_pool.CreateNativeTensor(QNN_DATATYPE_BOOL_8, {}, {1, 8});
+  {
+    auto and_op =
+        BuildElementwiseAndOp(tensor_pool, {ge_out, less_out}, {cond});
+    std::move(and_op.begin(), and_op.end(), std::back_inserter(op_wrappers));
+  }
+
+  // Select's true-branch input (index 1) is the tensor that survives the fold.
+  auto& input_1 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                 quant_param, {1, 8});
+  auto& input_2 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                 quant_param, {1, 8});
+  auto& select_out = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                    quant_param, {1, 8});
+  op_wrappers.emplace_back(
+      CreateSelectOp(cond, input_1, input_2, select_out));
+
+  auto& reshape_out = tensor_pool.CreateNativeTensor(
+      QNN_DATATYPE_SFIXED_POINT_16, quant_param, {8});
+  op_wrappers.emplace_back(CreateReshapeOp(select_out, reshape_out));
+
+  ASSERT_EQ(op_wrappers.size(), 5u);
+
+  GraphToGraphTransform(::qnn::G2GConfig::kMHAOpt, op_wrappers, tensor_pool,
+                        [](OpWrapper& op) { return true; });
+
+  // The four leading ops are dropped; a single Reshape remains, reading the
+  // Select's true-branch input and producing the original Reshape output.
+  ASSERT_EQ(op_wrappers.size(), 1u);
+  EXPECT_TRUE(op_wrappers[0].IsOpCode(QnnOpCode::kReshape));
+  EXPECT_TRUE(op_wrappers[0].GetInputTensor(0) == input_1);
+  EXPECT_TRUE(op_wrappers[0].GetOutputTensor(0) == reshape_out);
+}
+
+TEST(SelectReshapeFold, WrongOperationNoFold) {
+  // Same {binary, binary, binary, select, reshape} op-code shape, but the third
+  // op is an Add instead of And. The op-code pattern matches, yet the
+  // IsElementWiseAnd check must reject it, leaving the graph unchanged.
+  TensorPool tensor_pool;
+  std::vector<OpWrapper> op_wrappers;
+
+  QuantizeParamsWrapperVariant quant_param;
+  quant_param.emplace<ScaleOffsetQuantizeParamsWrapper>(1e-4f, 0);
+
+  auto& ge_lhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                quant_param, {1, 8});
+  auto& ge_rhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                quant_param, {1, 8});
+  auto& ge_out =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_BOOL_8, {}, {1, 8});
+  {
+    auto ge = BuildElementwiseGreaterEqualOp(tensor_pool, {ge_lhs, ge_rhs},
+                                             {ge_out});
+    std::move(ge.begin(), ge.end(), std::back_inserter(op_wrappers));
+  }
+
+  auto& less_lhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                  quant_param, {1, 8});
+  auto& less_rhs = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                  quant_param, {1, 8});
+  auto& less_out =
+      tensor_pool.CreateNativeTensor(QNN_DATATYPE_BOOL_8, {}, {1, 8});
+  {
+    auto less = BuildElementwiseLessOp(tensor_pool, {less_lhs, less_rhs},
+                                       {less_out});
+    std::move(less.begin(), less.end(), std::back_inserter(op_wrappers));
+  }
+
+  // Add in place of And: still kElementWiseBinary, so the pattern matches.
+  auto& cond = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                              quant_param, {1, 8});
+  op_wrappers.emplace_back(CreateElementWiseAddOp(ge_out, less_out, cond));
+
+  auto& input_1 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                 quant_param, {1, 8});
+  auto& input_2 = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                 quant_param, {1, 8});
+  auto& select_out = tensor_pool.CreateNativeTensor(QNN_DATATYPE_SFIXED_POINT_16,
+                                                    quant_param, {1, 8});
+  op_wrappers.emplace_back(
+      CreateSelectOp(cond, input_1, input_2, select_out));
+
+  auto& reshape_out = tensor_pool.CreateNativeTensor(
+      QNN_DATATYPE_SFIXED_POINT_16, quant_param, {8});
+  op_wrappers.emplace_back(CreateReshapeOp(select_out, reshape_out));
+
+  ASSERT_EQ(op_wrappers.size(), 5u);
+
+  GraphToGraphTransform(::qnn::G2GConfig::kMHAOpt, op_wrappers, tensor_pool,
+                        [](OpWrapper& op) { return true; });
+
+  // No fold: all five ops remain.
+  ASSERT_EQ(op_wrappers.size(), 5u);
+}
 }  // namespace
 }  // namespace qnn

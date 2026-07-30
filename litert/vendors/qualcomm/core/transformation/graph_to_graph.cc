@@ -16,6 +16,7 @@
 #include "litert/vendors/qualcomm/core/transformation/matmul_convert.h"
 #include "litert/vendors/qualcomm/core/transformation/mha_to_sha.h"
 #include "litert/vendors/qualcomm/core/transformation/rotation_quant.h"
+#include "litert/vendors/qualcomm/core/transformation/select_reshape_fold.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 
 namespace qnn {
@@ -252,6 +253,18 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
   };
   Transform(validate_op_config, ops, tensor_pool, embedder_mul,
             FuseEmbedderMul);
+
+  // GreaterEqual/Less/And mask + Select folded into a bare Reshape of the
+  // Select's true-branch input.
+  const std::vector<QnnOpCode> select_reshape_fold = {
+      QnnOpCode::kElementWiseBinary,  // greater_equal
+      QnnOpCode::kElementWiseBinary,  // less
+      QnnOpCode::kElementWiseBinary,  // and
+      QnnOpCode::kElementWiseSelect,  // select
+      QnnOpCode::kReshape,            // reshape
+  };
+  Transform(validate_op_config, ops, tensor_pool, select_reshape_fold,
+            FoldSelectReshape);
 
   // Fast Vlm Optimization
   const std::vector<QnnOpCode> fast_vlm_mha_prefill = {

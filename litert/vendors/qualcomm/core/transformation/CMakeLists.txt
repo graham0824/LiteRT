@@ -16,6 +16,7 @@ target_sources(qnn_transformation
         mha_to_sha.cc
         kv_swapped_attn.cc
         rotation_quant.cc
+        select_reshape_fold.cc
 )
 
 target_include_directories(qnn_transformation

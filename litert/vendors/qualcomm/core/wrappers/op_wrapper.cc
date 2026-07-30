@@ -366,4 +366,22 @@ bool IsElementWiseNot(const OpWrapper& op) {
                              QNN_OP_ELEMENT_WISE_UNARY_OPERATION_NOT);
 }
 
+bool IsElementWiseGreaterEqual(const OpWrapper& op) {
+  return IsElementWiseOpImpl(op, QnnOpCode::kElementWiseBinary,
+                             QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+                             QNN_OP_ELEMENT_WISE_BINARY_OPERATION_GREATER_EQUAL);
+}
+
+bool IsElementWiseLess(const OpWrapper& op) {
+  return IsElementWiseOpImpl(op, QnnOpCode::kElementWiseBinary,
+                             QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+                             QNN_OP_ELEMENT_WISE_BINARY_OPERATION_LESS);
+}
+
+bool IsElementWiseAnd(const OpWrapper& op) {
+  return IsElementWiseOpImpl(op, QnnOpCode::kElementWiseBinary,
+                             QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
+                             QNN_OP_ELEMENT_WISE_BINARY_OPERATION_AND);
+}
+
 }  // namespace qnn
