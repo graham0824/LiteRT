@@ -1821,7 +1821,10 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
               std::back_inserter(graph_op_wrappers));
   }
   // TODO (jiunkaiy): Set this graph-to-graph transformation as a compile flag.
-  const ::qnn::G2GConfig g2g_option = ::qnn::G2GConfig::kMHAOptPrefill;
+  const ::qnn::G2GConfig g2g_option =
+      options.GetBackendType() == ::qnn::BackendType::kLpaiBackend
+          ? ::qnn::G2GConfig::kFoldBoundaryCast
+          : ::qnn::G2GConfig::kMHAOptPrefill;
   GraphToGraphTransform(g2g_option, graph_op_wrappers, tensor_pool,
                         [&qnn, &qnn_backend](::qnn::OpWrapper& op) -> bool {
                           return qnn.ValidateOp(qnn_backend, op) ==

@@ -10,6 +10,7 @@
 #include "litert/vendors/qualcomm/core/op_code.h"
 #include "litert/vendors/qualcomm/core/tensor_pool.h"
 #include "litert/vendors/qualcomm/core/transformation/embedding_gemma.h"
+#include "litert/vendors/qualcomm/core/transformation/fold_boundary_cast.h"
 #include "litert/vendors/qualcomm/core/transformation/kv_swapped_attn.h"
 #include "litert/vendors/qualcomm/core/transformation/mask.h"
 #include "litert/vendors/qualcomm/core/transformation/matmul_convert.h"
@@ -93,6 +94,16 @@ void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,
                            TensorPool& tensor_pool,
                            std::function<bool(OpWrapper&)> validate_op_config) {
   if (g2g_option == G2GConfig::kOff) {
+    return;
+  }
+
+  // LPAI: fold same-scale int8<->uint8 boundary Casts and nothing else. LPAI
+  // graphs are small CNNs, not the transformer patterns the other configs
+  // target, so we skip straight to the boundary-Cast fold.
+  if (g2g_option == G2GConfig::kFoldBoundaryCast) {
+    const std::vector<QnnOpCode> boundary_cast = {QnnOpCode::kCast};
+    Transform(validate_op_config, ops, tensor_pool, boundary_cast,
+              FoldBoundaryCast);
     return;
   }
 

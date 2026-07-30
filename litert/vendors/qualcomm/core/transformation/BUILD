@@ -61,6 +61,7 @@ cc_library(
     hdrs = ["graph_to_graph.h"],
     deps = [
         ":embedding_gemma",
+        ":fold_boundary_cast",
         ":kv_swapped_attn",
         ":mask",
         ":matmul_convert",
@@ -69,6 +70,19 @@ cc_library(
         "//litert/vendors/qualcomm/core:op_code",
         "//litert/vendors/qualcomm/core:tensor_pool",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+    ],
+)
+
+cc_library(
+    name = "fold_boundary_cast",
+    srcs = ["fold_boundary_cast.cc"],
+    hdrs = ["fold_boundary_cast.h"],
+    deps = [
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/builders:op_builder",
+        "//litert/vendors/qualcomm/core/utils:log",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
 )
 

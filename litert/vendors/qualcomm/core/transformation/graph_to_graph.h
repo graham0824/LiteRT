@@ -21,6 +21,9 @@ enum class G2GConfig {
   kMHAOptPrefill,
   // Enable G2G MHA optimization for both decode and prefill.
   kMHAOpt,
+  // Fold same-scale int8<->uint8 boundary Casts (for LPAI). Numerically exact
+  // re-label; required because LPAI's adaptor rejects mixed-dtype Cast.
+  kFoldBoundaryCast,
 };
 
 void GraphToGraphTransform(G2GConfig g2g_option, std::vector<OpWrapper>& ops,

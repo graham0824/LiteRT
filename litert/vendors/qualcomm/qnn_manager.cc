@@ -457,6 +457,19 @@ LiteRtStatus QnnManager::ValidateOp(::qnn::QnnBackend& qnn_backend,
     return kLiteRtStatusOk;
   }
 
+  // LPAI: a same-scale int8<->uint8 (offset-diff-128) boundary Cast is folded
+  // away by the kFoldBoundaryCast G2G transform before graphAddNode, so it
+  // never reaches the LPAI adaptor. Report it as supported at partition time so
+  // the whole graph stays in one LPAI partition instead of spilling these
+  // boundary requantizers to CPU. (The adaptor rejects mixed-dtype Cast, which
+  // is exactly why we fold it -- validating it here would be a false negative.)
+  if (options_.GetBackendType() == ::qnn::BackendType::kLpaiBackend &&
+      op.IsOpCode(::qnn::QnnOpCode::kCast) &&
+      op.GetInputTensor(0).IsPerTensorQuantWithOffsetDiff(
+          op.GetOutputTensor(0))) {
+    return kLiteRtStatusOk;
+  }
+
   const auto op_config = op.GetOpConfig();
   if (Qnn_ErrorHandle_t error = Api()->backendValidateOpConfig(
           qnn_backend.GetBackendHandle(), op_config);
