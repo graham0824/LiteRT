@@ -1,0 +1,118 @@
+name: "qualcomm-internal-ci"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  ASTROBOT_SHA: dev/hungjuiw/astro-for-ci
+
+jobs:
+  x86-unit-test:
+    name: "Qualcomm-X86-Unit-Test"
+    runs-on: ["self-hosted", "X64", "Linux"]
+    container:
+      image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
+      options: --privileged --ulimit core=-1
+      volumes:
+        - /opt/litert_ci_cache:/litert_ci_cache
+    steps:
+      - name: Checkout LiteRT repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup LiteRT CI
+        id: setup
+        uses: ./.github/actions/qualcomm-setup-litert
+        with:
+          astrobot_deploy_key: ${{ secrets.ASTROBOT_DEPLOY_KEY }}
+          astrobot_sha: ${{ env.ASTROBOT_SHA }}
+
+      - name: Run x86 unit tests
+        run: |
+          python /astrobot/LiteRT/test_scripts/run_x86_unit_test.py \
+            --litert_root $GITHUB_WORKSPACE \
+            --qairt_sdk /qairt/${{ steps.setup.outputs.qairt_version }}
+
+  device-unit-test:
+    name: "Qualcomm-Device-Unit-Test"
+    runs-on: ["self-hosted", "X64", "Linux"]
+    container:
+      image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
+      options: --privileged --ulimit core=-1
+      volumes:
+        - /opt/litert_ci_cache:/litert_ci_cache
+    steps:
+      - name: Checkout LiteRT repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup LiteRT CI
+        id: setup
+        uses: ./.github/actions/qualcomm-setup-litert
+        with:
+          astrobot_deploy_key: ${{ secrets.ASTROBOT_DEPLOY_KEY }}
+          astrobot_sha: ${{ env.ASTROBOT_SHA }}
+          android_workspace: "1"
+
+      - name: Write devices.json
+        env:
+          DEVICES_JSON: ${{ vars.DEVICES_JSON }}
+        run: |
+          echo "$DEVICES_JSON" > /astrobot/LiteRT/test_scripts/devices.json
+
+      - name: Run device unit tests
+        run: |
+          python /astrobot/LiteRT/test_scripts/run_device_unit_test.py \
+            --litert_root $GITHUB_WORKSPACE \
+            --qairt_sdk /qairt/${{ steps.setup.outputs.qairt_version }}
+
+  device-e2e-test:
+    name: "Qualcomm-Device-E2E-Test"
+    runs-on: ["self-hosted", "X64", "Linux"]
+    container:
+      image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
+      options: --privileged --ulimit core=-1
+      volumes:
+        - /opt/litert_ci_cache:/litert_ci_cache
+    steps:
+      - name: Checkout LiteRT repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup LiteRT CI
+        id: setup
+        uses: ./.github/actions/qualcomm-setup-litert
+        with:
+          astrobot_deploy_key: ${{ secrets.ASTROBOT_DEPLOY_KEY }}
+          astrobot_sha: ${{ env.ASTROBOT_SHA }}
+          android_workspace: "1"
+
+      - name: Write devices.json
+        env:
+          DEVICES_JSON: ${{ vars.DEVICES_JSON }}
+        run: |
+          echo "$DEVICES_JSON" > /astrobot/LiteRT/test_scripts/devices.json
+
+      - name: Run device E2E tests
+        run: |
+          python /astrobot/LiteRT/test_scripts/run_compile_and_dispatch.py \
+            --litert_root $GITHUB_WORKSPACE \
+            --qairt_sdk /qairt/${{ steps.setup.outputs.qairt_version }} \
+            --model $GITHUB_WORKSPACE/litert/test/testdata/transformer.tflite \
+            --output $GITHUB_WORKSPACE/litert/test/testdata/compiled_astro.tflite \
+            --iteration 50 \
+            --cmd compile_run \
+            --log_level off

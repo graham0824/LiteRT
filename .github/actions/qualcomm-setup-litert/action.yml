@@ -1,0 +1,116 @@
+name: "Setup LiteRT CI"
+description: "Checkout, clone AstroBot, install certs, download QAIRT SDK, install Bazelisk, configure Bazel"
+
+inputs:
+  astrobot_deploy_key:
+    description: "SSH deploy key for AstroBot"
+    required: true
+  astrobot_sha:
+    description: "AstroBot git ref to checkout"
+    required: true
+  android_workspace:
+    description: "Set TF_SET_ANDROID_WORKSPACE (0 or 1)"
+    required: false
+    default: "0"
+
+outputs:
+  qairt_version:
+    description: "Parsed QAIRT SDK version"
+    value: ${{ steps.qairt.outputs.qairt_version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clone AstroBot at pinned SHA
+      shell: bash
+      run: |
+        eval $(ssh-agent)
+        trap "ssh-agent -k" EXIT
+        echo "${{ inputs.astrobot_deploy_key }}" | ssh-add -
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        ssh-keyscan -t rsa,ecdsa,ed25519 github.qualcomm.com >> ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+        GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+          git clone git@github.qualcomm.com:MLG/AstroBot.git /astrobot
+        git -C /astrobot checkout ${{ inputs.astrobot_sha }}
+
+    - name: Install SSL certificates
+      shell: bash
+      run: |
+        CACHE_DIR=/litert_ci_cache/certs
+        CACHE_CERT=${CACHE_DIR}/qualcomm-nscacert.crt
+        if [ ! -f "${CACHE_CERT}" ]; then
+          mkdir -p "${CACHE_DIR}"
+          wget -q https://github.qualcomm.com/netskope-ssl/download \
+            -O "${CACHE_CERT}"
+        fi
+        cp "${CACHE_CERT}" /usr/local/share/ca-certificates/qualcomm-nscacert.crt
+        update-ca-certificates
+
+    - name: Setup QAIRT SDK
+      id: qairt
+      shell: bash
+      run: |
+        QAIRT_VERSION=$(python3 /astrobot/LiteRT/parse_qairt_sdk_version.py \
+          --litert_root $GITHUB_WORKSPACE)
+        CACHE_ZIP=/litert_ci_cache/qairt/v${QAIRT_VERSION}.zip
+        if [ ! -f "${CACHE_ZIP}" ]; then
+          mkdir -p /litert_ci_cache/qairt
+          wget -q "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/${QAIRT_VERSION}/v${QAIRT_VERSION}.zip" \
+            -O "${CACHE_ZIP}"
+        fi
+        unzip -q "${CACHE_ZIP}" "qairt/${QAIRT_VERSION}/*" -d /
+        echo "qairt_version=${QAIRT_VERSION}" >> $GITHUB_OUTPUT
+
+    - name: Install Bazelisk
+      shell: bash
+      run: |
+        CACHE_BIN=/litert_ci_cache/bazelisk/bazelisk-linux-amd64
+        if [ ! -f "${CACHE_BIN}" ]; then
+          mkdir -p /litert_ci_cache/bazelisk
+          curl -Lo "${CACHE_BIN}" https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+        fi
+        cp "${CACHE_BIN}" /usr/local/bin/bazel
+        chmod +x /usr/local/bin/bazel
+
+    - name: Setup Android NDK and SDK
+      shell: bash
+      if: ${{ inputs.android_workspace == '1' }}
+      run: |
+        apt-get install -y openjdk-17-jdk
+
+        ANDROID_SDK_CACHE=/litert_ci_cache/android-sdk
+        CACHE_SDK=${ANDROID_SDK_CACHE}/commandlinetools-linux-9477386_latest.zip
+        if [ ! -f "${CACHE_SDK}" ]; then
+          mkdir -p "${ANDROID_SDK_CACHE}"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip \
+            -O "${CACHE_SDK}"
+          unzip -q "${CACHE_SDK}" -d "${ANDROID_SDK_CACHE}"
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$ANDROID_SDK_CACHE/cmdline-tools/bin:$PATH
+          { yes || true; } | sdkmanager --sdk_root="${ANDROID_SDK_CACHE}" --licenses
+          sdkmanager --sdk_root="${ANDROID_SDK_CACHE}" \
+            "platform-tools" "platforms;android-33" "build-tools;33.0.0" \
+            "ndk;25.2.9519653"
+        fi
+
+    - name: Configure Bazel
+      shell: bash
+      run: |
+        export PYTHON_BIN_PATH=$(which python3)
+        export PYTHON_LIB_PATH=$(python3 -c 'import site; print(site.getsitepackages()[0])')
+        export TF_NEED_ROCM=0
+        export TF_NEED_CUDA=0
+        export TF_NEED_CLANG=0
+        export TF_SET_ANDROID_WORKSPACE=${{ inputs.android_workspace }}
+        if [ "${{ inputs.android_workspace }}" = "1" ]; then
+          export ANDROID_NDK_HOME=/litert_ci_cache/android-sdk/ndk/25.2.9519653
+          export ANDROID_NDK_API_LEVEL=26
+          export ANDROID_SDK_HOME=/litert_ci_cache/android-sdk
+          export ANDROID_BUILD_TOOLS_VERSION=33.0.0
+          export ANDROID_SDK_API_LEVEL=33
+        fi
+        export CC_OPT_FLAGS='-Wno-sign-compare'
+        { yes "" || true; } | python3 configure.py
+        echo "startup --host_jvm_args=-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts" >> .bazelrc.user
+        echo "startup --host_jvm_args=-Djavax.net.ssl.trustStorePassword=changeit" >> .bazelrc.user
