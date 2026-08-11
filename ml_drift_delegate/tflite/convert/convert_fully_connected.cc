@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"  // from @com_google_absl
+#include "absl/log/log.h"  // from @com_google_absl
 #include "ml_drift/common/data_type.h"  // from @ml_drift
 #include "ml_drift/common/ir_model.h"  // from @ml_drift
 #include "ml_drift/common/operations.h"  // from @ml_drift
@@ -187,33 +189,33 @@ void ConvertFullyConnected(
     if (weights_tensor->type == kTfLiteInt8 ||
         weights_tensor->type == kTfLiteInt4 ||
         weights_tensor->type == kTfLiteInt2) {
-      // int4/int2 weights with affine (per-tensor or per-channel) quantization
-      // are unpacked to int8 and emitted as a FULLY_CONNECTED_INT8 op, which
-      // runs the numerically-correct int8 FC kernel. Only blockwise int4/int2
-      // (whose per-block scales require the packed kernel) stay on the
-      // FULLY_CONNECTED_INT4/INT2 packed path.
       const bool is_blockwise =
           weights_tensor->quantization.type == kTfLiteBlockwiseQuantization;
-      if (weights_tensor->type == kTfLiteInt8 || !is_blockwise) {
+      if (is_blockwise) {
+        // Native blockwise quantization stores per-block scale/zero-point in
+        // separate tensors (referenced by index) and splits the input dim into
+        // blocks. GraphFloat32's native blockwise path only supports int4;
+        // int8/int2 blockwise is unsupported.
+        if (weights_tensor->type != kTfLiteInt4) {
+          ABSL_LOG(FATAL) << "FULLY_CONNECTED with blockwise quantization only "
+                             "supports int4 weights, got: "
+                          << TfLiteTypeGetName(weights_tensor->type);
+        }
+        ::ml_drift::FullyConnectedInt4Attributes attr;
+        PopulateBlockwiseQuantizedFullyConnected(
+            context, *weights_tensor, weights_id, bias_tensor, bias_id,
+            bias_is_const, options.enable_spanned_weights, attr);
+        fc_op->name = ToString(::ml_drift::OperationType::FULLY_CONNECTED_INT4);
+        fc_op->attr = std::move(attr);
+      } else {
+        // Affine (per-tensor or per-channel) int8/int4/int2 weights are
+        // unpacked to int8 and emitted as a FULLY_CONNECTED_INT8 op, which runs
+        // the numerically-correct int8 FC kernel (parity with GraphFloat32).
         ::ml_drift::FullyConnectedInt8Attributes attr;
         PopulateQuantizedAttributes(weights_tensor, weights_id, bias_tensor,
                                     bias_id, bias_is_const,
                                     options.enable_spanned_weights, attr);
         fc_op->name = ToString(::ml_drift::OperationType::FULLY_CONNECTED_INT8);
-        fc_op->attr = std::move(attr);
-      } else if (weights_tensor->type == kTfLiteInt4) {
-        ::ml_drift::FullyConnectedInt4Attributes attr;
-        PopulateQuantizedAttributes(weights_tensor, weights_id, bias_tensor,
-                                    bias_id, bias_is_const,
-                                    options.enable_spanned_weights, attr);
-        fc_op->name = ToString(::ml_drift::OperationType::FULLY_CONNECTED_INT4);
-        fc_op->attr = std::move(attr);
-      } else {  // kTfLiteInt2 with block wise quantization
-        ::ml_drift::FullyConnectedInt2Attributes attr;
-        PopulateQuantizedAttributes(weights_tensor, weights_id, bias_tensor,
-                                    bias_id, bias_is_const,
-                                    options.enable_spanned_weights, attr);
-        fc_op->name = ToString(::ml_drift::OperationType::FULLY_CONNECTED_INT2);
         fc_op->attr = std::move(attr);
       }
     } else {
@@ -255,10 +257,43 @@ void ConvertFullyConnected(
       ir_model.AddConsumer(tensor_map[node.inputs->data[2]], fc_op->id);
     }
   } else {
-    fc_op->name = ToString(::ml_drift::OperationType::FULLY_CONNECTED);
-
     const auto* weights_ir_tensor = ir_model.tensor(tensor_map[weights_id]);
     const auto& current_shape = weights_ir_tensor->desc.GetBHWCShape();
+    const bool weights_are_quantized = weights_tensor->type == kTfLiteInt8 ||
+                                       weights_tensor->type == kTfLiteInt4 ||
+                                       weights_tensor->type == kTfLiteInt2;
+
+    // A const (non-shared) bias is embedded into the op attributes; a runtime
+    // or shared bias is added as a runtime consumer below (parity with
+    // GraphFloat32 and the const-weights branch above).
+    ::ml_drift::Tensor<::ml_drift::Linear, ::ml_drift::DataType::FLOAT32> bias;
+    if (bias_is_const) {
+      PopulateTensor(bias_tensor, bias_id, &bias,
+                     PopulateTensorFlags::kNoExtraBytes,
+                     options.enable_spanned_weights);
+    }
+
+    // Shared quantized weights are consumed as quantized runtime inputs, so
+    // emit the matching quantized fully-connected variant with the weights and
+    // scale shapes, embedding the const bias (if any) into the attributes
+    const bool configured_quantized =
+        weights_are_const && weights_ir_tensor->buffer_source.is_shared &&
+        weights_are_quantized;
+    if (configured_quantized) {
+      // Consumes (moves from) `bias`.
+      ConfigSharedQuantizedFullyConnected(
+          *weights_tensor,
+          ::ml_drift::OHWI(output_shape.c, 1, 1, input_shape.c),
+          std::move(bias), fc_op);
+    } else {
+      // Plain float fully-connected: embed the (possibly empty) const bias.
+      // Keeping this move of `bias` in the same if/else as the quantized path
+      // makes the two consumers provably mutually exclusive.
+      fc_op->name = ToString(::ml_drift::OperationType::FULLY_CONNECTED);
+      ::ml_drift::FullyConnectedAttributes attr;
+      attr.bias = std::move(bias);
+      fc_op->attr = std::move(attr);
+    }
 
     // While we check if const weights are (o, 1, 1, i) sh, we don't for
     // non-const weights. Manually add a reshape here if necessary.
@@ -282,11 +317,9 @@ void ConvertFullyConnected(
       ir_model.AddConsumer(tensor_map[weights_id], fc_op->id);
     }
 
-    if (has_bias) {
+    if (has_bias && !bias_is_const) {
       ir_model.AddConsumer(tensor_map[node.inputs->data[2]], fc_op->id);
     }
-    ::ml_drift::FullyConnectedAttributes attr;
-    fc_op->attr = std::move(attr);
   }
 
   const ::ml_drift::BHWDC weights_shape_bhwdc =

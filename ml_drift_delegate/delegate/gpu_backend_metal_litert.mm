@@ -23,6 +23,7 @@
 
 #include "absl/log/die_if_null.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
@@ -39,6 +40,7 @@
 #include "ml_drift_delegate/delegate/custom_event_metal.h"
 #include "ml_drift_delegate/delegate/delegate_utils.h"
 #include "ml_drift_delegate/delegate/gpu_backend_metal.h"
+#include "ml_drift_delegate/delegate/shared_memory_manager/graph_adapter.h"
 #include "ml_drift_delegate/delegate/shared_memory_manager/shared_memory_manager_metal.h"
 #include "tflite/core/subgraph.h"
 
@@ -137,8 +139,8 @@ absl::StatusOr<std::unique_ptr<GpuInferenceContext>> GpuBackendMetalLitert::Crea
     std::vector<uint8_t>* serialized_model, bool may_share_memory_manager) {
   auto ctx = std::make_unique<GpuInferenceContextMetalLitert>(
       this, may_share_memory_manager ? &memory_manager() : nullptr);
-  RETURN_IF_ERROR(ctx->metal_ctx().InitFromGpuModel(create_info, &gpu_model,
-                                                    metal_device()->device(), serialized_model));
+  ABSL_RETURN_IF_ERROR(ctx->metal_ctx().InitFromGpuModel(
+      create_info, &gpu_model, metal_device()->device(), serialized_model));
   if (@available(macOS 15.0, iOS 18.0, *)) {
     PopulateResidencySet(create_info, ctx->metal_ctx());
   }
@@ -148,8 +150,8 @@ absl::StatusOr<std::unique_ptr<GpuInferenceContext>> GpuBackendMetalLitert::Crea
 absl::StatusOr<std::unique_ptr<GpuInferenceContext>> GpuBackendMetalLitert::RestoreInferenceContext(
     const ::ml_drift::CreateGpuModelInfo& create_info, absl::Span<const uint8_t> serialized_model) {
   auto ctx = std::make_unique<GpuInferenceContextMetalLitert>(this, &memory_manager());
-  RETURN_IF_ERROR(ctx->metal_ctx().RestoreDeserialized(serialized_model, metal_device()->device(),
-                                                       &create_info));
+  ABSL_RETURN_IF_ERROR(ctx->metal_ctx().RestoreDeserialized(
+      serialized_model, metal_device()->device(), &create_info));
   if (@available(macOS 15.0, iOS 18.0, *)) {
     PopulateResidencySet(create_info, ctx->metal_ctx());
   }
@@ -158,14 +160,15 @@ absl::StatusOr<std::unique_ptr<GpuInferenceContext>> GpuBackendMetalLitert::Rest
 
 absl::StatusOr<std::unique_ptr<::ml_drift::SharedMemoryManager>>
 GpuBackendMetalLitert::CreateSharedMemoryManager(
-    const ::ml_drift::CreateGpuModelInfo& create_info, ::ml_drift::GraphFloat32& graph,
-    TfLiteContext* context, MlDriftDelegateData& delegate_data,
-    ::ml_drift::SerializationWeightCache* serialization_cache) {
+    const ::ml_drift::CreateGpuModelInfo& create_info,
+    std::unique_ptr<::ml_drift::GraphAdapter> graph_adapter, TfLiteContext* context,
+    MlDriftDelegateData& delegate_data, ::ml_drift::SerializationWeightCache* serialization_cache) {
   const std::unordered_map<size_t, size_t>* external_buffer_id_map =
       &(reinterpret_cast<const tflite::Subgraph*>(context->impl_)
             ->GetExternalTensorBufferIdentifiers());
   return ::ml_drift::MakeSharedMemoryManagerMetal(
-      metal_device(), create_info, graph, context, GetBufferIdToSpatialTensorMap(delegate_data),
+      metal_device(), create_info, std::move(graph_adapter), context,
+      GetBufferIdToSpatialTensorMap(delegate_data),
       GetQuantParamIdToSpatialTensorMap(delegate_data),
       delegate_data.options->has_prepacked_external_tflite_tensors, serialization_cache,
       delegate_data.options->madvise_original_shared_tensors, runtime_context_,
@@ -256,7 +259,7 @@ absl::Status GpuInferenceContextMetalLitert::PostConvert(bool input) {
   // with a new one.
   if (!input) {
     if (post_dispatch_event_ == nullptr) {
-      RETURN_IF_ERROR(metal_backend()->WaitForCompletion());
+      ABSL_RETURN_IF_ERROR(metal_backend()->WaitForCompletion());
     } else {
       if (metal_backend()->command_buffer() == nullptr) {
         metal_backend()->set_command_buffer([metal_backend()->command_queue() commandBuffer]);

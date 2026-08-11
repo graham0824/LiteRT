@@ -45,6 +45,7 @@ package_group(
     packages = [
         "//research/language_modeling/sentence_explorer/ondevice/...",
         "//tflite/...",
+        "//third_party/ai_lab/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
     ],
@@ -454,9 +455,6 @@ cc_library(
     hdrs = ["transforms/pass_options_setter.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
 )
 
 cc_library(
@@ -473,7 +471,6 @@ cc_library(
         ":pass_options",
         ":pass_options_setter",
         ":variable_freezing_pipeline_options",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -586,7 +583,9 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/cast_bf16_ops_to_f32_pass.h",
         "transforms/cleanup_optimization_barrier_pass.h",
+        "transforms/large_constant_fold_pass.h",
         "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_broadcast_like_pass.h",
         "transforms/optimize_pass.h",
@@ -605,11 +604,13 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":canonicalize_boundary_value",
+        ":cast_bf16_ops_to_f32",
         ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
         ":downcast_x64",
         ":elements_attr_roundtrip_pass",
+        ":large_constant_fold",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
@@ -1054,6 +1055,58 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "cast_bf16_ops_to_f32",
+    srcs = [
+        "transforms/cast_bf16_ops_to_f32_pass.cc",
+    ],
+    hdrs = [
+        "transforms/cast_bf16_ops_to_f32_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tflite/converter/quantization/common/quantization_lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "large_constant_fold",
+    srcs = [
+        "transforms/large_constant_fold_pass.cc",
+    ],
+    hdrs = [
+        "transforms/large_constant_fold_pass.h",
+    ],
+    deps = [
+        ":attribute_utils",
+        ":pass",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tflite/converter/quantization/common/quantization_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -1970,7 +2023,7 @@ cc_library(
         "common/tfl_pass_config.h",
     ],
     deps = [
-        "//tflite/converter:converter_flags_proto_cc",
+        ":converter_flags_proto_cc",
         "//tflite/converter/quantization/common/quantization_lib:quantization_config",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -2197,7 +2250,7 @@ cc_library(
     srcs = [
         "allocation.cc",
     ] + select({
-        ":tflite_mmap_disabled": [
+        ":tflite_file_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
@@ -2295,6 +2348,19 @@ selects.config_setting_group(
     ],
 )
 # LINT.ThenChange(//tflite/BUILD)
+
+# Governs selection of the file-backed mmap allocation implementation only.
+# Unlike ":tflite_mmap_disabled" (which also drives the -DTFLITE_MMAP_DISABLED
+# define used for anonymous scratch mmap in e.g. fully_connected_4bit.h), this
+# group intentionally excludes Windows, which now supports file-backed mmap via
+# CreateFileMapping/MapViewOfFile in mmap_allocation.cc.
+selects.config_setting_group(
+    name = "tflite_file_mmap_disabled",
+    match_any = [
+        ":fuchsia_mmap_disabled",
+        ":tflite_mmap_disabled_true",
+    ],
+)
 
 # LINT.IfChange(version)
 cc_library(
