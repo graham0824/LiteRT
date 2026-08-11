@@ -308,6 +308,7 @@ litert_lib(
         "//litert/vendors/qualcomm/core/builders:select_op_builder",
         "//litert/vendors/qualcomm/core/builders:slice_op_builder",
         "//litert/vendors/qualcomm/core/builders:softmax_op_builder",
+        "//litert/vendors/qualcomm/core/builders:spatial_transform_nd_op_builder",
         "//litert/vendors/qualcomm/core/builders:spatial_transform_op_builder",
         "//litert/vendors/qualcomm/core/builders:split_op_builder",
         "//litert/vendors/qualcomm/core/builders:splitv_op_builder",
@@ -333,6 +334,33 @@ litert_lib(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@flatbuffers",
+        "@qairt//:qnn_lib_headers",
+    ],
+)
+
+litert_test(
+    name = "qnn_compose_graph_test",
+    srcs = ["qnn_compose_graph_test.cc"],
+    linkstatic = True,
+    no_main = True,
+    tags = [
+        "noasan",
+        "nomsan",
+        "nosan",
+        "notsan",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:android": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    ungrte = True,
+    deps = [
+        ":qnn_compose_graph",
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "@qairt//:qnn_lib_headers",
     ],

@@ -309,11 +309,14 @@ LITERT_KOTLIN_SRCS_ALL = [
     "src/main/kotlin/com/google/ai/edge/litert/deployment/AiPackModelProvider.kt",
 ]
 
-LITERT_KOTLIN_DEPS = [
-    "@litert_maven//:com_google_android_play_ai_delivery",
+TFLITE_JAVA_DEPS = [
     "@litert_maven//:com_google_guava_guava",
     "@litert_maven//:androidx_lifecycle_lifecycle_common",
     "@org_checkerframework_qual",
+]
+
+LITERT_KOTLIN_DEPS = TFLITE_JAVA_DEPS + [
+    "@litert_maven//:com_google_android_play_ai_delivery",
     "@litert_maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
     "@litert_maven//:org_jetbrains_kotlinx_kotlinx_coroutines_guava",
     "@litert_maven//:org_jetbrains_kotlinx_kotlinx_coroutines_play_services",
@@ -321,83 +324,87 @@ LITERT_KOTLIN_DEPS = [
 
 LITERT_API_SRCS_ALL = LITERT_KOTLIN_SRCS_ALL + TFLITE_JAVA_SRCS_API
 
-# Pure Java/Kotlin API library (no native deps)
+JAVACOPTS = select({
+    ":public_maven_build": ["--release 17"],
+    "//conditions:default": [],
+})
+
+# Pure Java/Kotlin API library (no native deps at build time, ":litert_api_jni" is needed at
+# runtime), Compiled Model API only.
 kt_android_library(
-    name = "litert_api_no_jni",
-    srcs = LITERT_API_SRCS_ALL,
+    name = "litert_compiled_model_api_no_jni",
+    srcs = LITERT_KOTLIN_SRCS_ALL,
     exports_manifest = 1,
-    javacopts = select({
-        ":public_maven_build": ["--release 17"],
-        "//conditions:default": [],
-    }),
+    javacopts = JAVACOPTS,
     manifest = "src/main/AndroidManifest.xml",
     proguard_specs = ["//tflite/java:proguard.flags"],
     visibility = litert_jni_friends(),
     deps = LITERT_KOTLIN_DEPS,
 )
 
-# Android library for the litert package, including:
-# - TFLite Java sources for the API
+# Android library for the litert package, CompiledModel API only.
+# This includes:
 # - LiteRT Kotlin sources
 # - LiteRT JNI
-kt_android_library(
-    name = "litert_api",
-    srcs = LITERT_API_SRCS_ALL,
-    exports_manifest = 1,
-    javacopts = select({
-        ":public_maven_build": ["--release 17"],
-        "//conditions:default": [],
-    }),
-    manifest = "src/main/AndroidManifest.xml",
-    proguard_specs = ["//tflite/java:proguard.flags"],
+android_library(
+    name = "litert_compiled_model_api",
     visibility = ["//visibility:public"],
-    deps = LITERT_KOTLIN_DEPS + [
-        ":litert_api_jni",  # unuseddeps: keep
+    exports = [
+        ":litert_api_jni",  # liblitert_jni.so
+        ":litert_compiled_model_api_no_jni",
     ],
 )
 
-# TODO(niuchl): Remove this alias once the internal references are updated to the new target.
-alias(
-    name = "litert_kotlin_api",
-    actual = ":litert_api",
+# Android library for the litert package, with both the CompiledModel API and
+# also the older TFLite Interpreter API.  This includes:
+# - TFLite Java sources for the API
+# - LiteRT Kotlin sources
+# - LiteRT JNI
+android_library(
+    name = "litert_api",
+    visibility = ["//visibility:public"],
+    exports = [
+        ":litert_api_jni",  # liblitert_jni.so
+        ":litert_api_no_jni",
+    ],
+)
+
+# Pure Java/Kotlin API library (no native deps at build time, ":litert_api_jni" is needed at
+# runtime), with both the Compiled Model API and also the older TFLite Interpreter API.
+kt_android_library(
+    name = "litert_api_no_jni",
+    srcs = LITERT_API_SRCS_ALL,
+    exports_manifest = 1,
+    javacopts = JAVACOPTS,
+    manifest = "src/main/AndroidManifest.xml",
+    proguard_specs = ["//tflite/java:proguard.flags"],
+    visibility = litert_jni_friends(),
+    deps = LITERT_KOTLIN_DEPS,
+)
+
+# This library is for building the Maven artifact only.
+kt_android_library(
+    name = "litert_api_for_maven",
+    srcs = LITERT_API_SRCS_ALL,
+    exports_manifest = 1,
+    javacopts = JAVACOPTS,
+    manifest = "src/main/AndroidManifest.xml",
+    proguard_specs = ["//tflite/java:proguard.flags"],
     visibility = ["//visibility:private"],
+    deps = LITERT_KOTLIN_DEPS + [
+        ":litert_api_jni",  # unuseddeps: keep
+    ],
 )
 
 # Android library for the litert package, including:
 # - TFLite Java sources for the implementation
 # - TFLite JNI
 # - LiteRT runtime
-
-# This library is for building the Maven artifact, which doesn't depend on "litert_api_jni".
-kt_android_library(
-    name = "litert_for_maven",
-    srcs = TFLITE_JAVA_SRCS_IMPL,
-    exports_manifest = 1,
-    javacopts = select({
-        ":public_maven_build": ["--release 17"],
-        "//conditions:default": [],
-    }),
-    manifest = "src/main/AndroidManifest.xml",
-    proguard_specs = ["//tflite/java:proguard.flags"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":litert_api_no_jni",
-        ":litert_impl_jni",  # native implementation needed for the target
-        "@org_checkerframework_qual",
-        # copybara:uncomment "//litert/runtime/accelerators/gpu:ml_drift_cl_gl_accelerator_shared_lib",
-    ],
-)
-
-# This library is for Bazel clients who want to depend on the "litert_api" and "litert" targets at
-# the same time.
-kt_android_library(
+android_library(
     name = "litert",
     srcs = TFLITE_JAVA_SRCS_IMPL,
     exports_manifest = 1,
-    javacopts = select({
-        ":public_maven_build": ["--release 17"],
-        "//conditions:default": [],
-    }),
+    javacopts = JAVACOPTS,
     manifest = "src/main/AndroidManifest.xml",
     proguard_specs = ["//tflite/java:proguard.flags"],
     visibility = ["//visibility:public"],
@@ -406,6 +413,23 @@ kt_android_library(
     ],
     deps = [
         ":litert_api",
+        ":litert_impl_jni",  # libLiteRt.so
+        "@org_checkerframework_qual",
+        # copybara:uncomment "//litert/runtime/accelerators/gpu:ml_drift_cl_gl_accelerator_shared_lib",
+    ],
+)
+
+# This library is for building the Maven artifact only, which doesn't depend on "litert_api_jni".
+android_library(
+    name = "litert_for_maven",
+    srcs = TFLITE_JAVA_SRCS_IMPL,
+    exports_manifest = 1,
+    javacopts = JAVACOPTS,
+    manifest = "src/main/AndroidManifest.xml",
+    proguard_specs = ["//tflite/java:proguard.flags"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":litert_api_no_jni",
         ":litert_impl_jni",  # native implementation needed for the target
         "@org_checkerframework_qual",
         # copybara:uncomment "//litert/runtime/accelerators/gpu:ml_drift_cl_gl_accelerator_shared_lib",
@@ -418,7 +442,7 @@ kt_android_library(
 #   //litert/kotlin:litert-api-aar
 aar_with_jni(
     name = "litert-api-aar",
-    android_library = ":litert_api",
+    android_library = ":litert_api_for_maven",
     # copybara:uncomment third_party_notice = "//litert/kotlin/google/third_party_licenses:res/raw/third_party_licenses",
 )
 
@@ -431,19 +455,12 @@ aar_with_jni(
     # copybara:uncomment third_party_notice = "//litert/kotlin/google/third_party_licenses:res/raw/third_party_licenses",
 )
 
-exports_files(
-    srcs = [
-        "litert_version_script.lds",
-        "src/main/AndroidManifest.xml",
-    ] + glob(["src/main/kotlin/**/*.kt"]),
-)
-
 # copybara:uncomment_begin(google-only)
 # dackka(
 #     name = "litert_kotlin_docs",
 #     doc_root_path = "edge/api/litert/kotlin",
 #     java_docs_path = "java",
 #     runtime_dep = ":litert_api",
-#     src_jar = ":liblitert_api-src.jar",
+#     src_jar = ":liblitert_api_no_jni-src.jar",
 # )
 # copybara:uncomment_end

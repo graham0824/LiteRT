@@ -69,6 +69,10 @@ typedef enum {
   /// \internal This is for internal use only. Reserved for use by LiteRT in
   /// Play services.
   kLiteRtEnvOptionTagContext = 28,
+  // An optional custom callback (`void (*)()`) invoked during synchronous
+  // WebGPU buffer readback (e.g., with Dawn Wire handler) to flush outbound
+  // wire commands and pump inbound events on the thread message loop.
+  kLiteRtEnvOptionTagWebGpuFlushCallback = 29,
   // Internal use only. Virtual null tag for option that is not defined.
   kLiteRtEnvOptionTagNull = 255,
 } LiteRtEnvOptionTag;
@@ -90,7 +94,7 @@ static_assert(offsetof(LiteRtEnvOption, value) == 8,
 #endif  // __cplusplus
 
 // Arbitrary size of array following the pattern in TfLiteIntArray.
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 #define _LITERT_ARBITRARY_ARRAY_SIZE 1
 #elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
        __GNUC_MINOR__ >= 1) ||                                      \

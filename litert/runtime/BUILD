@@ -587,6 +587,11 @@ cc_test(
 #     srcs = ["fabric/dispatch_runner_sb.cc"],
 #     hdrs = ["fabric/dispatch_runner_sb.h"],
 #     copts = ["-DLITERT_ENABLE_FABRIC_INTEGRATION"],
+#     tags = [
+#         "noios",
+#         "nomacos",
+#         "nowindows",
+#     ],
 #     deps = [
 #         "@com_google_absl//absl/container:flat_hash_map",
 #         "@com_google_absl//absl/container:flat_hash_set",
@@ -638,11 +643,9 @@ cc_library(
     name = "compiled_model",
     srcs = [
         "compiled_model.cc",
-        # copybara:uncomment "fabric/compiled_model_fabric_internal.cc",
     ],
     hdrs = [
         "compiled_model.h",
-        # copybara:uncomment "fabric/compiled_model_fabric_internal.h",
         "stub_op_resolver.h",
     ],
     copts = litert_metal_opts() + select({
@@ -717,26 +720,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ] +
-    # copybara:uncomment_begin(google-only)
-    # select({
-    # ":litert_enable_fabric_integration": [
-    # ":dispatch_runner_sb",
-    # ":litert_fabric_options",
-    # "//third_party/odml/infra/fabric/runtime:buffer_utils",
-    # "//third_party/odml/infra/fabric/runtime:executor",
-    # "//third_party/odml/infra/fabric/runtime:inference_program",
-    # "//third_party/odml/infra/fabric/runtime:tg_proto_converter",
-    # "//third_party/odml/infra/fabric/runtime:transmission_graph_cc_proto",
-    # "//third_party/odml/infra/northbound/aot:hardware_buffer",
-    # "//third_party/odml/infra/northbound/aot:program_analysis",
-    # "//third_party/odml/infra/northbound/graph:identifiers",
-    # "//litert/vendors/c:litert_dispatch_c_api",
-    # ],
-    # "//conditions:default": [],
-    # }) +
-    # copybara:uncomment_end
-    [
+    ] + [
         "//tflite:mutable_op_resolver",
         "//tflite/c:c_api_opaque",
         "//tflite/c:c_api_types_opaque_delegate",
@@ -922,6 +906,7 @@ cc_library(
         "//litert/c:litert_layout",
         "//litert/c:litert_model_types",
         "//litert/c:litert_tensor_buffer",
+        "//litert/c:litert_tensor_buffer_types",
         "//litert/c/internal:litert_logging",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
@@ -978,6 +963,8 @@ cc_library(
         "//tflite/core/api",
         "//tflite/profiling:profile_buffer",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
