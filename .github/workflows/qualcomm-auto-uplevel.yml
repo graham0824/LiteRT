@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_ENTERPRISE_TOKEN }}
 
       - name: Mark workspace as safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -58,6 +59,7 @@ jobs:
           BRANCH="auto-uplevel/upstream-$(date -u +%Y%m%d)"
           git checkout -B "$BRANCH" origin/main
           git merge --no-edit upstream/main
+          git lfs checkout
           git lfs push --all origin
           git push origin "$BRANCH" --force
           echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
