@@ -203,6 +203,9 @@ EXPORTS
   LiteRtGetL2Pool2dStrideHOption
   LiteRtGetL2Pool2dStrideWOption
   LiteRtGetLeakyReluAlphaOption
+  LiteRtGetLstmCellClipOption
+  LiteRtGetLstmKernelTypeOption
+  LiteRtGetLstmProjClipOption
   LiteRtGetMainModelSubgraphIndex
   LiteRtGetMaxPool2dFilterHeightOption
   LiteRtGetMaxPool2dFilterWidthOption
@@ -319,6 +322,9 @@ EXPORTS
   LiteRtGetTransposeConvPaddingOption
   LiteRtGetTransposeConvStrideHOption
   LiteRtGetTransposeConvStrideWOption
+  LiteRtGetUnidirectionalSequenceLstmCellClipOption
+  LiteRtGetUnidirectionalSequenceLstmProjClipOption
+  LiteRtGetUnidirectionalSequenceLstmTimeMajorOption
   LiteRtGetUnpackAxisOption
   LiteRtGetUnpackNumOption
   LiteRtGetUnrankedTensorType

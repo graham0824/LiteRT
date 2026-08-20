@@ -668,6 +668,35 @@ LiteRtStatus LiteRtBuilderBuildSqueezeOpOption(LiteRtBuilder builder,
                                                const int32_t* squeeze_dims,
                                                int32_t num_squeeze_dims);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt LSTM op.
+//  Options:
+// - cell_clip : float
+// - proj_clip : float
+// - kernel_type : uint32_t (0 = FULL, 1 = BASIC)
+//
+//==============================================================================
+LiteRtStatus LiteRtGetLstmCellClipOption(LiteRtOp op, float* cell_clip);
+LiteRtStatus LiteRtGetLstmProjClipOption(LiteRtOp op, float* proj_clip);
+LiteRtStatus LiteRtGetLstmKernelTypeOption(LiteRtOp op, uint32_t* kernel_type);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt UnidirectionalSequenceLSTM op.
+//  Options:
+// - cell_clip : float
+// - proj_clip : float
+// - time_major : bool
+//
+//==============================================================================
+LiteRtStatus LiteRtGetUnidirectionalSequenceLstmCellClipOption(
+    LiteRtOp op, float* cell_clip);
+LiteRtStatus LiteRtGetUnidirectionalSequenceLstmProjClipOption(
+    LiteRtOp op, float* proj_clip);
+LiteRtStatus LiteRtGetUnidirectionalSequenceLstmTimeMajorOption(
+    LiteRtOp op, bool* time_major);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

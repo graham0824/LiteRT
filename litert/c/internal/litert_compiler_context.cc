@@ -28,7 +28,7 @@ LiteRtCompilerContext* LrtGetCompilerContext() {
               .struct_size = sizeof(LiteRtCompilerContext),
               // LINT.IfChange(compiler_context_version)
               .major_version = 1,
-              .minor_version = 1,
+              .minor_version = 2,
               .reserved = 0,
               // LINT.ThenChange(./litert_compiler_context.h:compiler_context_table)
           },
@@ -246,6 +246,17 @@ LiteRtCompilerContext* LrtGetCompilerContext() {
       .build_add_op_option = LiteRtBuilderBuildAddOpOption,
       .build_batch_matmul_op_option = LiteRtBuilderBuildBatchMatmulOpOption,
       .get_block_wise_quantization = LiteRtGetBlockWiseQuantization,
+
+      .get_lstm_cell_clip_option = LiteRtGetLstmCellClipOption,
+      .get_lstm_proj_clip_option = LiteRtGetLstmProjClipOption,
+      .get_lstm_kernel_type_option = LiteRtGetLstmKernelTypeOption,
+
+      .get_unidirectional_sequence_lstm_cell_clip_option =
+          LiteRtGetUnidirectionalSequenceLstmCellClipOption,
+      .get_unidirectional_sequence_lstm_proj_clip_option =
+          LiteRtGetUnidirectionalSequenceLstmProjClipOption,
+      .get_unidirectional_sequence_lstm_time_major_option =
+          LiteRtGetUnidirectionalSequenceLstmTimeMajorOption,
   };
   return &ctx;
 }

@@ -75,6 +75,7 @@
 #include "litert/vendors/qualcomm/core/builders/leaky_relu_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/log_softmax_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/logistic_op_builder.h"
+#include "litert/vendors/qualcomm/core/builders/lstm_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/onehot_op_builder.h"
 #include "litert/vendors/qualcomm/core/builders/op_builder.h"
@@ -957,6 +958,50 @@ LiteRtStatus BuildSplitVOp(const litert::compiler::Op& litert_op,
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus BuildLstmOp(const litert::compiler::Op& litert_op,
+                         ::qnn::TensorPool& tensor_pool,
+                         std::vector<::qnn::TensorWrapperRef>& input_tensors,
+                         std::vector<::qnn::TensorWrapperRef>& output_tensors,
+                         std::vector<::qnn::OpWrapper>& op_wrappers) {
+  auto options = litert::compiler::GetOptionsAs<litert::compiler::LstmOptions>(
+      litert_op.ctx(), litert_op.Get());
+  if (!options) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  if (options->kernel_type != 0) {
+    QNN_LOG_ERROR("Only the FULL LSTM kernel type is supported, got %u.",
+                  options->kernel_type);
+    return kLiteRtStatusErrorUnsupported;
+  }
+  op_wrappers = ::qnn::BuildLstmOp(tensor_pool, input_tensors, output_tensors,
+                                   options->cell_clip, options->proj_clip,
+                                   /*time_major=*/false);
+  if (op_wrappers.empty()) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus BuildUnidirectionalSequenceLstmOp(
+    const litert::compiler::Op& litert_op, ::qnn::TensorPool& tensor_pool,
+    std::vector<::qnn::TensorWrapperRef>& input_tensors,
+    std::vector<::qnn::TensorWrapperRef>& output_tensors,
+    std::vector<::qnn::OpWrapper>& op_wrappers) {
+  auto options = litert::compiler::GetOptionsAs<
+      litert::compiler::UnidirectionalSequenceLstmOptions>(litert_op.ctx(),
+                                                          litert_op.Get());
+  if (!options) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  op_wrappers = ::qnn::BuildLstmOp(tensor_pool, input_tensors, output_tensors,
+                                   options->cell_clip, options->proj_clip,
+                                   options->time_major);
+  if (op_wrappers.empty()) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus BuildTopkV2Op(const litert::compiler::Op& litert_op,
                            ::qnn::TensorPool& tensor_pool,
                            std::vector<::qnn::TensorWrapperRef>& input_tensors,
@@ -1500,6 +1545,9 @@ GetOpBuilders() {
   builders[kLiteRtOpCodeTflL2Normalization] = Adapt<BuildL2NormalizationOp>;
   builders[kLiteRtOpCodeTflL2Pool2d] = Adapt<BuildL2Pool2dOp>;
   builders[kLiteRtOpCodeTflLogistic] = Adapt<BuildLogisticOp>;
+  builders[kLiteRtOpCodeTflLstm] = Adapt<BuildLstmOp>;
+  builders[kLiteRtOpCodeTflUnidirectionalSequenceLstm] =
+      Adapt<BuildUnidirectionalSequenceLstmOp>;
   builders[kLiteRtOpCodeTflMaxPool2d] = Adapt<BuildMaxPool2dOp>;
   builders[kLiteRtOpCodeTflMul] = Adapt<BuildMulOp>;
   builders[kLiteRtOpCodeTflRelu] = Adapt<BuildReluOp>;
