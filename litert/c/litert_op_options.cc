@@ -1337,6 +1337,81 @@ LiteRtStatus LiteRtGetSqueezeDimsOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtGetLstmCellClipOption(LiteRtOp op, float* cell_clip) {
+  if (op->OpCode() != kLiteRtOpCodeTflLstm) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *cell_clip = opts.AsLSTMOptions()->cell_clip;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetLstmProjClipOption(LiteRtOp op, float* proj_clip) {
+  if (op->OpCode() != kLiteRtOpCodeTflLstm) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *proj_clip = opts.AsLSTMOptions()->proj_clip;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetLstmKernelTypeOption(LiteRtOp op, uint32_t* kernel_type) {
+  if (op->OpCode() != kLiteRtOpCodeTflLstm) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *kernel_type = static_cast<uint32_t>(opts.AsLSTMOptions()->kernel_type);
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetUnidirectionalSequenceLstmCellClipOption(
+    LiteRtOp op, float* cell_clip) {
+  if (op->OpCode() != kLiteRtOpCodeTflUnidirectionalSequenceLstm) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *cell_clip = opts.AsUnidirectionalSequenceLSTMOptions()->cell_clip;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetUnidirectionalSequenceLstmProjClipOption(
+    LiteRtOp op, float* proj_clip) {
+  if (op->OpCode() != kLiteRtOpCodeTflUnidirectionalSequenceLstm) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *proj_clip = opts.AsUnidirectionalSequenceLSTMOptions()->proj_clip;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetUnidirectionalSequenceLstmTimeMajorOption(
+    LiteRtOp op, bool* time_major) {
+  if (op->OpCode() != kLiteRtOpCodeTflUnidirectionalSequenceLstm) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = litert::internal::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *time_major = opts.AsUnidirectionalSequenceLSTMOptions()->time_major;
+  return kLiteRtStatusOk;
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
