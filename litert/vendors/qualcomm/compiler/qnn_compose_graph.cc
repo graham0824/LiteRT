@@ -672,8 +672,14 @@ LiteRtStatus BuildAddOp(const litert::compiler::Op& litert_op,
   auto& activation_input = ::qnn::CreateFusedActivationInputTensor(
       tensor_pool, fused_activation, output_tensors);
   op_wrappers.clear();
-  op_wrappers.emplace_back(::qnn::CreateElementWiseAddOp(
-      input_tensors[0], input_tensors[1], activation_input));
+  // op_wrappers.emplace_back(::qnn::CreateElementWiseAddOp(
+  //     input_tensors[0], input_tensors[1], activation_input));
+  auto& elementwise_op =
+      ::qnn::CreateOpWrapper(op_wrappers, QNN_OP_ELEMENT_WISE_ADD);
+  for (const auto& input : input_tensors) {
+    elementwise_op.AddInputTensor(input);
+  }
+  elementwise_op.AddOutputTensor(activation_input);
   ::qnn::AddFusedActivationNode(op_wrappers, fused_activation, activation_input,
                                 output_tensors[0]);
   return kLiteRtStatusOk;
@@ -717,8 +723,14 @@ LiteRtStatus BuildMulOp(const litert::compiler::Op& litert_op,
   auto& activation_input = ::qnn::CreateFusedActivationInputTensor(
       tensor_pool, fused_activation, output_tensors);
   op_wrappers.clear();
-  op_wrappers.emplace_back(::qnn::CreateElementWiseMulOp(
-      input_tensors[0], input_tensors[1], activation_input));
+  // op_wrappers.emplace_back(::qnn::CreateElementWiseMulOp(
+  //     input_tensors[0], input_tensors[1], activation_input));
+  auto& elementwise_op =
+      ::qnn::CreateOpWrapper(op_wrappers, QNN_OP_ELEMENT_WISE_MULTIPLY);
+  for (const auto& input : input_tensors) {
+    elementwise_op.AddInputTensor(input);
+  }
+  elementwise_op.AddOutputTensor(activation_input);
   ::qnn::AddFusedActivationNode(op_wrappers, fused_activation, activation_input,
                                 output_tensors[0]);
   return kLiteRtStatusOk;
