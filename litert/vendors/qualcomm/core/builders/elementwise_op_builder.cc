@@ -156,12 +156,16 @@ std::vector<OpWrapper> BuildElementwiseRsqrtOp(
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
-  auto& elementwise_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_UNARY);
+  // auto& elementwise_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_UNARY);
+  // elementwise_op.AddInputTensor(inputs[0]);
+  // elementwise_op.AddOutputTensor(outputs[0]);
+  // elementwise_op.AddScalarParam<std::uint32_t>(
+  //     QNN_OP_ELEMENT_WISE_UNARY_PARAM_OPERATION,
+  //     QNN_OP_ELEMENT_WISE_UNARY_OPERATION_RSQRT);
+
+  auto& elementwise_op = ::qnn::CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_RSQRT);
   elementwise_op.AddInputTensor(inputs[0]);
   elementwise_op.AddOutputTensor(outputs[0]);
-  elementwise_op.AddScalarParam<std::uint32_t>(
-      QNN_OP_ELEMENT_WISE_UNARY_PARAM_OPERATION,
-      QNN_OP_ELEMENT_WISE_UNARY_OPERATION_RSQRT);
 
   return res;
 }
