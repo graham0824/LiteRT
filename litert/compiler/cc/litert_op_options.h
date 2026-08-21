@@ -1216,6 +1216,66 @@ struct OneHotOptions : public OpOptions {
   }
 };
 
+/// @brief Struct to hold options for the LiteRT LSTM op.
+struct LstmOptions : public OpOptions {
+  LiteRtOp op;
+  float cell_clip;
+  float proj_clip;
+  uint32_t kernel_type;
+  LiteRtStatus InitFromOp(const LiteRtCompilerContext* ctx,
+                          LiteRtOp op) override {
+    if (ctx == nullptr || ctx->get_op_code == nullptr ||
+        ctx->get_lstm_cell_clip_option == nullptr ||
+        ctx->get_lstm_proj_clip_option == nullptr ||
+        ctx->get_lstm_kernel_type_option == nullptr) {
+      return kLiteRtStatusErrorRuntimeFailure;
+    }
+    LiteRtOpCode opcode;
+    LITERT_RETURN_IF_ERROR(ctx->get_op_code(op, &opcode));
+    if (opcode != kLiteRtOpCodeTflLstm) {
+      return kLiteRtStatusErrorInvalidArgument;
+    }
+    LITERT_RETURN_IF_ERROR(ctx->get_lstm_cell_clip_option(op, &cell_clip));
+    LITERT_RETURN_IF_ERROR(ctx->get_lstm_proj_clip_option(op, &proj_clip));
+    LITERT_RETURN_IF_ERROR(ctx->get_lstm_kernel_type_option(op, &kernel_type));
+    this->op = op;
+
+    return kLiteRtStatusOk;
+  }
+};
+
+/// @brief Struct to hold options for the LiteRT UnidirectionalSequenceLSTM op.
+struct UnidirectionalSequenceLstmOptions : public OpOptions {
+  LiteRtOp op;
+  float cell_clip;
+  float proj_clip;
+  bool time_major;
+  LiteRtStatus InitFromOp(const LiteRtCompilerContext* ctx,
+                          LiteRtOp op) override {
+    if (ctx == nullptr || ctx->get_op_code == nullptr ||
+        ctx->get_unidirectional_sequence_lstm_cell_clip_option == nullptr ||
+        ctx->get_unidirectional_sequence_lstm_proj_clip_option == nullptr ||
+        ctx->get_unidirectional_sequence_lstm_time_major_option == nullptr) {
+      return kLiteRtStatusErrorRuntimeFailure;
+    }
+    LiteRtOpCode opcode;
+    LITERT_RETURN_IF_ERROR(ctx->get_op_code(op, &opcode));
+    if (opcode != kLiteRtOpCodeTflUnidirectionalSequenceLstm) {
+      return kLiteRtStatusErrorInvalidArgument;
+    }
+    LITERT_RETURN_IF_ERROR(
+        ctx->get_unidirectional_sequence_lstm_cell_clip_option(op, &cell_clip));
+    LITERT_RETURN_IF_ERROR(
+        ctx->get_unidirectional_sequence_lstm_proj_clip_option(op, &proj_clip));
+    LITERT_RETURN_IF_ERROR(
+        ctx->get_unidirectional_sequence_lstm_time_major_option(op,
+                                                               &time_major));
+    this->op = op;
+
+    return kLiteRtStatusOk;
+  }
+};
+
 /// @brief Returns the composite info for the given op if it is a composite op.
 template <typename OptionsT>
 Expected<OptionsT> GetOptionsAs(const LiteRtCompilerContext* ctx, LiteRtOp op) {

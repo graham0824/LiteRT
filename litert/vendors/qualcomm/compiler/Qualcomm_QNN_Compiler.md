@@ -85,6 +85,8 @@ provides the corresponding QNN operation it is legalized to.
 | `kLiteRtOpCodeTflLogicalNot` | Legalized to `QNN_OP_ELEMENT_WISE_UNARY` (NOT). |
 | `kLiteRtOpCodeTflLogicalOr` | Legalized to `QNN_OP_ELEMENT_WISE_BINARY` (OR). |
 | `kLiteRtOpCodeTflLogistic` | Legalized to `QNN_OP_ELEMENT_WISE_NEURON` (SIGMOID). |
+| `kLiteRtOpCodeTflLstm` | Legalized to `QNN_OP_LSTM`. FULL kernel only; layer norm is not supported on HTP. Blocked upstream by variable-tensor support (b/365299994). |
+| `kLiteRtOpCodeTflUnidirectionalSequenceLstm` | Legalized to `QNN_OP_LSTM` with `time_major`. Blocked upstream by variable-tensor support (b/365299994). |
 | `kLiteRtOpCodeTflMaximum` | Legalized to `QNN_OP_ELEMENT_WISE_BINARY` (MAXIMUM). |
 | `kLiteRtOpCodeTflMaxPool2d` | Legalized to `QNN_OP_POOL_MAX_2D`. Supports fused activation. |
 | `kLiteRtOpCodeTflMean` | Legalized to `QNN_OP_REDUCE_MEAN`. |

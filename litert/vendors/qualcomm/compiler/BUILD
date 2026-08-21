@@ -287,6 +287,7 @@ litert_lib(
         "//litert/vendors/qualcomm/core/builders:leaky_relu_op_builder",
         "//litert/vendors/qualcomm/core/builders:log_softmax_op_builder",
         "//litert/vendors/qualcomm/core/builders:logistic_op_builder",
+        "//litert/vendors/qualcomm/core/builders:lstm_op_builder",
         "//litert/vendors/qualcomm/core/builders:matmul_op_builder",
         "//litert/vendors/qualcomm/core/builders:onehot_op_builder",
         "//litert/vendors/qualcomm/core/builders:op_builder",
