@@ -479,25 +479,16 @@ TEST(OpWrapperTest, GetScalarParam) {
 TEST(OpWrapperTest, IsElementWiseTest) {
   // TODO: Use the op builders after we refactor them into less-dependency
   // version.
-  OpWrapper add_op("name", QNN_OP_ELEMENT_WISE_BINARY,
-                   QnnOpCode::kElementWiseBinary);
-  add_op.AddScalarParam<std::uint32_t>(
-      QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
-      QNN_OP_ELEMENT_WISE_BINARY_OPERATION_ADD);
+  OpWrapper add_op("name", QNN_OP_ELEMENT_WISE_ADD,
+                   QnnOpCode::kElementWiseAdd);
   EXPECT_TRUE(IsElementWiseAdd(add_op));
 
-  OpWrapper mul_op("name", QNN_OP_ELEMENT_WISE_BINARY,
-                   QnnOpCode::kElementWiseBinary);
-  mul_op.AddScalarParam<std::uint32_t>(
-      QNN_OP_ELEMENT_WISE_BINARY_PARAM_OPERATION,
-      QNN_OP_ELEMENT_WISE_BINARY_OPERATION_MULTIPLY);
+  OpWrapper mul_op("name", QNN_OP_ELEMENT_WISE_MULTIPLY,
+                   QnnOpCode::kElementWiseMultiply);
   EXPECT_TRUE(IsElementWiseMultiply(mul_op));
 
-  OpWrapper not_op("name", QNN_OP_ELEMENT_WISE_UNARY,
-                   QnnOpCode::kElementWiseUnary);
-  not_op.AddScalarParam<std::uint32_t>(
-      QNN_OP_ELEMENT_WISE_UNARY_PARAM_OPERATION,
-      QNN_OP_ELEMENT_WISE_UNARY_OPERATION_NOT);
+  OpWrapper not_op("name", QNN_OP_ELEMENT_WISE_NOT,
+                   QnnOpCode::kElementWiseNot);
   EXPECT_TRUE(IsElementWiseNot(not_op));
 }
 

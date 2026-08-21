@@ -392,13 +392,13 @@ TEST(MHAOptimization, Gemma3Prefill) {
   const size_t num_head = 4;
   for (int i = 0; i < num_head; ++i) {
     ASSERT_EQ(op_wrappers[3 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseMultiply);
     ASSERT_TRUE(IsElementWiseMultiply(op_wrappers[3 + sha_size * i]));
     ASSERT_EQ(op_wrappers[4 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[5 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[6 + sha_size * i].GetOpCode(), QnnOpCode::kConcat);
     ASSERT_EQ(op_wrappers[7 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseAdd);
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[7 + sha_size * i]));
     ASSERT_EQ(op_wrappers[8 + sha_size * i].GetOpCode(), QnnOpCode::kSoftmax);
     ASSERT_EQ(op_wrappers[9 + sha_size * i].GetOpCode(),
@@ -408,7 +408,7 @@ TEST(MHAOptimization, Gemma3Prefill) {
     ASSERT_EQ(op_wrappers[11 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[12 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[13 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseAdd);
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[13 + sha_size * i]));
   }
   ASSERT_EQ(op_wrappers[47].GetOpCode(), QnnOpCode::kConcat);
@@ -599,13 +599,13 @@ TEST(MHAOptimization, Gemma3Decode) {
   const size_t num_head = 4;
   for (int i = 0; i < num_head; ++i) {
     ASSERT_EQ(op_wrappers[1 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseMultiply);
     ASSERT_TRUE(IsElementWiseMultiply(op_wrappers[1 + sha_size * i]));
     ASSERT_EQ(op_wrappers[2 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[3 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[4 + sha_size * i].GetOpCode(), QnnOpCode::kConcat);
     ASSERT_EQ(op_wrappers[5 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseAdd);
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[5 + sha_size * i]));
     ASSERT_EQ(op_wrappers[6 + sha_size * i].GetOpCode(), QnnOpCode::kSoftmax);
     ASSERT_EQ(op_wrappers[7 + sha_size * i].GetOpCode(),
@@ -615,7 +615,7 @@ TEST(MHAOptimization, Gemma3Decode) {
     ASSERT_EQ(op_wrappers[9 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[10 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[11 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseAdd);
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[11 + sha_size * i]));
   }
   ASSERT_EQ(op_wrappers[45].GetOpCode(), QnnOpCode::kConcat);
@@ -1294,7 +1294,7 @@ TEST(MHASHATest, FastVlm) {
   const size_t num_head = 14;
   const size_t sha_size = 12;
 
-  ASSERT_TRUE(op_wrappers[0].IsOpCode(QnnOpCode::kElementWiseBinary));
+  ASSERT_TRUE(op_wrappers[0].IsOpCode(QnnOpCode::kElementWiseAdd));
   ASSERT_TRUE(IsElementWiseAdd(op_wrappers[0]));
   ASSERT_TRUE(op_wrappers[1].IsOpCode(QnnOpCode::kTranspose));
 
@@ -1303,7 +1303,7 @@ TEST(MHASHATest, FastVlm) {
   }
 
   for (size_t i = 0; i < 2; ++i) {
-    ASSERT_TRUE(op_wrappers[4 + i].IsOpCode(QnnOpCode::kElementWiseBinary));
+    ASSERT_TRUE(op_wrappers[4 + i].IsOpCode(QnnOpCode::kElementWiseAdd));
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[4 + i]));
   }
 
@@ -1313,13 +1313,13 @@ TEST(MHASHATest, FastVlm) {
 
   for (size_t i = 0; i < num_head; ++i) {
     ASSERT_TRUE(
-        op_wrappers[10 + sha_size * i].IsOpCode(QnnOpCode::kElementWiseBinary));
+        op_wrappers[10 + sha_size * i].IsOpCode(QnnOpCode::kElementWiseMultiply));
     ASSERT_TRUE(IsElementWiseMultiply(op_wrappers[10 + sha_size * i]));
     ASSERT_TRUE(op_wrappers[11 + sha_size * i].IsOpCode(QnnOpCode::kMatMul));
     ASSERT_TRUE(op_wrappers[12 + sha_size * i].IsOpCode(QnnOpCode::kMatMul));
     ASSERT_TRUE(op_wrappers[13 + sha_size * i].IsOpCode(QnnOpCode::kConcat));
     ASSERT_TRUE(
-        op_wrappers[14 + sha_size * i].IsOpCode(QnnOpCode::kElementWiseBinary));
+        op_wrappers[14 + sha_size * i].IsOpCode(QnnOpCode::kElementWiseAdd));
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[14 + sha_size * i]));
     ASSERT_TRUE(op_wrappers[15 + sha_size * i].IsOpCode(QnnOpCode::kReshape));
     ASSERT_TRUE(op_wrappers[16 + sha_size * i].IsOpCode(QnnOpCode::kSoftmax));
@@ -1330,7 +1330,7 @@ TEST(MHASHATest, FastVlm) {
     ASSERT_TRUE(op_wrappers[19 + sha_size * i].IsOpCode(QnnOpCode::kMatMul));
     ASSERT_TRUE(op_wrappers[20 + sha_size * i].IsOpCode(QnnOpCode::kMatMul));
     ASSERT_TRUE(
-        op_wrappers[21 + sha_size * i].IsOpCode(QnnOpCode::kElementWiseBinary));
+        op_wrappers[21 + sha_size * i].IsOpCode(QnnOpCode::kElementWiseAdd));
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[21 + sha_size * i]));
   }
   ASSERT_TRUE(op_wrappers[op_wrappers.size() - 1].IsOpCode(QnnOpCode::kConcat));
@@ -1534,13 +1534,13 @@ TEST(MHAOptimization, TinyGemma3Prefill) {
   const size_t num_head = 4;
   for (int i = 0; i < num_head; ++i) {
     ASSERT_EQ(op_wrappers[3 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseMultiply);
     ASSERT_TRUE(IsElementWiseMultiply(op_wrappers[3 + sha_size * i]));
     ASSERT_EQ(op_wrappers[4 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[5 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[6 + sha_size * i].GetOpCode(), QnnOpCode::kConcat);
     ASSERT_EQ(op_wrappers[7 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseAdd);
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[7 + sha_size * i]));
     ASSERT_EQ(op_wrappers[8 + sha_size * i].GetOpCode(), QnnOpCode::kSoftmax);
     ASSERT_EQ(op_wrappers[9 + sha_size * i].GetOpCode(),
@@ -1550,7 +1550,7 @@ TEST(MHAOptimization, TinyGemma3Prefill) {
     ASSERT_EQ(op_wrappers[11 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[12 + sha_size * i].GetOpCode(), QnnOpCode::kMatMul);
     ASSERT_EQ(op_wrappers[13 + sha_size * i].GetOpCode(),
-              QnnOpCode::kElementWiseBinary);
+              QnnOpCode::kElementWiseAdd);
     ASSERT_TRUE(IsElementWiseAdd(op_wrappers[13 + sha_size * i]));
   }
   ASSERT_EQ(op_wrappers[47].GetOpCode(), QnnOpCode::kConcat);
@@ -1718,19 +1718,19 @@ TEST(MHAOptimization, AttentionWithSelect) {
                         [](OpWrapper& op) { return true; });
   // Check the optimized graph is correct.
   ASSERT_EQ(op_wrappers.size(), 42);
-  ASSERT_TRUE(op_wrappers[0].IsOpCode(QnnOpCode::kElementWiseBinary));
+  ASSERT_TRUE(op_wrappers[0].IsOpCode(QnnOpCode::kElementWiseEqual));
   ASSERT_TRUE(op_wrappers[1].IsOpCode(QnnOpCode::kCast));
-  ASSERT_TRUE(op_wrappers[2].IsOpCode(QnnOpCode::kElementWiseBinary));
+  ASSERT_TRUE(op_wrappers[2].IsOpCode(QnnOpCode::kElementWiseMultiply));
   ASSERT_TRUE(IsElementWiseMultiply(op_wrappers[2]));
   ASSERT_TRUE(op_wrappers[3].IsOpCode(QnnOpCode::kUnPack));
   ASSERT_TRUE(op_wrappers[4].IsOpCode(QnnOpCode::kUnPack));
   ASSERT_TRUE(op_wrappers[5].IsOpCode(QnnOpCode::kUnPack));
 
-  const std::vector<QnnOpCode> sha_op_codes = {QnnOpCode::kElementWiseBinary,
-                                               QnnOpCode::kElementWiseBinary,
+  const std::vector<QnnOpCode> sha_op_codes = {QnnOpCode::kElementWiseMultiply,
+                                               QnnOpCode::kElementWiseMultiply,
                                                QnnOpCode::kTranspose,
                                                QnnOpCode::kMatMul,
-                                               QnnOpCode::kElementWiseBinary,
+                                               QnnOpCode::kElementWiseAdd,
                                                QnnOpCode::kSoftmax,
                                                QnnOpCode::kMatMul};
   for (int i = 6; i < 41; i = i + sha_op_codes.size()) {
