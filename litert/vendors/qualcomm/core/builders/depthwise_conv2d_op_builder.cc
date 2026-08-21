@@ -31,7 +31,8 @@ constexpr std::uint32_t kConv2dMinStride = 4;
 constexpr std::uint32_t kConv2dMinFilterSize = 4;
 
 bool ShouldUseGroupedConv2d(const TensorWrapper& filter_tensor,
-                            std::uint32_t stride_h, std::uint32_t stride_w) {
+                            const std::uint32_t stride_h,
+                            const std::uint32_t stride_w) {
   return stride_h >= kConv2dMinStride && stride_w >= kConv2dMinStride &&
          filter_tensor.GetDimension(kHeightIndex) >= kConv2dMinFilterSize &&
          filter_tensor.GetDimension(kWidthIndex) >= kConv2dMinFilterSize;
