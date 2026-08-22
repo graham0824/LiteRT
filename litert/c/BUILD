@@ -11,6 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+# SPDX-License-Identifier: Apache-2.0
+#
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_framework", "ios_unit_test")
@@ -706,10 +710,18 @@ cc_library(
     deps = [":litert_common"],
 )
 
+cc_library(
+    name = "litert_profiler_types",
+    hdrs = ["litert_profiler_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [":litert_common"],
+)
+
 litert_c_api_library(
     name = "litert_profiler",
     srcs = ["litert_profiler.cc"],
     hdrs = ["litert_profiler.h"],
+    header_kwargs = {"compatible_with": get_compatible_with_portable()},
     impl_deps = [
         "//litert/cc:litert_macros",
         "//litert/runtime:compiled_model",
@@ -724,6 +736,7 @@ litert_c_api_library(
 cc_library(
     name = "litert_profiler_event",
     hdrs = ["litert_profiler_event.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_test(
@@ -805,14 +818,15 @@ LITERT_C_API_COMMON_DEPS = [
     ":litert_builder_impl",
     ":litert_tensor_buffer_impl",
     "//litert/c/internal:litert_accelerator_registration",
-    "//litert/c/internal:litert_accelerator",
+    "//litert/c/internal:litert_accelerator_impl",
     "//litert/c/internal:litert_dispatch_delegate",
     "//litert/c/internal:litert_external_litert_buffer_context",
     "//litert/c/internal:litert_logging",
     "//litert/c/internal:litert_runtime_api_export",
     "//litert/c/internal:litert_tensor_buffer_registry",
     "//litert/c/options:litert_cpu_options",
-    # copybara:uncomment "//litert/c/options/google:litert_darwinn_runtime_options",
+    # copybara:uncomment "//litert/c/options/google:litert_google_tensor_privileged_options",
+    "//litert/c/options:litert_arm_options",
     "//litert/c/options:litert_google_tensor_options_type",
     "//litert/c/options:litert_google_tensor_options",
     "//litert/c/options:litert_gpu_options",
