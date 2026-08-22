@@ -1837,6 +1837,13 @@ LiteRtStatus MapGraph(const LiteRtCompilerContext* ctx, QnnManager& qnn,
     });
   }
 
+  tensor_pool.ForEach([](::qnn::TensorWrapper& tensor_wrapper) {
+    if ((tensor_wrapper.IsSubgraphInput() || tensor_wrapper.IsSubgraphOutput()) &&
+        absl::StrContains(tensor_wrapper.GetName(), "_external_state_")) {
+      tensor_wrapper.ConvertFromQuantI16ToQuantU16();
+    }
+  });
+
   // Create input tensors.
   for (const auto& subgraph_input : subgraph_inputs) {
     ::qnn::TensorWrapper* tensor_wrapper =
