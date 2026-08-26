@@ -35,8 +35,6 @@ cc_library(
         "//litert/cc:litert_api_types",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
-        "//litert/cc/internal:litert_handle",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -66,8 +64,6 @@ cc_library(
         "//litert/c/options:litert_compiler_options",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
-        "//litert/cc/internal:litert_handle",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -117,7 +113,6 @@ cc_library(
         "//litert/c/options:litert_gpu_options",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
-        "//litert/cc/internal:litert_handle",
     ],
 )
 
@@ -144,7 +139,6 @@ cc_library(
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
         "//litert/cc/internal:litert_detail",
-        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = True,
 )
@@ -158,9 +152,6 @@ cc_library(
         "//litert/cc:litert_api_types",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
-        "//litert/cc/internal:litert_detail",
-        "//litert/cc/internal:litert_handle",
-        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = True,
 )
@@ -176,7 +167,6 @@ cc_library(
         "//litert/cc:litert_macros",
         "//litert/cc/internal:litert_detail",
         "//litert/cc/internal:litert_handle",
-        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = True,
 )
@@ -212,12 +202,8 @@ cc_library(
     deps = [
         "//litert/c:litert_common",
         "//litert/c/options:litert_samsung_options",
-        "//litert/cc:litert_common",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
-        "//litert/cc/internal:litert_detail",
-        "//litert/cc/internal:litert_handle",
-        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = True,
 )
@@ -239,7 +225,6 @@ cc_library(
     name = "litert_magic_number_options",
     hdrs = ["litert_magic_number_options.h"],
     deps = [
-        "//litert/c:litert_common",
         "//litert/c:litert_environment_options",
         "//litert/cc:litert_common",
         "//litert/cc:litert_expected",
@@ -254,8 +239,6 @@ cc_test(
         "//litert/c:litert_common",
         "//litert/c:litert_opaque_options",
         "//litert/c/options:litert_runtime_options",
-        "//litert/cc:litert_expected",
-        "//litert/cc:litert_macros",
         "//litert/cc:litert_opaque_options",
         "//litert/cc/internal:litert_handle",
         "//litert/test:matchers",

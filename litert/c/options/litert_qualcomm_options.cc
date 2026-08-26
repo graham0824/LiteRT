@@ -114,6 +114,8 @@ struct LrtQualcommOptionsT {
       graph_io_tensor_mem_type;
   std::optional<std::string> schematic_dir;
   std::optional<CustomOpPackage> custom_op_package;
+  std::optional<std::string> qnn_lib_dir;
+  std::optional<std::string> dsp_skel_dir;
 };
 
 LiteRtStatus LrtCreateQualcommOptionsFromToml(const char* toml_payload,
@@ -258,6 +260,12 @@ LiteRtStatus LrtCreateQualcommOptionsFromToml(const char* toml_payload,
           if (status == kLiteRtStatusOk) {
             parsed_options->custom_op_package = package;
           }
+        } else if (key == "qnn_lib_dir") {
+          status = LrtQualcommOptionsSetQnnLibDir(parsed_options,
+                                                  std::string(value).c_str());
+        } else if (key == "dsp_skel_dir") {
+          status = LrtQualcommOptionsSetDspSkelDir(parsed_options,
+                                                   std::string(value).c_str());
         }
 
         return status;
@@ -396,7 +404,12 @@ LiteRtStatus LrtGetOpaqueQualcommOptionsData(LrtQualcommOptions options,
          << "target:" << package.target << ";"
          << "\"\n";
   }
-
+  if (options->qnn_lib_dir.has_value()) {
+    toml << "qnn_lib_dir = \"" << *options->qnn_lib_dir << "\"\n";
+  }
+  if (options->dsp_skel_dir.has_value()) {
+    toml << "dsp_skel_dir = \"" << *options->dsp_skel_dir << "\"\n";
+  }
   *identifier = LrtQualcommOptionsGetIdentifier();
   std::string toml_str = toml.str();
   litert::internal::MakeCStringPayload(toml_str, payload, payload_deleter);
@@ -1042,6 +1055,52 @@ LiteRtStatus LrtQualcommOptionsGetBackend(
   }
 
   *qnn_backend = options->qnn_backend.value_or(kLiteRtQualcommBackendHtp);
+
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LrtQualcommOptionsSetQnnLibDir(LrtQualcommOptions options,
+                                            const char* qnn_lib_dir) {
+  if (options == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  options->qnn_lib_dir = qnn_lib_dir;
+
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LrtQualcommOptionsGetQnnLibDir(LrtQualcommOptions options,
+                                            const char** qnn_lib_dir) {
+  if (options == nullptr || qnn_lib_dir == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  *qnn_lib_dir =
+      options->qnn_lib_dir.has_value() ? options->qnn_lib_dir->c_str() : "";
+
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LrtQualcommOptionsSetDspSkelDir(LrtQualcommOptions options,
+                                             const char* dsp_skel_dir) {
+  if (options == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  options->dsp_skel_dir = dsp_skel_dir;
+
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LrtQualcommOptionsGetDspSkelDir(LrtQualcommOptions options,
+                                             const char** dsp_skel_dir) {
+  if (options == nullptr || dsp_skel_dir == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  *dsp_skel_dir =
+      options->dsp_skel_dir.has_value() ? options->dsp_skel_dir->c_str() : "";
 
   return kLiteRtStatusOk;
 }

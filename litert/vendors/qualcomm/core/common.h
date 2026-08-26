@@ -213,6 +213,12 @@ class Options {
                           absl::string_view target);
   const CustomOpPackage& GetCustomOpPackage() const;
 
+  void SetQnnLibDir(absl::string_view qnn_lib_dir);
+  absl::string_view GetQnnLibDir() const;
+
+  void SetDspSkelDir(absl::string_view dsp_skel_dir);
+  absl::string_view GetDspSkelDir() const;
+
  private:
   LogLevel log_level_ = LogLevel::kInfo;
   BackendType backend_type_ = BackendType::kHtpBackend;
@@ -245,6 +251,8 @@ class Options {
   std::string schematic_dir_;
   // Currently we only support one custom op package.
   CustomOpPackage custom_op_package_;
+  std::string qnn_lib_dir_;
+  std::string dsp_skel_dir_;
 };
 
 // Gets a default logger implementation to stdout.

@@ -157,6 +157,9 @@ inline LiteRtStatus InitQnnOptions(
       custom_op_package.name, custom_op_package.interface_provider,
       custom_op_package.compile_package_path,
       custom_op_package.dispatch_package_path, custom_op_package.target);
+  qnn_options.SetQnnLibDir(qualcomm_options.GetQnnLibDir());
+  qnn_options.SetDspSkelDir(qualcomm_options.GetDspSkelDir());
+
   LITERT_LOG(LITERT_INFO, "\n%s", qnn_options.Dump().data());
   return kLiteRtStatusOk;
 }
