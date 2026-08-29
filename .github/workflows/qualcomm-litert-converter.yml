@@ -1,0 +1,263 @@
+name: "qualcomm-litert-converter"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  ASTROBOT_SHA: dev/hungjuiw/astro-for-ci
+
+jobs:
+  converter:
+    name: "Qualcomm-LiteRT-Converter"
+    runs-on: ["self-hosted", "X64", "Linux"]
+    container:
+      image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
+      options: --privileged --ulimit core=-1
+      volumes:
+        - /opt/litert_ci_cache:/litert_ci_cache
+        - ${{ vars.MODEL_ZOO_ROOT }}:/model_zoo_root
+    steps:
+      - name: Checkout LiteRT repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup LiteRT CI
+        id: setup
+        uses: ./.github/actions/qualcomm-setup-litert
+        with:
+          astrobot_deploy_key: ${{ secrets.ASTROBOT_DEPLOY_KEY }}
+          astrobot_sha: ${{ env.ASTROBOT_SHA }}
+
+      - name: Install Python dependencies
+        shell: bash
+        run: pip3 install --quiet pyyaml tflite==2.18.0
+
+      - name: Run qairt-converter for each model
+        shell: bash
+        run: |
+          source /qairt/${{ steps.setup.outputs.qairt_version }}/bin/envsetup.sh
+          python3 - <<'PYEOF'
+          import subprocess, sys, yaml, os, pathlib
+
+          converter     = "qairt-converter"
+          models_config = os.environ["MODELS_CONFIG"]
+          dlc_root      = os.environ["DLC_OUTPUT_ROOT"]
+          model_zoo_root = os.environ["MODEL_ZOO_ROOT"]
+
+          with open(models_config) as f:
+              config = yaml.safe_load(f)
+
+          failures = []
+
+          for entry in config["models"]:
+              name         = entry["name"]
+              model_input  = os.path.join(model_zoo_root, entry["model_path"])
+              dlc_dir      = os.path.join(dlc_root, name)
+              pathlib.Path(dlc_dir).mkdir(parents=True, exist_ok=True)
+              dlc_output   = os.path.join(dlc_dir, f"{name}.dlc")
+              extra_params = []
+              for p in entry.get("qairt_converter_params", []):
+                  extra_params.extend(p if isinstance(p, list) else [p])
+
+              cmd = [converter, "-i", model_input, "-o", dlc_output] + extra_params
+              print(f"[convert] {name}: {' '.join(cmd)}", flush=True)
+              result = subprocess.run(cmd, capture_output=False,
+                                      cwd=os.path.dirname(model_input))
+              if result.returncode != 0:
+                  print(f"[ERROR] qairt-converter failed for {name} (exit {result.returncode})", flush=True)
+                  failures.append(name)
+
+          if failures:
+              print(f"\n[SUMMARY] qairt-converter failed for: {failures}", flush=True)
+              sys.exit(1)
+
+          PYEOF
+        env:
+          MODELS_CONFIG: ${{ github.workspace }}/.github/qualcomm-litert-converter-models.yml
+          DLC_OUTPUT_ROOT: ${{ github.workspace }}/dlc_output
+          MODEL_ZOO_ROOT: /model_zoo_root
+
+      - name: Run litert-converter for each model
+        if: always()
+        shell: bash
+        run: |
+          LITERT_QAIRT_SDK=/qairt/${{ steps.setup.outputs.qairt_version }} \
+            bazel build //litert/tools:apply_plugin_main
+          python3 - <<'PYEOF'
+          import subprocess, sys, yaml, os, pathlib
+
+          models_config  = os.environ["MODELS_CONFIG"]
+          dlc_root       = os.environ["DLC_OUTPUT_ROOT"]
+          model_zoo_root = os.environ["MODEL_ZOO_ROOT"]
+          workspace      = os.environ["GITHUB_WORKSPACE"]
+
+          apply_plugin = os.path.join(workspace, "bazel-bin/litert/tools/apply_plugin_main")
+          compiler_libs = os.path.join(workspace, "bazel-bin/litert/vendors/qualcomm/compiler")
+
+          with open(models_config) as f:
+              config = yaml.safe_load(f)
+
+          failures = []
+
+          for entry in config["models"]:
+              name        = entry["name"]
+              model_input = os.path.join(model_zoo_root, entry["model_path"])
+              dlc_dir     = os.path.join(dlc_root, name)
+              pathlib.Path(dlc_dir).mkdir(parents=True, exist_ok=True)
+              dummy_out   = os.path.join(dlc_dir, "dummy.tflite")
+              extra_params = []
+              for p in entry.get("litert_converter_params", []):
+                  extra_params.extend(p if isinstance(p, list) else [p])
+
+              cmd = [
+                  apply_plugin,
+                  "--cmd",    "compile",
+                  "--libs",   compiler_libs,
+                  "--model",  model_input,
+                  "--qualcomm_dlc_dir", dlc_dir,
+                  "--soc_manufacturer", "Qualcomm",
+                  "-o",       dummy_out,
+              ] + extra_params
+              print(f"[litert-convert] {name}: {' '.join(cmd)}", flush=True)
+              result = subprocess.run(cmd, capture_output=False)
+              if result.returncode != 0:
+                  print(f"[ERROR] apply_plugin_main failed for {name} (exit {result.returncode})", flush=True)
+                  failures.append(name)
+
+          if failures:
+              print(f"\n[SUMMARY] litert-converter failed for: {failures}", flush=True)
+              sys.exit(1)
+
+          PYEOF
+        env:
+          MODELS_CONFIG: ${{ github.workspace }}/.github/qualcomm-litert-converter-models.yml
+          DLC_OUTPUT_ROOT: ${{ github.workspace }}/dlc_output
+          MODEL_ZOO_ROOT: /model_zoo_root
+
+      - name: Write devices.json
+        if: always()
+        env:
+          DEVICES_JSON: ${{ vars.DEVICES_JSON }}
+        run: echo "$DEVICES_JSON" > /astrobot/LiteRT/test_scripts/devices.json
+
+      - name: Profile DLC with net_run.py for each model
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PYEOF'
+          import subprocess, sys, yaml, os, pathlib
+
+          qairt_sdk     = os.environ["QAIRT_SDK"]
+          models_config = os.environ["MODELS_CONFIG"]
+          dlc_root      = os.environ["DLC_OUTPUT_ROOT"]
+          prof_root     = os.environ["PROFILING_OUTPUT_ROOT"]
+
+          with open(models_config) as f:
+              config = yaml.safe_load(f)
+
+          results = {}  # name -> {"qairt": time_str, "litert": time_str}
+          failures = []
+
+          def parse_inference_time(output):
+              in_section = False
+              for line in output.splitlines():
+                  if "Total Inference Time" in line:
+                      in_section = True
+                      continue
+                  if in_section and "NetRun:" in line:
+                      return line.strip()
+              return "N/A"
+
+          for entry in config["models"]:
+              name      = entry["name"]
+              dlc_dir   = os.path.join(dlc_root, name)
+              inputs_pth = os.path.join(os.environ["MODEL_ZOO_ROOT"], entry["input_path"])
+
+              net_run = entry.get("net_run_params", {})
+              num_inferences          = net_run.get("num_inferences", 50)
+              profiling_level         = net_run.get("profiling_level", "client")
+              use_native_input_files  = net_run.get("use_native_input_files", True)
+
+              def run_net_run(label, dlc_pth):
+                  output_pth = os.path.join(prof_root, name, label)
+                  pathlib.Path(output_pth).mkdir(parents=True, exist_ok=True)
+                  cmd = [
+                      "python3", "/astrobot/QNNTools/net_run.py",
+                      "--model_pth",       dlc_pth,
+                      "--inputs_pth",      inputs_pth,
+                      "--output_pth",      output_pth,
+                      "--qnn_sdk_root",    qairt_sdk,
+                      "--num_inferences",  str(num_inferences),
+                      "--profiling_level", profiling_level,
+                  ]
+                  if not use_native_input_files:
+                      cmd += ["--no-use_native_input_files"]
+                  print(f"[profile/{label}] {name}: {' '.join(cmd)}", flush=True)
+                  result = subprocess.run(cmd, capture_output=True, text=True)
+                  print(result.stdout, flush=True)
+                  if result.stderr:
+                      print(result.stderr, flush=True)
+                  if result.returncode != 0:
+                      print(f"[ERROR] net_run.py failed for {name}/{label} (exit {result.returncode})", flush=True)
+                      failures.append(f"{name}/{label}")
+                      return "FAILED"
+                  return parse_inference_time(result.stdout)
+
+              # Profile qairt-converter DLC
+              qairt_dlc = os.path.join(dlc_dir, f"{name}.dlc")
+              if not pathlib.Path(qairt_dlc).exists():
+                  print(f"[SKIP] qairt DLC not found for {name}, skipping profiling", flush=True)
+                  results[name] = {"qairt": "SKIP", "litert": "SKIP"}
+                  continue
+              qairt_time = run_net_run("qairt", qairt_dlc)
+
+              # Profile LiteRT DLC (assert exactly one partition)
+              litert_dlcs = sorted(pathlib.Path(dlc_dir).glob("qnn_partition_*.dlc"))
+              if not litert_dlcs:
+                  print(f"[ERROR] No qnn_partition_*.dlc found in {dlc_dir}", flush=True)
+                  failures.append(f"{name}/litert-missing-dlc")
+                  results[name] = {"qairt": qairt_time, "litert": "FAILED"}
+                  continue
+              if len(litert_dlcs) > 1:
+                  print(f"[ERROR] Multiple LiteRT DLC partitions found in {dlc_dir}: {[str(p) for p in litert_dlcs]}", flush=True)
+                  failures.append(f"{name}/litert-multiple-partitions")
+                  results[name] = {"qairt": qairt_time, "litert": "FAILED"}
+                  continue
+              litert_time = run_net_run("litert", str(litert_dlcs[0]))
+
+              results[name] = {"qairt": qairt_time, "litert": litert_time}
+
+          # Print comparison table
+          name_col = max(len(n) for n in results) + 2
+          val_col  = 40
+          total    = name_col + val_col * 2
+          print("\n" + "=" * total, flush=True)
+          print(f"{'Model':<{name_col}} {'qairt-converter':<{val_col}} {'LiteRT':<{val_col}}", flush=True)
+          print("-" * total, flush=True)
+          for name, times in results.items():
+              print(f"{name:<{name_col}} {times['qairt']:<{val_col}} {times['litert']:<{val_col}}", flush=True)
+          print("=" * total, flush=True)
+
+          if failures:
+              print(f"\n[SUMMARY] Profiling failed for: {failures}", flush=True)
+              sys.exit(1)
+
+          PYEOF
+        env:
+          QAIRT_SDK: /qairt/${{ steps.setup.outputs.qairt_version }}
+          MODELS_CONFIG: ${{ github.workspace }}/.github/qualcomm-litert-converter-models.yml
+          DLC_OUTPUT_ROOT: ${{ github.workspace }}/dlc_output
+          PROFILING_OUTPUT_ROOT: ${{ github.workspace }}/profiling_output
+          MODEL_ZOO_ROOT: /model_zoo_root
+
+      - name: Clean up profiling output
+        if: always()
+        run: rm -rf ${{ github.workspace }}/profiling_output
+
+      - name: Clean up DLC output
+        if: always()
+        run: rm -rf ${{ github.workspace }}/dlc_output

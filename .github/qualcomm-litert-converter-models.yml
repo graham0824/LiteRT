@@ -1,0 +1,1364 @@
+# Model configurations for qualcomm-litert-converter.yml
+# Each entry describes one model to convert via qairt-converter.
+#
+# Fields:
+#   name                    - unique model identifier (also used as the DLC subdirectory name)
+#   model_path              - path to the source model file, relative to vars.MODEL_ZOO_ROOT
+#   input_path              - directory of input tensors, relative to vars.MODEL_ZOO_ROOT
+#   qairt_converter_params  - list of extra CLI flags passed verbatim to qairt-converter
+#   litert_converter_params - list of extra CLI flags passed verbatim to apply_plugin_main
+#   net_run_params          - (optional) overrides for net_run.py profiling
+#     num_inferences              - number of inferences to run (default: 50)
+#     profiling_level             - basic | detailed | client (default: client)
+#     use_native_input_files      - pass --use_native_input_files to qnn-net-run (default: true)
+#                                   set to false for quantized models with float32 input files
+#
+# Absolute paths are resolved at runtime as: <vars.MODEL_ZOO_ROOT>/<model_path|input_path>
+
+models:
+  # ── public_tflite ─────────────────────────────────────────────────────────
+  - name: tflite-cnns_inception_v3
+    model_path: public_tflite/tflite-cnns_inception_v3/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_inception_v3/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-cnns_inception_v3_quant
+    model_path: public_tflite/tflite-cnns_inception_v3_quant/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_inception_v3_quant/inputs/
+    qairt_converter_params:
+      - [--source_model_input_datatype, input, uint8]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_source_model_input_datatype, input, uint8]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-cnns_inception_v4
+    model_path: public_tflite/tflite-cnns_inception_v4/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_inception_v4/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-cnns_mobilenet_v1
+    model_path: public_tflite/tflite-cnns_mobilenet_v1/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_mobilenet_v1/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-cnns_mobilenet_v1_fp16
+    model_path: public_tflite/tflite-cnns_mobilenet_v1/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_mobilenet_v1/inputs/
+    qairt_converter_params:
+      - [--float_bitwidth, "16"]
+      - [--float_bias_bitwidth, "16"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-cnns_mobilenet_v1_explicit_shape
+    model_path: public_tflite/tflite-cnns_mobilenet_v1/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_mobilenet_v1/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "input", "1,224,224,3"]
+      - ["--source_model_input_layout", "input", "NHWC"]
+      - ["--source_model_input_datatype", "input", "float32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=input@1:224:224:3"]
+      - [--qualcomm_source_model_input_datatype, input, float32]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-cnns_mobilenet_v2
+    model_path: public_tflite/tflite-cnns_mobilenet_v2/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_mobilenet_v2/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-cnns_mobilenet_edgetpu_v2_quant
+    model_path: public_tflite/tflite-cnns_mobilenet_edgetpu_v2_quant/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_mobilenet_edgetpu_v2_quant/inputs/
+    qairt_converter_params:
+      - [--source_model_input_datatype, input_2, int8]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_source_model_input_datatype, input_2, int8]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-cnns_efficientdet_lite0
+    model_path: public_tflite/tflite-cnns_efficientdet_lite0/Source_model/model.tflite
+    input_path: public_tflite/tflite-cnns_efficientdet_lite0/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── MediaPipe ─────────────────────────────────────────────────────────────
+  - name: tflite-custom_mediapipe_palm
+    model_path: public_tflite/tflite-custom_mediapipe_palm/Source_model/model.tflite
+    input_path: public_tflite/tflite-custom_mediapipe_palm/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_mediapipe_hand
+    model_path: public_tflite/tflite-custom_mediapipe_hand/Source_model/model.tflite
+    input_path: public_tflite/tflite-custom_mediapipe_hand/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── benchmark_mlperf ──────────────────────────────────────────────────────
+  - name: tflite-custom_mobilebert
+    model_path: benchmark_mlperf/tflite-custom_mobilebert/Source_model/model.tflite
+    input_path: benchmark_mlperf/tflite-custom_mobilebert/inputs/
+    qairt_converter_params:
+      - [--source_model_input_datatype, input_ids, int32]
+      - [--source_model_input_datatype, input_mask, int32]
+      - [--source_model_input_datatype, segment_ids, int32]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_source_model_input_datatype, input_ids, int32]
+      - [--qualcomm_source_model_input_datatype, input_mask, int32]
+      - [--qualcomm_source_model_input_datatype, segment_ids, int32]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── AITuTu ────────────────────────────────────────────────────────────────
+  - name: tflite-custom_aitutu_style_transfer_transfer
+    model_path: benchmark_aitutu/tflite-custom_aitutu_style_transfer_transfer/Source_model/model.tflite
+    input_path: benchmark_aitutu/tflite-custom_aitutu_style_transfer_transfer/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_aitutu_style_transfer_prediction
+    model_path: benchmark_aitutu/tflite-custom_aitutu_style_transfer_prediction/Source_model/model.tflite
+    input_path: benchmark_aitutu/tflite-custom_aitutu_style_transfer_prediction/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── Oppo / EAR ────────────────────────────────────────────────────────────
+  - name: tflite-custom_ear_23_uc.o.1637.1.0_printed_fonts_ocr_recognition
+    model_path: customer_oppo/tflite-custom_ear_23_uc.o.1637.1.0_printed_fonts_ocr_recognition/Source_model/mobilenetv3_15_3_r0_e16_800.tflite
+    input_path: customer_oppo/tflite-custom_ear_23_uc.o.1637.1.0_printed_fonts_ocr_recognition/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.o.4177.1.0_oppo_ecns_dfnet_6074
+    model_path: customer_oppo/tflite-custom_uc.o.4177.1.0_oppo_ecns_dfnet_6074/Source_model/model.tflite
+    input_path: customer_oppo/tflite-custom_uc.o.4177.1.0_oppo_ecns_dfnet_6074/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  # ── single_layer_test ─────────────────────────────────────────────────────
+  - name: tflite-single_layers_squeeze
+    model_path: single_layer_test/tflite-single_layers_squeeze/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_squeeze/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_slice
+    model_path: single_layer_test/tflite-single_layers_slice/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_slice/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_resize
+    model_path: single_layer_test/tflite-single_layers_resize/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_resize/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_relu6
+    model_path: single_layer_test/tflite-single_layers_relu6/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_relu6/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_relu
+    model_path: single_layer_test/tflite-single_layers_relu/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_relu/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_reduce_min
+    model_path: single_layer_test/tflite-single_layers_reduce_min/Source_model/reduce_min.tflite
+    input_path: single_layer_test/tflite-single_layers_reduce_min/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "input/Placeholder", "1,5,3,4"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=input/Placeholder@1:5:3:4"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_reduce_max
+    model_path: single_layer_test/tflite-single_layers_reduce_max/Source_model/reduce_max.tflite
+    input_path: single_layer_test/tflite-single_layers_reduce_max/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "input/Placeholder", "1,5,3,4"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=input/Placeholder@1:5:3:4"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_pad
+    model_path: single_layer_test/tflite-single_layers_pad/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_pad/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_mean
+    model_path: single_layer_test/tflite-single_layers_mean/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_mean/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_gather
+    model_path: single_layer_test/tflite-single_layers_gather/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_gather/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_expand_dims
+    model_path: single_layer_test/tflite-single_layers_expand_dims/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_expand_dims/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwisesum
+    model_path: single_layer_test/tflite-single_layers_eltwisesum/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwisesum/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwisesub
+    model_path: single_layer_test/tflite-single_layers_eltwisesub/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwisesub/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwisemul
+    model_path: single_layer_test/tflite-single_layers_eltwisemul/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwisemul/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwisediv
+    model_path: single_layer_test/tflite-single_layers_eltwisediv/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwisediv/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwise_unary_sqrt
+    model_path: single_layer_test/tflite-single_layers_eltwise_unary_sqrt/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwise_unary_sqrt/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwise_unary_floor
+    model_path: single_layer_test/tflite-single_layers_eltwise_unary_floor/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwise_unary_floor/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwise_unary_exp
+    model_path: single_layer_test/tflite-single_layers_eltwise_unary_exp/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwise_unary_exp/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwise_unary_abs
+    model_path: single_layer_test/tflite-single_layers_eltwise_unary_abs/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwise_unary_abs/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_depth_to_space
+    model_path: single_layer_test/tflite-single_layers_depth_to_space/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_depth_to_space/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_convolution_same_padding
+    model_path: single_layer_test/tflite-single_layers_convolution_same_padding/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_convolution_same_padding/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_convolution
+    model_path: single_layer_test/tflite-single_layers_convolution/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_convolution/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_concat
+    model_path: single_layer_test/tflite-single_layers_concat/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_concat/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_concat_fp16
+    model_path: single_layer_test/tflite-single_layers_concat/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_concat/inputs/
+    qairt_converter_params:
+      - [--float_bitwidth, "16"]
+      - [--float_bias_bitwidth, "16"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-single_layers_add
+    model_path: single_layer_test/tflite-single_layers_add/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_add/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_strided_slice
+    model_path: single_layer_test/tflite-single_layer_strided_slice/Source_model/strided_slice.tflite
+    input_path: single_layer_test/tflite-single_layer_strided_slice/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "input/Placeholder", "3,4,4,12"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=input/Placeholder@3:4:4:12"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_space_to_batch
+    model_path: single_layer_test/tflite-single_layer_space_to_batch/Source_model/space_to_batch_model.tflite
+    input_path: single_layer_test/tflite-single_layer_space_to_batch/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,4,4,1"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:4:4:1"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_select_v2
+    model_path: single_layer_test/tflite-single_layer_select_v2/Source_model/SelectV2.tflite
+    input_path: single_layer_test/tflite-single_layer_select_v2/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_mul
+    model_path: single_layer_test/tflite-single_layer_mul/Source_model/mul.tflite
+    input_path: single_layer_test/tflite-single_layer_mul/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "32,32"]
+      - ["--source_model_input_shape", "y", "32,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@32:32"]
+      - ["--input_name=y@32:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_gelu
+    model_path: single_layer_test/tflite-single_layer_gelu/Source_model/gelu.tflite
+    input_path: single_layer_test/tflite-single_layer_gelu/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,3,8,16"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:3:8:16"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_gather_nd
+    model_path: single_layer_test/tflite-single_layer_gather_nd/Source_model/gather_nd.tflite
+    input_path: single_layer_test/tflite-single_layer_gather_nd/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+      - ["--source_model_input_shape", "y", "1,3"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+      - ["--input_name=y@1:3"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_gather
+    model_path: single_layer_test/tflite-single_layer_gather/Source_model/gather.tflite
+    input_path: single_layer_test/tflite-single_layer_gather/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+      - ["--source_model_input_shape", "y", "1,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+      - ["--input_name=y@1:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_exp
+    model_path: single_layer_test/tflite-single_layer_exp/Source_model/expmodel.tflite
+    input_path: single_layer_test/tflite-single_layer_exp/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_cumsum
+    model_path: single_layer_test/tflite-single_layer_cumsum/Source_model/cumsum_model_new.tflite
+    input_path: single_layer_test/tflite-single_layer_cumsum/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "10"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@10"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_conv3d
+    model_path: single_layer_test/tflite-single_layer_conv3d/Source_model/conv3d_model.tflite
+    input_path: single_layer_test/tflite-single_layer_conv3d/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_cast_uint8
+    model_path: single_layer_test/tflite-single_layer_cast_uint8/Source_model/cast_uint8.tflite
+    input_path: single_layer_test/tflite-single_layer_cast_uint8/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_cast_uint32
+    model_path: single_layer_test/tflite-single_layer_cast_uint32/Source_model/cast_uint32.tflite
+    input_path: single_layer_test/tflite-single_layer_cast_uint32/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_cast_float16
+    model_path: single_layer_test/tflite-single_layer_cast_float16/Source_model/cast_float16.tflite
+    input_path: single_layer_test/tflite-single_layer_cast_float16/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_batch_to_space_nd
+    model_path: single_layer_test/tflite-single_layer_batch_to_space_nd/Source_model/BatchToSpaceNdmodel.tflite
+    input_path: single_layer_test/tflite-single_layer_batch_to_space_nd/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "4,2,2,1"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@4:2:2:1"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_abs
+    model_path: single_layer_test/tflite-single_layer_abs/Source_model/abs_model.tflite
+    input_path: single_layer_test/tflite-single_layer_abs/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_argmax
+    model_path: single_layer_test/tflite-single_layer_argmax/Source_model/argmax.tflite
+    input_path: single_layer_test/tflite-single_layer_argmax/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_atan2
+    model_path: single_layer_test/tflite-single_layer_atan2/Source_model/atan2_model.tflite
+    input_path: single_layer_test/tflite-single_layer_atan2/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "y", "1"]
+      - ["--source_model_input_shape", "x", "1"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=y@1"]
+      - ["--input_name=x@1"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_equal
+    model_path: single_layer_test/tflite-single_layer_equal/Source_model/equal.tflite
+    input_path: single_layer_test/tflite-single_layer_equal/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+      - ["--source_model_input_shape", "y", "1,32,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+      - ["--input_name=y@1:32:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_less
+    model_path: single_layer_test/tflite-single_layer_less/Source_model/less.tflite
+    input_path: single_layer_test/tflite-single_layer_less/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32"]
+      - ["--source_model_input_shape", "y", "1,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32"]
+      - ["--input_name=y@1:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_sign
+    model_path: single_layer_test/tflite-single_layer_sign/Source_model/sign_model.tflite
+    input_path: single_layer_test/tflite-single_layer_sign/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layer_cast_float64
+    model_path: single_layer_test/tflite-single_layer_cast_float64/Source_model/cast_float64.tflite
+    input_path: single_layer_test/tflite-single_layer_cast_float64/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "x", "1,32,32"]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=x@1:32:32"]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_tanh
+    model_path: single_layer_test/tflite-single_layers_tanh/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_tanh/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_softmax
+    model_path: single_layer_test/tflite-single_layers_softmax/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_softmax/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_reshape
+    model_path: single_layer_test/tflite-single_layers_reshape/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_reshape/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_deconvolution
+    model_path: single_layer_test/tflite-single_layers_deconvolution/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_deconvolution/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_fullyconnected
+    model_path: single_layer_test/tflite-single_layers_fullyconnected/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_fullyconnected/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_batchnorm
+    model_path: single_layer_test/tflite-single_layers_batchnorm/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_batchnorm/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_poolingavg
+    model_path: single_layer_test/tflite-single_layers_poolingavg/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_poolingavg/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_poolingmax
+    model_path: single_layer_test/tflite-single_layers_poolingmax/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_poolingmax/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwisemin
+    model_path: single_layer_test/tflite-single_layers_eltwisemin/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwisemin/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-single_layers_eltwisemax
+    model_path: single_layer_test/tflite-single_layers_eltwisemax/Source_model/model.tflite
+    input_path: single_layer_test/tflite-single_layers_eltwisemax/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── customer_google ───────────────────────────────────────────────────────
+  - name: tflite-custom_uc.google.1949.1.1_hand_regressor
+    model_path: customer_google/tflite-custom_uc.google.1949.1.1_hand_regressor/Source_model/hand_regressor_random_weights.tflite
+    input_path: customer_google/tflite-custom_uc.google.1949.1.1_hand_regressor/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.1949.1.2_hand_regressor
+    model_path: customer_google/tflite-custom_uc.google.1949.1.2_hand_regressor/Source_model/hand_regressor.tflite
+    input_path: customer_google/tflite-custom_uc.google.1949.1.2_hand_regressor/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.1950.1.1_hand_detector
+    model_path: customer_google/tflite-custom_uc.google.1950.1.1_hand_detector/Source_model/hand_detector_random_weights.tflite
+    input_path: customer_google/tflite-custom_uc.google.1950.1.1_hand_detector/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.1950.1.2_hand_detector
+    model_path: customer_google/tflite-custom_uc.google.1950.1.2_hand_detector/Source_model/hand_detector.tflite
+    input_path: customer_google/tflite-custom_uc.google.1950.1.2_hand_detector/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.1951.1.0_ml_depth
+    model_path: customer_google/tflite-custom_uc.google.1951.1.0_ml_depth/Source_model/ml_depth_float.tflite
+    input_path: customer_google/tflite-custom_uc.google.1951.1.0_ml_depth/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.2043.1.0_eye_tracking_d2
+    model_path: customer_google/tflite-custom_uc.google.2043.1.0_eye_tracking_d2/Source_model/eye_tracking_d2.tflite
+    input_path: customer_google/tflite-custom_uc.google.2043.1.0_eye_tracking_d2/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.google.2043.2.0_eye_tracking_d3
+    model_path: customer_google/tflite-custom_uc.google.2043.2.0_eye_tracking_d3/Source_model/eye_tracking_d3.tflite
+    input_path: customer_google/tflite-custom_uc.google.2043.2.0_eye_tracking_d3/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.google.2426.1.0_image_embedding
+    model_path: customer_google/tflite-custom_uc.google.2426.1.0_image_embedding/Source_model/v2_2m_16_128_q_5_l2norm.tflite
+    input_path: customer_google/tflite-custom_uc.google.2426.1.0_image_embedding/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.google.2850.1.0_hdrnet
+    model_path: customer_google/tflite-custom_uc.google.2850.1.0_hdrnet/Source_model/vst_hdrnet.tflite
+    input_path: customer_google/tflite-custom_uc.google.2850.1.0_hdrnet/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.2851.1.0_depth
+    model_path: customer_google/tflite-custom_uc.google.2851.1.0_depth/Source_model/new_arch_small_v4_int8.tflite
+    input_path: customer_google/tflite-custom_uc.google.2851.1.0_depth/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.4393.1.0_regressor_custom_op
+    model_path: customer_google/tflite-custom_uc.google.4393.1.0_regressor_custom_op/Source_model/regressor_custom_op.tflite
+    input_path: customer_google/tflite-custom_uc.google.4393.1.0_regressor_custom_op/inputs/
+    qairt_converter_params:
+      - [--quantization_overrides, regressor_custom_op_quantization_overrides.json]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_quant_overrides, regressor_custom_op_quantization_overrides.json]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.4394.1.0_hdrnet_int8_quantized_no_reshape_custom_op
+    model_path: customer_google/tflite-custom_uc.google.4394.1.0_hdrnet_int8_quantized_no_reshape_custom_op/Source_model/hdrnet_int8_quantized_no_reshape_custom_op.tflite
+    input_path: customer_google/tflite-custom_uc.google.4394.1.0_hdrnet_int8_quantized_no_reshape_custom_op/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.google.4395.1.0_hands_bs2_212495994_customop
+    model_path: customer_google/tflite-custom_uc.google.4395.1.0_hands_bs2_212495994_customop/Source_model/hands_bs2_212495994_customop.tflite
+    input_path: customer_google/tflite-custom_uc.google.4395.1.0_hands_bs2_212495994_customop/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── customer_samsung ──────────────────────────────────────────────────────
+  - name: tflite-custom_uc.s.4759.1.0_05_22_user_zoom_13
+    model_path: customer_samsung/tflite-custom_uc.s.4759.1.0_05_22_user_zoom_13/Source_model/05-22_Capture_AIUpScaler_v1.0.0_2x.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.4759.1.0_05_22_user_zoom_13/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.4119.1.0_capture_ai_semantic_segmentation
+    model_path: customer_samsung/tflite-custom_uc.s.4119.1.0_capture_ai_semantic_segmentation/Source_model/5-38_Capture_aisemanticsegmentation.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.4119.1.0_capture_ai_semantic_segmentation/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.3027.1.0_sribenhscan_aidogearsegment
+    model_path: customer_samsung/tflite-custom_uc.s.3027.1.0_sribenhscan_aidogearsegment/Source_model/SRIBEnhScan_aiDOGEARSEGMENT_V100_FP16.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.3027.1.0_sribenhscan_aidogearsegment/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.2682.1.0_dmdnde_model_rear
+    model_path: customer_samsung/tflite-custom_uc.s.2682.1.0_dmdnde_model_rear/Source_model/e0604_l0.1500.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.2682.1.0_dmdnde_model_rear/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.2172.1.2_night_aiisp
+    model_path: customer_samsung/tflite-custom_uc.s.2172.1.2_night_aiisp/Source_model/e0604_l0.1500.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.2172.1.2_night_aiisp/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.2110.2.0_document_scan
+    model_path: customer_samsung/tflite-custom_uc.s.2110.2.0_document_scan/Source_model/shadow_removal_v17.0.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.2110.2.0_document_scan/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.2110.1.0_document_scan
+    model_path: customer_samsung/tflite-custom_uc.s.2110.1.0_document_scan/Source_model/shadow_maskextractor_v17.0.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.2110.1.0_document_scan/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.2055.1.0_autofocus_aiautofocus
+    model_path: customer_samsung/tflite-custom_uc.s.2055.1.0_autofocus_aiautofocus/Source_model/aiAutoFocus_v1_0.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.2055.1.0_autofocus_aiautofocus/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1921.1.0_aideblur
+    model_path: customer_samsung/tflite-custom_uc.s.1921.1.0_aideblur/Source_model/SRIB_aiDEBLUR_V140_FP32.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1921.1.0_aideblur/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1721.1.0_back_camera_aiisp_4x_c2c_m
+    model_path: customer_samsung/tflite-custom_uc.s.1721.1.0_back_camera_aiisp_4x_c2c_m/Source_model/aiisp_4x_C2C_M.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1721.1.0_back_camera_aiisp_4x_c2c_m/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1719.1.0_back_camera_aiisp_1x_c2c_m
+    model_path: customer_samsung/tflite-custom_uc.s.1719.1.0_back_camera_aiisp_1x_c2c_m/Source_model/1_aiisp_1x_C2C_M.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1719.1.0_back_camera_aiisp_1x_c2c_m/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1710.1.0_single_take_actionshotposture
+    model_path: customer_samsung/tflite-custom_uc.s.1710.1.0_single_take_actionshotposture/Source_model/20220517_posture_v1.31.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1710.1.0_single_take_actionshotposture/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1708.1.2_photo_remaster_sribmidas_aihdr
+    model_path: customer_samsung/tflite-custom_uc.s.1708.1.2_photo_remaster_sribmidas_aihdr/Source_model/ARF.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1708.1.2_photo_remaster_sribmidas_aihdr/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1673.1.0_night_b2fsfnet_999
+    model_path: customer_samsung/tflite-custom_uc.s.1673.1.0_night_b2fsfnet_999/Source_model/B2BSFNet.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1673.1.0_night_b2fsfnet_999/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1672.1.0_night_b2fsfnet_1000
+    model_path: customer_samsung/tflite-custom_uc.s.1672.1.0_night_b2fsfnet_1000/Source_model/B2BSFNet.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1672.1.0_night_b2fsfnet_1000/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1671.1.0_night_b2fsfnet_009
+    model_path: customer_samsung/tflite-custom_uc.s.1671.1.0_night_b2fsfnet_009/Source_model/B2BSFNet.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1671.1.0_night_b2fsfnet_009/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1618.1.1_sribenhscan_aideblur
+    model_path: customer_samsung/tflite-custom_uc.s.1618.1.1_sribenhscan_aideblur/Source_model/58_Deblur.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1618.1.1_sribenhscan_aideblur/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.s.1618.1.1_document_enhancement_doc_deblur
+    model_path: customer_samsung/tflite-custom_uc.s.1618.1.1_document_enhancement_doc_deblur/Source_model/Deblur.tflite
+    input_path: customer_samsung/tflite-custom_uc.s.1618.1.1_document_enhancement_doc_deblur/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_samsung_mobiledet_af_segmenter_quant
+    model_path: customer_samsung/tflite-custom_samsung_mobiledet_af_segmenter_quant/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_samsung_mobiledet_af_segmenter_quant/inputs/
+    qairt_converter_params:
+      - [--source_model_input_datatype, data, int8]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_source_model_input_datatype, data, int8]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_ear_22_uc_s_917_1_1_af_panoptic_segmentation
+    model_path: customer_samsung/tflite-custom_ear_22_uc_s_917_1_1_af_panoptic_segmentation/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_ear_22_uc_s_917_1_1_af_panoptic_segmentation/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_ear_22_uc.s.1192.1.0_3rd_party_video_call
+    model_path: customer_samsung/tflite-custom_ear_22_uc.s.1192.1.0_3rd_party_video_call/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_ear_22_uc.s.1192.1.0_3rd_party_video_call/inputs/
+    qairt_converter_params:
+      - [--source_model_input_datatype, data, uint8]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_source_model_input_datatype, data, uint8]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_ear_22_uc.s.1180.2.0_posture_model
+    model_path: customer_samsung/tflite-custom_ear_22_uc.s.1180.2.0_posture_model/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_ear_22_uc.s.1180.2.0_posture_model/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_ear_22_uc.s.1172.1.0_body_id
+    model_path: customer_samsung/tflite-custom_ear_22_uc.s.1172.1.0_body_id/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_ear_22_uc.s.1172.1.0_body_id/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_ear_21_uc.s.932.1.0_videoediting
+    model_path: customer_samsung/tflite-custom_ear_21_uc.s.932.1.0_videoediting/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_ear_21_uc.s.932.1.0_videoediting/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_ear_21_uc.s.928.1.0_gaming
+    model_path: customer_samsung/tflite-custom_ear_21_uc.s.928.1.0_gaming/Source_model/model.tflite
+    input_path: customer_samsung/tflite-custom_ear_21_uc.s.928.1.0_gaming/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  # ── internal ──────────────────────────────────────────────────────────────
+  - name: tflite-custom_skeleton_burrito_trinity
+    model_path: internal/tflite-custom_skeleton_burrito_trinity/Source_model/model.tflite
+    input_path: internal/tflite-custom_skeleton_burrito_trinity/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_skeleton_absynth
+    model_path: internal/tflite-custom_skeleton_absynth/Source_model/model.tflite
+    input_path: internal/tflite-custom_skeleton_absynth/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.qc.3257.1.0_elementwise_int32
+    model_path: internal/tflite-custom_uc.qc.3257.1.0_elementwise_int32/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.3257.1.0_elementwise_int32/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+
+  - name: tflite-custom_uc.qc.3067.1.0_ad_clean
+    model_path: internal/tflite-custom_uc.qc.3067.1.0_ad_clean/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.3067.1.0_ad_clean/inputs/
+    qairt_converter_params:
+      - [--target_backend, LPAI]
+      - [--disable_batchnorm_folding]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_target_backend, LPAI]
+      - [--qualcomm_disable_transform, ConvBNFold]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.3041.1.0_vww
+    model_path: internal/tflite-custom_uc.qc.3041.1.0_vww/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.3041.1.0_vww/inputs/
+    qairt_converter_params:
+      - [--quantization_overrides, model.encodings]
+      - [--target_backend, LPAI]
+      - [--disable_batchnorm_folding]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_quant_overrides, model.encodings]
+      - [--qualcomm_target_backend, LPAI]
+      - [--qualcomm_disable_transform, ConvBNFold]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.3040.1.0_kws
+    model_path: internal/tflite-custom_uc.qc.3040.1.0_kws/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.3040.1.0_kws/inputs/
+    qairt_converter_params:
+      - [--quantization_overrides, model.encodings]
+      - [--target_backend, LPAI]
+      - [--disable_batchnorm_folding]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_quant_overrides, model.encodings]
+      - [--qualcomm_target_backend, LPAI]
+      - [--qualcomm_disable_transform, ConvBNFold]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.3039.1.0_ic
+    model_path: internal/tflite-custom_uc.qc.3039.1.0_ic/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.3039.1.0_ic/inputs/
+    qairt_converter_params:
+      - [--quantization_overrides, model.encodings]
+      - [--target_backend, LPAI]
+      - [--disable_batchnorm_folding]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - [--qualcomm_quant_overrides, model.encodings]
+      - [--qualcomm_target_backend, LPAI]
+      - [--qualcomm_disable_transform, ConvBNFold]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.3038.1.0_tiny_wav2letter_pruned
+    model_path: internal/tflite-custom_uc.qc.3038.1.0_tiny_wav2letter_pruned/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.3038.1.0_tiny_wav2letter_pruned/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "input_1_int8", "1,296,39"]
+      - [--target_backend, LPAI]
+      - [--disable_batchnorm_folding]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=input_1_int8@1:296:39"]
+      - [--qualcomm_target_backend, LPAI]
+      - [--qualcomm_disable_transform, ConvBNFold]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.2566.1.0_kws_micronet_large
+    model_path: internal/tflite-custom_uc.qc.2566.1.0_kws_micronet_large/Source_model/model.tflite
+    input_path: internal/tflite-custom_uc.qc.2566.1.0_kws_micronet_large/inputs/
+    qairt_converter_params:
+      - ["--source_model_input_shape", "input", "1,49,10,1"]
+      - [--target_backend, LPAI]
+    litert_converter_params:
+      - [--soc_model, SM8850]
+      - ["--input_name=input@1:49:10:1"]
+      - [--qualcomm_target_backend, LPAI]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.1974.1.0_hat_hand_keypoint_regressor
+    model_path: internal/tflite-custom_uc.qc.1974.1.0_hat_hand_keypoint_regressor/Source_model/model_skeleton_step2_gray_quant_20231214_floradora.tflite
+    input_path: internal/tflite-custom_uc.qc.1974.1.0_hat_hand_keypoint_regressor/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
+
+  - name: tflite-custom_uc.qc.1973.1.0_hat_hand_detector
+    model_path: internal/tflite-custom_uc.qc.1973.1.0_hat_hand_detector/Source_model/model_skeleton_step1_gray_quant_20240215_centipede.tflite
+    input_path: internal/tflite-custom_uc.qc.1973.1.0_hat_hand_detector/inputs/
+    qairt_converter_params: []
+    litert_converter_params:
+      - [--soc_model, SM8850]
+    net_run_params:
+      num_inferences: 50
+      profiling_level: client
+      use_native_input_files: false
