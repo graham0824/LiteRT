@@ -159,7 +159,7 @@ jobs:
           with open(models_config) as f:
               config = yaml.safe_load(f)
 
-          results = {}  # name -> {"qairt": time_str, "litert": time_str}
+          results = {}  # name -> {"qairt": time_str, "litert": time_str, "litert_display": str}
           failures = []
 
           def parse_inference_time(output):
@@ -171,6 +171,13 @@ jobs:
                   if in_section and "NetRun:" in line:
                       return line.strip()
               return "N/A"
+
+          def extract_us(time_str):
+              import re
+              m = re.search(r"NetRun:\s*([\d,]+)\s*us", time_str)
+              if m:
+                  return int(m.group(1).replace(",", ""))
+              return None
 
           for entry in config["models"]:
               name      = entry["name"]
@@ -229,7 +236,16 @@ jobs:
                   continue
               litert_time = run_net_run("litert", str(litert_dlcs[0]))
 
-              results[name] = {"qairt": qairt_time, "litert": litert_time}
+              qairt_us  = extract_us(qairt_time)
+              litert_us = extract_us(litert_time)
+              if qairt_us and litert_us:
+                  diff = (litert_us - qairt_us) / qairt_us * 100
+                  sign = "+" if diff >= 0 else ""
+                  litert_display = f"{litert_time} ({sign}{diff:.1f}%)"
+              else:
+                  litert_display = litert_time
+
+              results[name] = {"qairt": qairt_time, "litert": litert_display}
 
           # Print comparison table
           name_col = max(len(n) for n in results) + 2
