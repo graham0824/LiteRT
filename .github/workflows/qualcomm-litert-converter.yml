@@ -123,7 +123,12 @@ jobs:
                   "-o",       dummy_out,
               ] + extra_params
               print(f"[litert-convert] {name}: {' '.join(cmd)}", flush=True)
-              result = subprocess.run(cmd, capture_output=False)
+              env = os.environ.copy()
+              qairt_sdk = os.environ["QAIRT_SDK"]
+              qairt_lib = os.path.join(qairt_sdk, "lib", "x86_64-linux-clang")
+              env["LD_LIBRARY_PATH"] = qairt_lib + ":" + env.get("LD_LIBRARY_PATH", "")
+              result = subprocess.run(cmd, capture_output=False, env=env,
+                                      cwd=os.path.dirname(model_input))
               if result.returncode != 0:
                   print(f"[ERROR] apply_plugin_main failed for {name} (exit {result.returncode})", flush=True)
                   failures.append(name)
@@ -134,6 +139,7 @@ jobs:
 
           PYEOF
         env:
+          QAIRT_SDK: /qairt/${{ steps.setup.outputs.qairt_version }}
           MODELS_CONFIG: ${{ github.workspace }}/.github/qualcomm-litert-converter-models.yml
           DLC_OUTPUT_ROOT: ${{ github.workspace }}/dlc_output
           MODEL_ZOO_ROOT: /model_zoo_root

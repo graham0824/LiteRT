@@ -1253,8 +1253,8 @@ models:
       - [--disable_batchnorm_folding]
     litert_converter_params:
       - [--soc_model, SM8850]
-      - [--qualcomm_target_backend, LPAI]
-      - [--qualcomm_disable_transform, ConvBNFold]
+      - [--qualcomm_backend, lpai]
+      - [--qualcomm_graph_transform, ""]
     net_run_params:
       num_inferences: 50
       profiling_level: client
@@ -1270,8 +1270,8 @@ models:
     litert_converter_params:
       - [--soc_model, SM8850]
       - [--qualcomm_quant_overrides, model.encodings]
-      - [--qualcomm_target_backend, LPAI]
-      - [--qualcomm_disable_transform, ConvBNFold]
+      - [--qualcomm_backend, lpai]
+      - [--qualcomm_graph_transform, ""]
     net_run_params:
       num_inferences: 50
       profiling_level: client
@@ -1287,8 +1287,8 @@ models:
     litert_converter_params:
       - [--soc_model, SM8850]
       - [--qualcomm_quant_overrides, model.encodings]
-      - [--qualcomm_target_backend, LPAI]
-      - [--qualcomm_disable_transform, ConvBNFold]
+      - [--qualcomm_backend, lpai]
+      - [--qualcomm_graph_transform, ""]
     net_run_params:
       num_inferences: 50
       profiling_level: client
@@ -1304,8 +1304,8 @@ models:
     litert_converter_params:
       - [--soc_model, SM8850]
       - [--qualcomm_quant_overrides, model.encodings]
-      - [--qualcomm_target_backend, LPAI]
-      - [--qualcomm_disable_transform, ConvBNFold]
+      - [--qualcomm_backend, lpai]
+      - [--qualcomm_graph_transform, ""]
     net_run_params:
       num_inferences: 50
       profiling_level: client
@@ -1321,8 +1321,8 @@ models:
     litert_converter_params:
       - [--soc_model, SM8850]
       - ["--input_name=input_1_int8@1:296:39"]
-      - [--qualcomm_target_backend, LPAI]
-      - [--qualcomm_disable_transform, ConvBNFold]
+      - [--qualcomm_backend, lpai]
+      - [--qualcomm_graph_transform, ""]
     net_run_params:
       num_inferences: 50
       profiling_level: client
@@ -1337,7 +1337,7 @@ models:
     litert_converter_params:
       - [--soc_model, SM8850]
       - ["--input_name=input@1:49:10:1"]
-      - [--qualcomm_target_backend, LPAI]
+      - [--qualcomm_backend, lpai]
     net_run_params:
       num_inferences: 50
       profiling_level: client
