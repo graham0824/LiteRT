@@ -983,6 +983,7 @@ models:
     qairt_converter_params: []
     litert_converter_params:
       - [--soc_model, SM8850]
+      - ["--input_name=serving_default_input_3:0@1:512:512:3"]
     net_run_params:
       num_inferences: 50
       profiling_level: client
@@ -1023,6 +1024,7 @@ models:
     qairt_converter_params: []
     litert_converter_params:
       - [--soc_model, SM8850]
+      - ["--input_name=serving_default_input_5:0@1:512:512:3"]
     net_run_params:
       num_inferences: 50
       profiling_level: client
