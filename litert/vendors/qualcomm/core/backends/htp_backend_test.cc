@@ -591,7 +591,7 @@ TEST_F(HtpBackendDefaultGraphConfigTest, DefaultOptionsProduceExpectedKinds) {
   ASSERT_EQ(configs.back(), nullptr);
 
   auto ext = ExtractConfigs(configs);
-  ASSERT_EQ(ext.size(), 5u);
+  ASSERT_EQ(ext.size(), 6u);
   EXPECT_TRUE(
       ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION));
   EXPECT_TRUE(ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE));
@@ -599,6 +599,7 @@ TEST_F(HtpBackendDefaultGraphConfigTest, DefaultOptionsProduceExpectedKinds) {
       QNN_HTP_GRAPH_CONFIG_OPTION_FOLD_RELU_ACTIVATION_INTO_CONV_OFF));
   EXPECT_TRUE(ext.custom_configs.count(
       QNN_HTP_GRAPH_CONFIG_OPTION_SHORT_DEPTH_CONV_ON_HMX_OFF));
+  EXPECT_TRUE(ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_NUM_CORES));
   EXPECT_TRUE(ext.graph_configs.count(QNN_GRAPH_CONFIG_OPTION_PRIORITY));
 }
 
@@ -612,11 +613,12 @@ TEST_F(HtpBackendDefaultGraphConfigTest, PPointAndHvxInsertedWhenSet) {
   ASSERT_EQ(configs.back(), nullptr);
 
   auto ext = ExtractConfigs(configs);
-  ASSERT_EQ(ext.size(), 7u);
+  ASSERT_EQ(ext.size(), 8u);
   EXPECT_TRUE(
       ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_FINALIZE_CONFIG));
   EXPECT_TRUE(
       ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_NUM_HVX_THREADS));
+  EXPECT_TRUE(ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_NUM_CORES));
   EXPECT_TRUE(ext.graph_configs.count(QNN_GRAPH_CONFIG_OPTION_PRIORITY));
 
   // P-point value and key.
@@ -632,6 +634,10 @@ TEST_F(HtpBackendDefaultGraphConfigTest, PPointAndHvxInsertedWhenSet) {
       FindCustom(ext, QNN_HTP_GRAPH_CONFIG_OPTION_NUM_HVX_THREADS);
   ASSERT_NE(hvx_cc, nullptr);
   EXPECT_EQ(hvx_cc->numHvxThreads, 4u);
+
+  const auto* cores_cc = FindCustom(ext, QNN_HTP_GRAPH_CONFIG_OPTION_NUM_CORES);
+  ASSERT_NE(cores_cc, nullptr);
+  EXPECT_EQ(cores_cc->numCores, 4u);
 }
 
 TEST_F(HtpBackendDefaultGraphConfigTest, DlbcOptionsAppendOptimizationConfigs) {
@@ -644,7 +650,7 @@ TEST_F(HtpBackendDefaultGraphConfigTest, DlbcOptionsAppendOptimizationConfigs) {
   ASSERT_EQ(configs.back(), nullptr);
 
   auto ext = ExtractConfigs(configs);
-  ASSERT_EQ(ext.size(), 7u);
+  ASSERT_EQ(ext.size(), 8u);
   EXPECT_EQ(ext.custom_configs.count(QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION),
             3u);
   EXPECT_TRUE(ext.graph_configs.count(QNN_GRAPH_CONFIG_OPTION_PRIORITY));
@@ -684,7 +690,7 @@ TEST_F(HtpBackendDefaultGraphConfigTest, ValuesReflectOptions) {
 
   ASSERT_EQ(configs.back(), nullptr);
   auto ext = ExtractConfigs(configs);
-  ASSERT_EQ(ext.size(), 5u);
+  ASSERT_EQ(ext.size(), 6u);
 
   const auto* vtcm_cc = FindCustom(ext, QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE);
   ASSERT_NE(vtcm_cc, nullptr);

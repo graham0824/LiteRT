@@ -34,6 +34,8 @@ namespace qnn {
 
 namespace {
 
+constexpr std::uint32_t kMultiNspCoreCount = 4;
+
 float GetOptimizationValue(OptimizationLevel level) {
   // Default optimization level value is 2
   switch (level) {
@@ -71,12 +73,18 @@ Qnn_Priority_t GetGraphPriorityValue(GraphPriority graph_priority) {
 // HTP PERF CONTROL /////////////////////////////////////////////////////////
 class HtpBackend::HtpPerfControl {
  public:
-  explicit HtpPerfControl(const QNN_INTERFACE_VER_TYPE* api) : api_(api) {}
+  HtpPerfControl(const QNN_INTERFACE_VER_TYPE* api, std::uint32_t device_id,
+                 std::vector<std::uint32_t> core_ids)
+      : api_(api), device_id_(device_id), core_ids_(std::move(core_ids)) {
+    if (core_ids_.empty()) core_ids_.emplace_back(0);
+  }
 
   ~HtpPerfControl() {
     DownVote();
-    if (htp_perf_infra_ != nullptr && power_config_id_ != 0) {
-      htp_perf_infra_->perfInfra.destroyPowerConfigId(power_config_id_);
+    if (htp_perf_infra_ != nullptr) {
+      for (const std::uint32_t power_config_id : power_config_ids_) {
+        htp_perf_infra_->perfInfra.destroyPowerConfigId(power_config_id);
+      }
     }
   }
 
@@ -108,14 +116,19 @@ class HtpBackend::HtpPerfControl {
       }
     }
 
-    if (power_config_id_ == 0) {
-      if (error = htp_perf_infra_->perfInfra.createPowerConfigId(
-              /*device_id=*/0, /*core_id=*/0, &power_config_id_);
-          error != QNN_SUCCESS) {
-        QNN_LOG_ERROR("HTP backend unable to create power config. Error %d",
-                      QNN_GET_ERROR_CODE(error));
-        return false;
+    if (power_config_ids_.empty()) {
+      for (const std::uint32_t core_id : core_ids_) {
+        std::uint32_t power_config_id = 0;
+        if (error = htp_perf_infra_->perfInfra.createPowerConfigId(
+                device_id_, core_id, &power_config_id);
+            error != QNN_SUCCESS) {
+          QNN_LOG_ERROR("HTP backend unable to create power config. Error %d",
+                        QNN_GET_ERROR_CODE(error));
+          return false;
+        }
+        power_config_ids_.emplace_back(power_config_id);
       }
+      power_config_id_ = power_config_ids_.front();
     }
 
     // Rebuild the power configurations for the requested mode. Both are needed:
@@ -135,8 +148,7 @@ class HtpBackend::HtpPerfControl {
     }
 
     if (htp_perf_infra_) {
-      htp_perf_infra_->perfInfra.setPowerConfig(power_config_id_,
-                                                rpc_power_configs_ptr_.data());
+      SetPowerConfigForAll(rpc_power_configs_ptr_.data());
     }
 
     return true;
@@ -144,15 +156,13 @@ class HtpBackend::HtpPerfControl {
 
   void UpVote() {
     if (htp_perf_infra_) {
-      htp_perf_infra_->perfInfra.setPowerConfig(
-          power_config_id_, up_vote_power_configs_ptr_.data());
+      SetPowerConfigForAll(up_vote_power_configs_ptr_.data());
     }
   }
 
   void DownVote() {
     if (htp_perf_infra_) {
-      htp_perf_infra_->perfInfra.setPowerConfig(
-          power_config_id_, down_vote_power_configs_ptr_.data());
+      SetPowerConfigForAll(down_vote_power_configs_ptr_.data());
     }
   }
 
@@ -202,6 +212,18 @@ class HtpBackend::HtpPerfControl {
   }
 
  private:
+  void SetPowerConfigForAll(
+      const QnnHtpPerfInfrastructure_PowerConfig_t** power_configs) {
+    for (const std::uint32_t power_config_id : power_config_ids_) {
+      if (power_configs == up_vote_power_configs_ptr_.data()) {
+        up_vote_power_configs_[0].dcvsV3Config.contextId = power_config_id;
+      } else if (power_configs == down_vote_power_configs_ptr_.data()) {
+        down_vote_power_configs_[0].dcvsV3Config.contextId = power_config_id;
+      }
+      htp_perf_infra_->perfInfra.setPowerConfig(power_config_id, power_configs);
+    }
+  }
+
   void EnsureVotingThread() {
     if (!voting_thread_) {
       voting_thread_ =
@@ -447,6 +469,9 @@ class HtpBackend::HtpPerfControl {
 
   // Performance control
   const QNN_INTERFACE_VER_TYPE* api_{nullptr};
+  std::uint32_t device_id_{0};
+  std::vector<std::uint32_t> core_ids_;
+  std::vector<std::uint32_t> power_config_ids_;
   std::uint32_t power_config_id_{0};
   QnnDevice_Infrastructure_t htp_perf_infra_{nullptr};
   // Last successfully-applied mode, used to skip a redundant re-vote.
@@ -508,6 +533,8 @@ bool HtpBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
                  soc_info->soc_name.data());
     soc_info_ = *soc_info;
   }
+  std::vector<const QnnDevice_Config_t*> device_configs;
+  std::vector<std::uint32_t> htp_core_ids;
 #if defined(__x86_64__) || defined(_M_X64)
   if (soc_info_.soc_model == 0) {
     QNN_LOG_ERROR("SoC info was not configured successfully.");
@@ -524,22 +551,61 @@ bool HtpBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
   device_custom_configs.emplace_back(
       static_cast<QnnDevice_CustomConfig_t>(htp_device_custom_config));
 
-  std::vector<const QnnDevice_Config_t*> device_configs;
   // +1 for null terminated
-  device_configs.reserve(device_custom_configs.size() + 1);
+  device_configs.reserve(device_configs.size() + device_custom_configs.size() +
+                         1);
   for (std::size_t i = 0; i < device_custom_configs.size(); ++i) {
     QnnDevice_Config_t* device_custom_config = &AllocateDeviceConfig();
     device_custom_config->option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
     device_custom_config->customConfig = device_custom_configs[i];
     device_configs.emplace_back(device_custom_config);
   }
-  // null terminated
+#else
+  auto device_platform_info = CreateDevicePlatformInfo();
+  if (!device_platform_info || device_platform_info->v1.hwDevices == nullptr) {
+    QNN_LOG_ERROR("Cannot get HTP platform info for multi-core device.");
+    return false;
+  }
+
+  QnnDevice_HardwareDeviceInfo_t* source_device = nullptr;
+  for (std::uint32_t i = 0; i < device_platform_info->v1.numHwDevices; ++i) {
+    auto* device = &device_platform_info->v1.hwDevices[i];
+    if (device->v1.deviceId == 0) {
+      source_device = device;
+      break;
+    }
+  }
+  if (source_device == nullptr || source_device->v1.cores == nullptr ||
+      source_device->v1.numCores < kMultiNspCoreCount) {
+    QNN_LOG_ERROR("HTP device 0 does not expose %u cores.", kMultiNspCoreCount);
+    return false;
+  }
+
+  qnn_device_platform_info_ = std::move(device_platform_info);
+  auto& multi_core_device = AllocateDeviceHardwareInfo();
+  multi_core_device.v1.deviceId = source_device->v1.deviceId;
+  multi_core_device.v1.deviceType = source_device->v1.deviceType;
+  multi_core_device.v1.numCores = kMultiNspCoreCount;
+  multi_core_device.v1.cores = source_device->v1.cores;
+  multi_core_device.v1.deviceInfoExtension =
+      source_device->v1.deviceInfoExtension;
+  for (std::uint32_t i = 0; i < kMultiNspCoreCount; ++i) {
+    htp_core_ids.emplace_back(source_device->v1.cores[i].v1.coreId);
+  }
+
+  auto& multi_core_platform_info = AllocateDevicePlatformInfo();
+  multi_core_platform_info.v1.numHwDevices = 1;
+  multi_core_platform_info.v1.hwDevices = &multi_core_device;
+
+  auto& platform_info_config = AllocateDeviceConfig();
+  platform_info_config.option = QNN_DEVICE_CONFIG_OPTION_PLATFORM_INFO;
+  platform_info_config.hardwareInfo = &multi_core_platform_info;
+  device_configs.emplace_back(&platform_info_config);
+  QNN_LOG_INFO("Using HTP device 0 with %u cores.", kMultiNspCoreCount);
+#endif
   device_configs.emplace_back(nullptr);
   auto local_device_handle = CreateDeviceHandle(local_log_handle.get(),
                                                 absl::MakeSpan(device_configs));
-#else
-  auto local_device_handle = CreateDeviceHandle(local_log_handle.get(), {});
-#endif
   if (!local_device_handle) {
     QNN_LOG_ERROR("Failed to create device handle.");
     return false;
@@ -547,10 +613,14 @@ bool HtpBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
 
   // HTP Performance Settings
   HtpPerformanceMode performance_mode = options.GetHtpPerformanceMode();
+#if !defined(__x86_64__) && !defined(_M_X64)
+  performance_mode = HtpPerformanceMode::kBurst;
+#endif
   if (performance_mode != HtpPerformanceMode::kDefault) {
     QNN_LOG_INFO("Set HTP performance mode: %d", performance_mode);
 
-    htp_perf_control_ = std::make_unique<HtpPerfControl>(QnnApi());
+    htp_perf_control_ =
+        std::make_unique<HtpPerfControl>(QnnApi(), 0, std::move(htp_core_ids));
     if (!htp_perf_control_->Init(performance_mode)) {
       QNN_LOG_ERROR(
           "Failed to initialize HTP performance Control, using default "
@@ -581,6 +651,9 @@ bool HtpBackend::Init(const Options& options, std::optional<SocInfo> soc_info) {
 
 bool HtpBackend::SetPerformanceMode(const Options& options) {
   HtpPerformanceMode performance_mode = options.GetHtpPerformanceMode();
+#if !defined(__x86_64__) && !defined(_M_X64)
+  performance_mode = HtpPerformanceMode::kBurst;
+#endif
 
   if (performance_mode == HtpPerformanceMode::kDefault) {
     if (htp_perf_control_) {
@@ -661,6 +734,11 @@ GraphConfigBuilder HtpBackend::BuildGraphConfigs(
     hvx_threads.numHvxThreads = num_hvx_threads;
     config_builder.AddCustomConfig(hvx_threads);
   }
+
+  QnnHtpGraph_CustomConfig_t num_cores = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+  num_cores.option = QNN_HTP_GRAPH_CONFIG_OPTION_NUM_CORES;
+  num_cores.numCores = kMultiNspCoreCount;
+  config_builder.AddCustomConfig(num_cores);
 
   // DLBC (activations / inputs). Offline-prep only.
   if (options.GetHtpDlbc()) {
