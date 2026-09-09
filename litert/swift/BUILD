@@ -42,6 +42,7 @@ cc_library(
         "//litert/c:litert_options",
         "//litert/c:litert_tensor_buffer",
         "//litert/c:litert_tensor_buffer_requirements",
+        "//litert/c/options:litert_cpu_options",
     ],
     alwayslink = True,
 )
@@ -69,12 +70,14 @@ swift_test(
     data = [
         "//litert/test:testdata/dynamic_add_model.tflite",
         "//litert/test:testdata/simple_model.tflite",
+        "//litert/test:testdata/simple_quantized_ops.tflite",
     ] + litert_gpu_accelerator_prebuilts(),
     deps = [
         ":CLiteRT_objc",
         ":LiteRT_Swift",
         # Dependency placeholder: apple_frameworks Metal,
         # Dependency placeholder: swift foundation,
+        "//third_party/swift/swift-testing",
         # Dependency placeholder: swift xctest,
     ],
 )
@@ -103,12 +106,14 @@ strip_common_include_path_prefix(
         "//litert/c:litert_tensor_buffer_types.h",
         "//litert/c:litert_webgpu_types.h",
         "//litert/c/internal:litert_scheduling_info.h",
+        "//litert/c/options:litert_cpu_options.h",
     ],
 )
 
 apple_xcframework(
     name = "CLiteRT",
     bundle_id = "com.google.odml.litert.CLiteRT",
+    bundle_name = "CLiteRT",
     features = ["exported_symbols"],
     infoplists = ["Sources/Info.plist"],
     ios = {
@@ -125,6 +130,7 @@ apple_xcframework(
     public_hdrs = [
         ":CLiteRT_headers",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":CLiteRT_objc",
     ],
@@ -147,6 +153,7 @@ apple_static_xcframework(
     public_hdrs = [
         ":CLiteRT_headers",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":CLiteRT_objc",
     ],
@@ -180,12 +187,18 @@ genrule(
     srcs = [
         ":CLiteRT_universal",
         ":CLiteRT_headers",
-    ],
+    ] + litert_gpu_accelerator_prebuilts(),
     outs = ["CLiteRT_mac.zip"],
     cmd = """
        mkdir -p CLiteRT_mac/Headers
        # Copy the universal dylib
        cp $(location :CLiteRT_universal) CLiteRT_mac/libCLiteRT_mac.dylib
+       # Copy the accelerator dylib if present
+       for FILE in $(SRCS); do
+         if [[ "$$FILE" == *.dylib && "$$FILE" != *CLiteRT* ]]; then
+           cp $$FILE CLiteRT_mac/
+         fi
+       done
        # Copy the headers
        cp $(locations :CLiteRT_headers) CLiteRT_mac/Headers/
        # Create module map
@@ -201,3 +214,83 @@ genrule(
     """,
     visibility = ["//visibility:public"],
 )
+
+# copybara:comment_begin(oss-only)
+genrule(
+    name = "LiteRtMetalAccelerator",
+    srcs = [
+        "@litert_prebuilts//:ios_arm64/libLiteRtMetalAccelerator.dylib",
+        "@litert_prebuilts//:ios_sim_arm64/libLiteRtMetalAccelerator.dylib",
+    ],
+    outs = ["LiteRtMetalAccelerator.xcframework.zip"],
+    cmd = """
+       OUT_ZIP=$$(pwd)/$@
+       mkdir -p metal_tmp/LiteRtMetalAccelerator.xcframework/ios-arm64/LiteRtMetalAccelerator.framework
+       mkdir -p metal_tmp/LiteRtMetalAccelerator.xcframework/ios-arm64-simulator/LiteRtMetalAccelerator.framework
+       cp $(location @litert_prebuilts//:ios_arm64/libLiteRtMetalAccelerator.dylib) metal_tmp/LiteRtMetalAccelerator.xcframework/ios-arm64/LiteRtMetalAccelerator.framework/libLiteRtMetalAccelerator.dylib
+       cp $(location @litert_prebuilts//:ios_sim_arm64/libLiteRtMetalAccelerator.dylib) metal_tmp/LiteRtMetalAccelerator.xcframework/ios-arm64-simulator/LiteRtMetalAccelerator.framework/libLiteRtMetalAccelerator.dylib
+       cat << 'EOF' > metal_tmp/framework_Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.google.odml.litert.LiteRtMetalAccelerator</string>
+    <key>CFBundlePackageType</key>
+    <string>FMWK</string>
+</dict>
+</plist>
+EOF
+       cp metal_tmp/framework_Info.plist metal_tmp/LiteRtMetalAccelerator.xcframework/ios-arm64/LiteRtMetalAccelerator.framework/Info.plist
+       cp metal_tmp/framework_Info.plist metal_tmp/LiteRtMetalAccelerator.xcframework/ios-arm64-simulator/LiteRtMetalAccelerator.framework/Info.plist
+       cat << 'EOF' > metal_tmp/LiteRtMetalAccelerator.xcframework/Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>AvailableLibraries</key>
+    <array>
+        <dict>
+            <key>BinaryPath</key>
+            <string>LiteRtMetalAccelerator.framework/libLiteRtMetalAccelerator.dylib</string>
+            <key>LibraryIdentifier</key>
+            <string>ios-arm64</string>
+            <key>LibraryPath</key>
+            <string>LiteRtMetalAccelerator.framework</string>
+            <key>SupportedArchitectures</key>
+            <array>
+                <string>arm64</string>
+            </array>
+            <key>SupportedPlatform</key>
+            <string>ios</string>
+        </dict>
+        <dict>
+            <key>BinaryPath</key>
+            <string>LiteRtMetalAccelerator.framework/libLiteRtMetalAccelerator.dylib</string>
+            <key>LibraryIdentifier</key>
+            <string>ios-arm64-simulator</string>
+            <key>LibraryPath</key>
+            <string>LiteRtMetalAccelerator.framework</string>
+            <key>SupportedArchitectures</key>
+            <array>
+                <string>arm64</string>
+            </array>
+            <key>SupportedPlatform</key>
+            <string>ios</string>
+            <key>SupportedPlatformVariant</key>
+            <string>simulator</string>
+        </dict>
+    </array>
+    <key>CFBundlePackageType</key>
+    <string>XFWK</string>
+    <key>XCFrameworkFormatVersion</key>
+    <string>1.0</string>
+</dict>
+</plist>
+EOF
+       cd metal_tmp && zip -q -r "$$OUT_ZIP" LiteRtMetalAccelerator.xcframework && cd ..
+       rm -rf metal_tmp
+    """,
+    visibility = ["//visibility:public"],
+)
+# copybara:comment_end

@@ -621,6 +621,11 @@ absl::Status OpMixin<AveragePool2DOperation, XnnpackMixinTag>::ToXnnpack(
 
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& input_info, graph::GetInfo(input));
 
+  if (input_info.shape.size() < 3) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s: input tensor must be at least rank 3. Got rank %d", op_name,
+        input_info.shape.size()));
+  }
   const int input_h = input_info.shape[1];
   const int input_w = input_info.shape[2];
   const int filter_h = op_data.filter_height;
@@ -666,6 +671,11 @@ absl::Status OpMixin<MaxPool2DOperation, XnnpackMixinTag>::ToXnnpack(
 
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& input_info, graph::GetInfo(input));
 
+  if (input_info.shape.size() < 3) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s: input tensor must be at least rank 3. Got rank %d", op_name,
+        input_info.shape.size()));
+  }
   const int input_h = input_info.shape[1];
   const int input_w = input_info.shape[2];
   const int filter_h = op_data.filter_height;
@@ -719,6 +729,12 @@ absl::Status OpMixin<Conv2DOperation, XnnpackMixinTag>::ToXnnpack(
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& input_info, graph::GetInfo(input));
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& filter_info, graph::GetInfo(filter));
 
+  if (input_info.shape.size() != 4 || filter_info.shape.size() != 4) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s: input and filter tensors must be rank 4. Got input rank %d, "
+        "filter rank %d",
+        op_name, input_info.shape.size(), filter_info.shape.size()));
+  }
   // The 0th dimension is always the batch dimension in the tensor API (BHWC).
   const int input_h = input_info.shape[1];
   const int input_w = input_info.shape[2];
@@ -780,6 +796,12 @@ absl::Status OpMixin<DepthwiseConv2DOperation, XnnpackMixinTag>::ToXnnpack(
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& input_info, graph::GetInfo(input));
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& filter_info, graph::GetInfo(filter));
 
+  if (input_info.shape.size() != 4 || filter_info.shape.size() != 4) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s: input and filter tensors must be rank 4. Got input rank %d, "
+        "filter rank %d",
+        op_name, input_info.shape.size(), filter_info.shape.size()));
+  }
   const int input_h = input_info.shape[1];
   const int input_w = input_info.shape[2];
   const int filter_h = filter_info.shape[1];
@@ -1025,6 +1047,10 @@ absl::Status OpMixin<MeanOperation, XnnpackMixinTag>::ToXnnpack(
   }
   LockedBufferSpan<const int32_t> axes_data =
       axes_info.buffer->Lock().As<const int32_t>();
+  if (axes_info.shape.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("%s: axes tensor must not be a 0D scalar", op_name));
+  }
   const size_t num_axes = axes_info.shape[0];
   const std::vector<int64_t> axes(axes_data.begin(), axes_data.end());
   // Set XNN_FLAG_KEEP_DIMS if keep_dims is true
@@ -1069,6 +1095,10 @@ absl::Status OpMixin<SliceOperation, XnnpackMixinTag>::ToXnnpack(
   auto begin_locked = begin_info.buffer->Lock();
   const int32_t* begin_data =
       reinterpret_cast<const int32_t*>(begin_locked.data());
+  if (begin_info.shape.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("%s: begin tensor must not be a 0D scalar", op_name));
+  }
   size_t num_dims = begin_info.shape[0];
 
   // Get sizes from const tensor
@@ -1747,6 +1777,14 @@ absl::Status OpMixin<TransposeConv2DOperation, XnnpackMixinTag>::ToXnnpack(
   LRT_TENSOR_ASSIGN_OR_RETURN(uint32_t output_id, ctx.DefineValue(output));
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& output_info, graph::GetInfo(output));
 
+  if (input_info.shape.size() != 4 || filter_info.shape.size() != 4 ||
+      output_info.shape.size() != 4) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s: input, filter, and output tensors must be rank 4. Got input "
+        "rank %d, filter rank %d, output rank %d",
+        op_name, input_info.shape.size(), filter_info.shape.size(),
+        output_info.shape.size()));
+  }
   const size_t output_channels = filter_info.shape[0];
   const size_t input_channels = filter_info.shape[3];
 
@@ -1815,6 +1853,10 @@ absl::Status OpMixin<SplitOperation, XnnpackMixinTag>::ToXnnpack(
         absl::StrFormat("%s: axis must be a constant tensor", op_name));
   }
   auto locked_axis = axis_info.buffer->Lock().As<const int32_t>();
+  if (locked_axis.size() == 0) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("%s: axis tensor buffer must not be empty", op_name));
+  }
   int real_axis = locked_axis.data()[0];
 
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& input_info, graph::GetInfo(input));
@@ -1850,6 +1892,10 @@ absl::Status OpMixin<RopeOperation, XnnpackMixinTag>::ToXnnpack(
 
   LRT_TENSOR_ASSIGN_OR_RETURN(const auto& weights_info,
                               graph::GetInfo(op.inputs[1]));
+  if (weights_info.shape.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("%s: weights tensor must not be a 0D scalar", op_name));
+  }
   size_t max_tokens = weights_info.shape[0];
   LRT_TENSOR_RETURN_IF_ERROR(xnn_define_rope(ctx.subgraph(), max_tokens,
                                              input_id, weights_id, output_id,

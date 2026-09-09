@@ -19,11 +19,14 @@
 #include <string>
 #include <vector>
 
-#include "absl/types/span.h"  // from @com_google_absl
 #include "ml_drift/common/data_type.h"  // from @ml_drift
 #include "ml_drift/common/shape.h"  // from @ml_drift
 
+struct TfLiteTensor;
+
 namespace ml_drift {
+
+class TensorDescriptor;
 
 // A graph-agnostic view over the small set of graph operations that the
 // SharedMemoryManager needs to register shared constant weights.
@@ -42,6 +45,16 @@ namespace ml_drift {
 class GraphAdapter {
  public:
   virtual ~GraphAdapter() = default;
+
+  // Resolves the data type for a shared constant tensor based on the default
+  // configured type and the graph's consumers/nodes.
+  virtual DataType ResolveSharedTensorType(
+      uint32_t shared_tensor_id, DataType default_data_type) const = 0;
+
+  // Uploads tensor data from a TfLiteTensor into a TensorDescriptor buffer.
+  virtual void UploadTensorData(const TfLiteTensor& tensor,
+                                const float* weights_data_ptr,
+                                TensorDescriptor& tensor_desc) const = 0;
 
   // ---- Shared-constant value descriptor access ----
 
@@ -81,13 +94,13 @@ class GraphAdapter {
   // ---- Graph mutation ----
 
   // Creates a new constant-input value carrying (`shape`, `type`), wires it as
-  // an input of `consumer_op_ids`, and returns its id. `global_tensor_id` is
+  // an input of `consumer_op_id`, and returns its id. `global_tensor_id` is
   // recorded as the value's global reference where the underlying graph
   // supports it (GraphFloat32); implementations that do not track a global
   // reference (ir::IrModel) ignore it.
-  virtual uint32_t AddConstantInput(
-      uint32_t global_tensor_id, const BHWC& shape, DataType type,
-      absl::Span<const uint32_t> consumer_op_ids) = 0;
+  virtual uint32_t AddConstantInput(uint32_t global_tensor_id,
+                                    const BHWC& shape, DataType type,
+                                    uint32_t consumer_op_id) = 0;
 };
 
 }  // namespace ml_drift

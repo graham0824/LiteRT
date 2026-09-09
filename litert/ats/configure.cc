@@ -43,6 +43,7 @@
 #include "litert/cc/options/litert_qualcomm_options.h"
 #include "litert/cc/options/litert_samsung_options.h"
 #include "litert/compiler/plugin/compiler_plugin.h"
+#include "litert/core/filesystem.h"
 #include "litert/tools/flags/vendors/mediatek_flags.h"
 #include "litert/tools/flags/vendors/qualcomm_flags.h"
 #include "litert/tools/flags/vendors/samsung_flags.h"
@@ -90,6 +91,11 @@ ABSL_FLAG(std::vector<std::string>, extra_models, {},
           "Optional list of directories, or model files to add to the test.");
 
 ABSL_FLAG(size_t, iters_per_test, 1, "Number of iterations per test.");
+
+ABSL_FLAG(
+    int, warmup_runs, -1,
+    "Number of warmup runs before benchmark timing. If -1, automatically "
+    "determined (GPU gets 3 for multi-iteration runs; CPU and NPU get 0).");
 
 ABSL_FLAG(int64_t, max_ms_per_test, -1,
           "Maximum time in milliseconds to run each test, -1 means no limit "
@@ -231,6 +237,7 @@ Expected<AtsConf> AtsConf::ParseFlagsAndDoSetup() {
   auto plugin_dir = absl::GetFlag(FLAGS_plugin_dir);
   auto quiet = absl::GetFlag(FLAGS_quiet);
   auto iters_per_test = absl::GetFlag(FLAGS_iters_per_test);
+  auto warmup_runs = absl::GetFlag(FLAGS_warmup_runs);
   auto max_ms_per_test = absl::GetFlag(FLAGS_max_ms_per_test);
   std::chrono::milliseconds max_ms_per_test_opt(std::chrono::seconds(10));
   if (max_ms_per_test > 0) {
@@ -250,15 +257,30 @@ Expected<AtsConf> AtsConf::ParseFlagsAndDoSetup() {
 
   std::optional<Environment> environment;
   if (backend == ExecutionBackend::kGpu) {
-    const char* ld_path = std::getenv("LD_LIBRARY_PATH");
+    std::string full_path;
+    if (const char* env_p = std::getenv("LITERT_RUNTIME_LIB_DIR")) {
+      full_path = env_p;
+    } else if (const char* dyld_p = std::getenv("DYLD_LIBRARY_PATH")) {
+      full_path = dyld_p;
+    } else if (const char* ld_p = std::getenv("LD_LIBRARY_PATH")) {
+      full_path = ld_p;
+    } else {
+      // Default fallback for Bazel runfiles on macOS / Linux.
+      static constexpr absl::string_view kRunfilesGpuPath =
+          "third_party/odml/litert/litert/runtime/accelerators/gpu";
+      if (litert::internal::Exists(kRunfilesGpuPath)) {
+        full_path = std::string(kRunfilesGpuPath);
+      }
+    }
     std::vector<litert::EnvironmentOptions::Option> env_opts;
-    if (ld_path) {
-      std::string full_path = std::string(ld_path);
+    if (!full_path.empty()) {
       // LiteRT only supports a single directory for kRuntimeLibraryDir,
       // so we only take the first path if there are multiple.
       if (auto pos = full_path.find(':'); pos != std::string::npos) {
         full_path = full_path.substr(0, pos);
       }
+      LITERT_LOG(LITERT_INFO, "Setting GPU runtime library dir to: %s",
+                 full_path.c_str());
       env_opts.push_back(litert::EnvironmentOptions::Option{
           litert::EnvironmentOptions::Tag::kRuntimeLibraryDir,
           full_path,
@@ -308,12 +330,12 @@ Expected<AtsConf> AtsConf::ParseFlagsAndDoSetup() {
 
   AtsConf res(std::move(seeds), backend, quiet, dispatch_dir, plugin_dir,
               std::move(neg_re), std::move(pos_re), std::move(extra_models),
-              data_seed, iters_per_test, std::move(max_ms_per_test_opt),
-              fail_on_timeout, dump_report, std::move(csv), compile_mode,
-              std::move(models_out), limit, std::move(plugin),
-              std::move(soc_manufacturer), std::move(soc_model),
-              std::move(target_options), std::move(reference_options),
-              std::move(target_options_handle),
+              data_seed, iters_per_test, warmup_runs,
+              std::move(max_ms_per_test_opt), fail_on_timeout, dump_report,
+              std::move(csv), compile_mode, std::move(models_out), limit,
+              std::move(plugin), std::move(soc_manufacturer),
+              std::move(soc_model), std::move(target_options),
+              std::move(reference_options), std::move(target_options_handle),
               std::move(*environment));
   Setup(res);
   return res;

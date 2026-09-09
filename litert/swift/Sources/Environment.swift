@@ -48,12 +48,32 @@ public final class Environment {
   }
 
   public init(options: [Option] = []) throws {
+    var resolvedOptions = options
+    if !options.contains(where: { if case .runtimeLibraryDir = $0 { return true }; return false }) {
+      let libName = "libLiteRtMetalAccelerator.dylib"
+      let candidateURLs = [
+        Bundle(identifier: "com.google.odml.litert.CLiteRT")?.bundleURL,
+        Bundle(identifier: "com.google.litert.metal_accelerator")?.bundleURL,
+        Bundle(identifier: "com.google.odml.litert.LiteRtMetalAccelerator")?.bundleURL,
+        Bundle.main.privateFrameworksURL?.appendingPathComponent("LiteRtMetalAccelerator.framework"),
+        Bundle.main.privateFrameworksURL,
+        Bundle.main.resourceURL,
+        Bundle.main.bundleURL,
+      ].compactMap { $0 }
+      if let candidate = candidateURLs.first(where: {
+        FileManager.default.fileExists(atPath: $0.appendingPathComponent(libName).path)
+      }) {
+        resolvedOptions.append(.runtimeLibraryDir(candidate.path))
+      }
+    }
+
     var environment: LiteRtEnvironment?
     var cOptions: [LiteRtEnvOption] = []
 
-    // Recursive wrapper helper to keep C-strings alive until LiteRtCreateEnvironment finishes executing.
+    // Recursive wrapper helper to keep C-strings alive until LiteRtCreateEnvironment
+    // finishes executing.
     func buildAndRun(index: Int) throws {
-      if index == options.count {
+      if index == resolvedOptions.count {
         let status: LiteRtStatus
         if cOptions.isEmpty {
           status = LiteRtCreateEnvironment(0, nil, &environment)
@@ -64,7 +84,7 @@ public final class Environment {
         return
       }
 
-      let option = options[index]
+      let option = resolvedOptions[index]
       switch option {
       case .compilerPluginLibraryDir(let path),
         .dispatchLibraryDir(let path),

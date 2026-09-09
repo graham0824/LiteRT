@@ -47,7 +47,6 @@ cc_library(
     hdrs = ["rope.h"],
     deps = [
         "//tensor",
-        "//tensor:arithmetic",
         "//tensor:buffer",
         "//tensor:datatypes",
         "@com_google_absl//absl/log:absl_check",
@@ -64,6 +63,7 @@ cc_test(
         "//tensor:buffer",
         "//tensor:datatypes",
         "//tensor/backends/xnnpack:arithmetic",
+        "//tensor/examples/ops/transformer:transformer_ops",
         "//tensor/runners/xnnpack:runner",
         "//tensor/utils:matchers",
         "@com_google_googletest//:gtest_main",
@@ -162,6 +162,38 @@ cc_test(
         "//tensor/runners/xnnpack:runner",
         "//tensor/utils:matchers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "quantized_embedding",
+    srcs = ["quantized_embedding.cc"],
+    hdrs = ["quantized_embedding.h"],
+    deps = [
+        "//tensor",
+        "//tensor:buffer",
+        "//tensor:datatypes",
+        "//tensor/utils:macros",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "quantized_embedding_test",
+    srcs = ["quantized_embedding_test.cc"],
+    deps = [
+        ":quantized_embedding",
+        "//tensor",
+        "//tensor:buffer",
+        "//tensor:datatypes",
+        "//tensor/utils:matchers",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

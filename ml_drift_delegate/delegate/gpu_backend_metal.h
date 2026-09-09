@@ -38,7 +38,6 @@
 #include "ml_drift/common/gpu_model.h"  // from @ml_drift
 #include "ml_drift/common/gpu_model_builder.h"  // from @ml_drift
 #include "ml_drift/common/model.h"  // from @ml_drift
-#include "ml_drift/common/status.h"  // from @ml_drift
 #include "ml_drift/common/task/gpu_tensor.h"  // from @ml_drift
 #include "ml_drift/common/task/profiling_info.h"  // from @ml_drift
 #include "ml_drift/common/task/tensor_desc.h"  // from @ml_drift
@@ -140,6 +139,10 @@ class GpuBackendMetal : public GpuBackend {
   CreateBuffer2TensorConverter(
       const ::ml_drift::BufferDescriptor& src_desc,
       const ::ml_drift::TensorDescriptor& dst_desc) override;
+  absl::StatusOr<uint64_t> GetSizeOfMemoryAllocatedForIntermediateTensors()
+      const override;
+  absl::StatusOr<uint64_t> GetSizeOfMemoryAllocatedForConstantTensors()
+      const override;
 
   void SetResidencyRuntimeEnabled(bool enabled);
 
@@ -200,7 +203,7 @@ class GpuBackendMetal : public GpuBackend {
       ABSL_GUARDED_BY(residency_mutex_);
 
   bool residency_active_ ABSL_GUARDED_BY(residency_mutex_) = false;
-  bool residency_runtime_enabled_ ABSL_GUARDED_BY(residency_mutex_) = true;
+  bool residency_runtime_enabled_ ABSL_GUARDED_BY(residency_mutex_) = false;
 };
 
 class GpuInferenceContextMetal : public GpuInferenceContext {

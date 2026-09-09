@@ -36,7 +36,7 @@ litert_define_ats(
     backend = "cpu",
     compile_only_suffix = None,
     dont_register = [
-        "^(?!.*(Pad|Reduction|Transpose)).*i32",  # XNNPACK does not support int32 math (except Pad/Reduction/Transpose static constants)
+        "(_i32<[^>]+>(?!_cst)|->.*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
         "OneHot",  # XNNPACK does not support OneHot
         "Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
         "tfl\\.floor_div",  # XNNPACK does not support FloorDiv
@@ -300,7 +300,7 @@ litert_test(
     name = "ats",
     srcs = ["ats.cc"],
     args = [
-        "--dont_register=^(?!.*(Pad|Reduction|Transpose)).*i32",  # XNNPACK does not support int32 math (except Pad/Reduction/Transpose static constants)
+        "--dont_register=(_i32<[^>]+>(?!_cst)|->.*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
         "--dont_register=OneHot",  # XNNPACK does not support OneHot
         "--dont_register=Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
         "--dont_register=tfl\\.floor_div",  # XNNPACK does not support FloorDiv
@@ -348,6 +348,84 @@ litert_test(
         ":register_conv_2d",
         ":register_depthwise_conv_2d",
         ":register_fully_connected",
+        ":register_mean",
+        ":register_no_op",
+        ":register_one_hot",
+        ":register_pad",
+        ":register_pooling",
+        ":register_reduction",
+        ":register_reshape",
+        ":register_softmax",
+        ":register_transformer_layer",
+        ":register_transpose",
+        ":register_unary",
+        "//litert/c/internal:litert_logging",
+        "//litert/cc/internal:litert_detail",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+litert_test(
+    name = "metal_macos_ats",
+    srcs = ["ats.cc"],
+    args = [
+        "--backend=gpu",
+        "--dont_register=Binary.*i32",
+        "--dont_register=NoOp.*i32",
+        "--dont_register=OneHot",
+        "--dont_register=LogSoftmax",
+        "--dont_register=_Transpose[.]",
+        "--dont_register=FullyConnected",
+        "--dont_register=BatchMatmul",
+        "--dont_register=tfl[.]prelu",
+        "--dont_register=tfl[.]zeros_like",
+        "--dont_register=tfl[.]relu_0_to_1",
+        "--dont_register=tfl[.]floor_div",
+        "--dont_register=tfl[.]floor[{]",
+        "--dont_register=tfl[.]ceil",
+        "--dont_register=tfl[.]round",
+        "--dont_register=5d",
+        "--dont_register=6d",
+        "--dont_register=7d",
+        "--dont_register=8d",
+        "--dont_register=Pad.*[(][123]d",
+    ],
+    copts = commandline_flag_copts(),
+    data = [
+        "//litert/runtime/accelerators/gpu:ml_drift_metal_accelerator_dylib",
+    ],
+    env = {
+        "DYLD_LIBRARY_PATH": "third_party/odml/litert/litert/runtime/accelerators/gpu",
+        "LITERT_RUNTIME_LIB_DIR": "third_party/odml/litert/litert/runtime/accelerators/gpu",
+    },
+    linkstatic = True,
+    no_main = True,
+    tags = [
+        "local",
+        "manual",
+    ],
+    target_compatible_with = [
+        "@platforms//os:macos",
+    ],
+    ungrte = if_oss(True, False),
+    use_sys_malloc = True,
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        ":register_batch_matmul",
+        ":register_binary_broadcast",
+        ":register_binary_no_bcast",
+        ":register_concatenation",
+        ":register_conv_2d",
+        ":register_depthwise_conv_2d",
+        ":register_fully_connected",
+        ":register_mean",
         ":register_no_op",
         ":register_one_hot",
         ":register_pad",
@@ -500,6 +578,25 @@ cc_library(
         "//litert/test/generators:fully_connected",
         "//tensor:arithmetic_graph",
         "//tflite/schema:schema_fbs",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
+    name = "register_mean",
+    testonly = True,
+    srcs = ["register_mean.cc"],
+    hdrs = ["register_mean.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/c:litert_op_code",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:common",
+        "//litert/test/generators:mean",
         "//tflite/types:half",
     ],
 )
@@ -804,6 +901,7 @@ cc_library(
         "//litert/test:simple_buffer",
         "//litert/test/generators:common",
         "//tflite/types:half",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -990,6 +1088,8 @@ cc_library(
         ":common",
         ":configure",
         ":print",
+        "//litert/c:litert_any",
+        "//litert/cc/internal:litert_compiled_model_next",
         "//litert/core/model",
         "@com_google_absl//absl/strings:str_format",
     ],

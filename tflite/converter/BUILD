@@ -46,6 +46,7 @@ package_group(
         "//research/language_modeling/sentence_explorer/ondevice/...",
         "//tflite/...",
         "//third_party/ai_lab/...",
+        "//third_party/py/ai_edge_jax/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
     ],
@@ -373,6 +374,35 @@ cc_library(
     ],
 )
 
+tf_cc_binary(
+    name = "litert-reduce",
+    testonly = True,
+    deps = [
+        ":litert_mlir_reduce_main",
+    ],
+)
+
+cc_library(
+    name = "litert_mlir_reduce_main",
+    testonly = True,
+    srcs = ["litert_mlir_reduce_main.cc"],
+    deps = [
+        ":lift_tflite_flex_ops",  # buildcleaner:keep
+        ":register_lite_dialects",
+        ":tensorflow_lite",
+        ":tf_tfl_passes",  # buildcleaner:keep
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirReduceLib",
+        "@org_tensorflow//tensorflow/compiler/mlir:init_mlir",
+        "@org_tensorflow//tensorflow/compiler/mlir:passes",
+        "@org_tensorflow//tensorflow/compiler/mlir:register_common_dialects",
+        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "utils",
     hdrs = ["utils/utils.h"],
@@ -458,6 +488,17 @@ cc_library(
 )
 
 cc_library(
+    name = "large_constant_fold_pass_options",
+    hdrs = ["transforms/large_constant_fold_pass_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "converter_pass_options_setter",
     srcs = ["transforms/converter_pass_options_setter.cc"],
     hdrs = ["transforms/converter_pass_options_setter.h"],
@@ -466,6 +507,7 @@ cc_library(
     deps = [
         ":common",
         ":converter_flags_proto_cc",
+        ":large_constant_fold_pass_options",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
         ":pass_options",
@@ -491,6 +533,7 @@ cc_library(
     ],
     hdrs = [
         "ir/tfl_ops.h",
+        "ir/tfl_ops_in_place_transpose.h",
     ],
     deps = [
         ":attribute_utils",
@@ -535,6 +578,15 @@ cc_library(
         "@org_tensorflow//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@org_tensorflow//tensorflow/core:framework",
         "@org_tensorflow//tensorflow/core/platform:status",
+    ],
+)
+
+tf_cc_test(
+    name = "tfl_ops_in_place_transpose_test",
+    srcs = ["ir/tfl_ops_in_place_transpose_test.cc"],
+    deps = [
+        ":tensorflow_lite_ops",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -611,6 +663,7 @@ cc_library(
         ":downcast_x64",
         ":elements_attr_roundtrip_pass",
         ":large_constant_fold",
+        ":large_constant_fold_pass_options",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
@@ -1072,7 +1125,6 @@ cc_library(
         ":tensorflow_lite_ops",
         ":utils",
         "//tflite/converter/quantization/common/quantization_lib",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1092,13 +1144,13 @@ cc_library(
     ],
     deps = [
         ":attribute_utils",
+        ":large_constant_fold_pass_options",
         ":pass",
         ":tensorflow_lite_ops",
         ":utils",
         "//tflite/converter/quantization/common/quantization_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1106,7 +1158,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -1361,6 +1412,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1415,6 +1467,7 @@ cc_library(
         ":tensorflow_lite_passes_inc_gen",
         ":utils",
         ":validators",
+        "//tflite/converter/quantization/common/quantization_lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1514,7 +1567,7 @@ cc_library(
         "transforms/prepare_quantize_helper.cc",
         "transforms/quantization/bias_quantizer_pass.cc",
         "transforms/quantization/fuse_qdq_pass.cc",
-        "transforms/quantization/propagate_qsv_pass.cc",
+        "transforms/quantization/propagate_qparams_pass.cc",
         "transforms/quantization/quant_utils.cc",
         "transforms/quantize.cc",
         "transforms/quantize_variables.cc",
@@ -1535,6 +1588,7 @@ cc_library(
         ":shape_and_size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
+        ":tensorflow_lite_ops",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_post_quantize_inc_gen",
         ":tensorflow_lite_quantize_by_converter_inc_gen",
@@ -1806,6 +1860,7 @@ cc_library(
         "@org_tensorflow//tensorflow/core:framework",
         "@org_tensorflow//tensorflow/core:portable_gif_internal",
         "@org_tensorflow//tensorflow/core:protos_all_cc",
+        "@org_tensorflow//tensorflow/core/platform:status",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
         "@tsl//tsl/platform:tstring",
@@ -2422,9 +2477,3 @@ tf_proto_library(
 #     deps = [":converter_flags_proto"],
 # )
 # copybara:uncomment_end
-
-filegroup(
-    name = "litfiles",
-    srcs = glob(["runlit*py"]),
-    visibility = ["//tflite/converter:__subpackages__"],
-)

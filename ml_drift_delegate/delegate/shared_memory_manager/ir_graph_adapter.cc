@@ -18,11 +18,13 @@
 #include <string>
 #include <vector>
 
-#include "absl/types/span.h"  // from @com_google_absl
 #include "ml_drift/common/data_type.h"  // from @ml_drift
 #include "ml_drift/common/ir_model.h"  // from @ml_drift
 #include "ml_drift/common/shape.h"  // from @ml_drift
 #include "ml_drift/common/task/tensor_desc.h"  // from @ml_drift
+#include "ml_drift/common/types.h"  // from @ml_drift
+#include "tflite/core/c/common.h"
+#include "tflite/kernels/kernel_util.h"
 
 namespace ml_drift {
 
@@ -41,6 +43,77 @@ void IrModelAdapter::SetValueShapeAndType(uint32_t value_id, const BHWC& shape,
   ir::IrTensor* tensor = graph_.GetMutableTensor(value_id);
   tensor->desc.SetBHWCShape(shape);
   tensor->desc.SetDataType(type);
+}
+
+DataType IrModelAdapter::ResolveSharedTensorType(
+    uint32_t shared_tensor_id, DataType default_data_type) const {
+  const DataType graph_value_type =
+      graph_.tensor(shared_tensor_id)->desc.GetDataType();
+  if (IsFloatType(graph_value_type)) {
+    if (default_data_type == DataType::FLOAT32) {
+      std::vector<uint32_t> consumers = FindConsumerOps(shared_tensor_id);
+      if (consumers.size() == 1 && OpHasInputs(consumers[0])) {
+        DataType input_type = GetOpFirstInputType(consumers[0]);
+        if (IsFloatType(input_type)) {
+          return input_type;
+        }
+      }
+    }
+    return default_data_type;
+  }
+  return graph_value_type;
+}
+
+void IrModelAdapter::UploadTensorData(const TfLiteTensor& tensor,
+                                      const float* weights_data_ptr,
+                                      TensorDescriptor& tensor_desc) const {
+  // Support uploading raw data for integer tensors, float16 data for float16
+  // tensors, otherwise upload float data. This is used for models with fp16
+  // weights from MediaPipe (e.g. inpainting models) or non-float constants
+  // (e.g. shape/pack/lookup tensors).
+  switch (tensor_desc.GetDataType()) {
+    case DataType::INT8:
+      tensor_desc.UploadData<int8_t>(tensor.data.int8);
+      break;
+    case DataType::UINT8:
+      tensor_desc.UploadData<uint8_t>(tensor.data.uint8);
+      break;
+    case DataType::INT32:
+      tensor_desc.UploadData<int32_t>(tensor.data.i32);
+      break;
+    case DataType::INT64:
+      tensor_desc.UploadData<int64_t>(tensor.data.i64);
+      break;
+    case DataType::BOOL:
+      tensor_desc.UploadData<bool>(tensor.data.b);
+      break;
+    case DataType::FLOAT16:
+      if (tensor.type == TfLiteType::kTfLiteFloat16) {
+        tensor_desc.UploadData<half>(
+            reinterpret_cast<const half*>(tensor.data.f16));
+      } else {
+        int num_elements = tflite::NumElements(&tensor);
+        std::vector<half> half_data(num_elements);
+        for (int i = 0; i < num_elements; ++i) {
+          half_data[i] = half(weights_data_ptr[i]);
+        }
+        tensor_desc.UploadData<half>(half_data.data());
+      }
+      break;
+    default:  // FLOAT32
+      if (tensor.type == TfLiteType::kTfLiteFloat16) {
+        int num_elements = tflite::NumElements(&tensor);
+        std::vector<float> float_data(num_elements);
+        const half* f16_ptr = reinterpret_cast<const half*>(tensor.data.f16);
+        for (int i = 0; i < num_elements; ++i) {
+          float_data[i] = static_cast<float>(f16_ptr[i]);
+        }
+        tensor_desc.UploadData<float>(float_data.data());
+      } else {
+        tensor_desc.UploadData<float>(weights_data_ptr);
+      }
+      break;
+  }
 }
 
 std::vector<uint32_t> IrModelAdapter::FindConsumerOps(uint32_t value_id) const {
@@ -71,19 +144,15 @@ DataType IrModelAdapter::GetOpFirstInputType(uint32_t op_id) const {
   return graph_.tensor(input_id)->desc.GetDataType();
 }
 
-uint32_t IrModelAdapter::AddConstantInput(
-    uint32_t global_tensor_id, const BHWC& shape, DataType type,
-    absl::Span<const uint32_t> consumer_op_ids) {
-  ir::IrTensor* value = graph_.add_tensor(ml_drift::TensorDescriptor{});
+uint32_t IrModelAdapter::AddConstantInput(uint32_t global_tensor_id,
+                                          const BHWC& shape, DataType type,
+                                          uint32_t consumer_op_id) {
+  ir::IrTensor* value = graph_.add_tensor(type, shape);
   value->buffer_source = ir::BufferSource{
       .is_shared = true,
       .global_id = global_tensor_id,
   };
-  value->desc.SetDataType(type);
-  value->desc.SetBHWCShape(shape);
-  for (uint32_t op_id : consumer_op_ids) {
-    graph_.AddConsumer(value->id, op_id);
-  }
+  graph_.AddConsumer(value->id, consumer_op_id);
   return static_cast<uint32_t>(value->id);
 }
 
