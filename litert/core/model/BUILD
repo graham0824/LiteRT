@@ -440,6 +440,7 @@ cc_test(
         ":model",
         ":model_load",
         ":model_serialize",
+        "//litert/c:litert_common",
         "//litert/c:litert_op_code",
         "//litert/cc:litert_buffer_ref",
         "//litert/cc:litert_macros",
@@ -917,6 +918,7 @@ cc_library(
         ":model",
         ":shape_inference_types",
         "//litert/c:litert_common",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
     ],
 )

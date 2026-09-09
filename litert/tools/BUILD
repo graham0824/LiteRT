@@ -47,7 +47,26 @@ exports_files([
 #     srcs = ["externalize_tflite_flatbuffer.py"],
 #     deps = [
 #         "//third_party/py/flatbuffers",
-#         "@org_tensorflow//third_party/py/numpy:headers",
+#         "//tflite/python:schema_py",
+#     ],
+# )
+#
+# py_library(
+#     name = "externalize_tflite_flatbuffer_lib",
+#     srcs = ["externalize_tflite_flatbuffer.py"],
+#     deps = [
+#         "//third_party/py/flatbuffers",
+#         "//tflite/python:schema_py",
+#     ],
+# )
+#
+# py_test(
+#     name = "externalize_tflite_flatbuffer_test",
+#     srcs = ["externalize_tflite_flatbuffer_test.py"],
+#     deps = [
+#         ":externalize_tflite_flatbuffer_lib",
+#         "@absl_py//absl/testing:absltest",
+#         "//third_party/py/flatbuffers",
 #         "//tflite/python:schema_py",
 #     ],
 # )
@@ -623,7 +642,9 @@ cc_library(
         "//litert/cc:litert_macros",
         "//litert/cc:litert_model_types",
         "//litert/cc:litert_tensor_buffer",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

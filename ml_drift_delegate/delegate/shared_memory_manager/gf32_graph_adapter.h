@@ -19,7 +19,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/types/span.h"  // from @com_google_absl
 #include "ml_drift/common/data_type.h"  // from @ml_drift
 #include "ml_drift/common/model.h"  // from @ml_drift
 #include "ml_drift/common/shape.h"  // from @ml_drift
@@ -38,15 +37,20 @@ class GraphFloat32Adapter : public GraphAdapter {
   void SetValueShapeAndType(uint32_t value_id, const BHWC& shape,
                             DataType type) override;
 
+  DataType ResolveSharedTensorType(uint32_t shared_tensor_id,
+                                   DataType default_data_type) const override;
+  void UploadTensorData(const TfLiteTensor& tensor,
+                        const float* weights_data_ptr,
+                        TensorDescriptor& tensor_desc) const override;
+
   std::vector<uint32_t> FindConsumerOps(uint32_t value_id) const override;
   std::string GetOpTypeName(uint32_t op_id) const override;
   bool OpHasInputs(uint32_t op_id) const override;
   BHWC GetOpFirstInputShape(uint32_t op_id) const override;
   DataType GetOpFirstInputType(uint32_t op_id) const override;
 
-  uint32_t AddConstantInput(
-      uint32_t global_tensor_id, const BHWC& shape, DataType type,
-      absl::Span<const uint32_t> consumer_op_ids) override;
+  uint32_t AddConstantInput(uint32_t global_tensor_id, const BHWC& shape,
+                            DataType type, uint32_t consumer_op_id) override;
 
  private:
   GraphFloat32& graph_;

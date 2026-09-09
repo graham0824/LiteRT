@@ -7,6 +7,12 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'g3doc/**'
+      - 'site/**'
+      - 'LICENSE'
   merge_group:
   workflow_dispatch:
 
@@ -19,7 +25,9 @@ concurrency:
 
 jobs:
   source-build-cc-api:
-    name: "CMake C++ API example"
+    name: "CMake-C++-API-example"
+    # Building LiteRT from source with CMake/Ninja on "ubuntu-latest" (2 vCPUs)
+    # takes ~20 minutes. Keep it on "linux-x86-n2-16" to keep runtime under 10 minutes.
     runs-on: linux-x86-n2-16
     container:
       image: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest

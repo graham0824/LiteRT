@@ -323,7 +323,12 @@ struct MlDriftDelegateOptions {
   // If true, the delegate initializes via the IrModel pipeline instead of the
   // legacy GraphFloat32 pipeline. Selected at runtime; both pipelines are
   // always compiled and linked.
-  bool use_ir_model = false;
+  bool use_ir_model = true;
+
+  // If true, the delegate attempts to find and fuse QKV projection split,
+  // RMSNorm, and RoPE subgraphs into single fused odml.qkv_norm_rope nodes.
+  // Disabled by default to avoid unexpected graph mutations on general models.
+  bool enable_qkv_norm_rope_fusion = false;
 };
 
 namespace litert::ml_drift {
