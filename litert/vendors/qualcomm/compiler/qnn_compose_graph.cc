@@ -685,12 +685,11 @@ LiteRtStatus BuildAddOp(const litert::compiler::Op& litert_op,
               input_1.GetQuantParams());
       if (quant_param_0.GetScale() > quant_param_1.GetScale() * 5e5) {
         std::vector<int8_t> zero_data(input_1.GetTensorNumElements(),
-                                      -quant_param_1.GetZeroPoint());
-        auto& zero = tensor_pool.CreateStaticTensor(
-            input_1.GetDataType(), input_1.GetQuantParams(),
+                                      -quant_param_0.GetZeroPoint());
+        input_tensors[1] = tensor_pool.CreateStaticTensor(
+            input_0.GetDataType(), input_0.GetQuantParams(),
             input_1.GetDimensions(), sizeof(int8_t) * zero_data.size(),
             zero_data.data());
-        input_tensors[1] = zero;
         LITERT_LOG(
             LITERT_ERROR,
             "Replace small scale input_1 tensor with zero tensor for Add.");
