@@ -204,6 +204,7 @@ cc_library(
     srcs = ["sdpa_transposed_parser.cc"],
     hdrs = ["sdpa_transposed_parser.h"],
     deps = [
+        ":add_values_to_cache_parser",
         ":runtime_batched_matmul_parser",
         "//ml_drift_delegate/tflite:model_builder_helper",
         "//ml_drift_delegate/tflite:object_reader",
@@ -365,6 +366,43 @@ cc_library(
 )
 
 cc_library(
+    name = "short_conv_step_parser",
+    srcs = ["short_conv_step_parser.cc"],
+    hdrs = ["short_conv_step_parser.h"],
+    deps = [
+        "//ml_drift_delegate/tflite:object_reader",
+        "//ml_drift_delegate/tflite:operation_parser",
+        "//tflite/c:common",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:model",
+    ],
+)
+
+cc_library(
+    name = "short_conv_step_kernel",
+    srcs = ["short_conv_step_kernel.cc"],
+    hdrs = ["short_conv_step_kernel.h"],
+    deps = [
+        ":short_conv_step_parser",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        "@ml_drift//ml_drift/common:gpu_model_builder",
+        "@ml_drift//ml_drift/common:ir_model",
+        "@ml_drift//ml_drift/common:model",
+        "@ml_drift//ml_drift/common:shape",
+        "@ml_drift//ml_drift/common:tensor_handle",
+        "@ml_drift//ml_drift/common:types",
+        "@ml_drift//ml_drift/common/task:gpu_operation",
+        "@ml_drift//ml_drift/common/task:tensor_desc",
+    ],
+)
+
+cc_library(
     name = "qkv_norm_rope_parser",
     srcs = ["qkv_norm_rope_parser.cc"],
     hdrs = ["qkv_norm_rope_parser.h"],
@@ -419,11 +457,48 @@ cc_test(
 )
 
 cc_library(
+    name = "fuse_short_conv_step",
+    srcs = ["fuse_short_conv_step.cc"],
+    hdrs = ["fuse_short_conv_step.h"],
+    deps = [
+        ":short_conv_step_parser",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@ml_drift//ml_drift/common:data_type",
+        "@ml_drift//ml_drift/common:ir_model",
+        "@ml_drift//ml_drift/common:model",
+        "@ml_drift//ml_drift/common:operations",
+        "@ml_drift//ml_drift/common:shape",
+        "@ml_drift//ml_drift/common:tensor",
+    ],
+)
+
+cc_test(
+    name = "fuse_short_conv_step_test",
+    srcs = ["fuse_short_conv_step_test.cc"],
+    deps = [
+        ":fuse_short_conv_step",
+        ":short_conv_step_parser",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@ml_drift//ml_drift/common:data_type",
+        "@ml_drift//ml_drift/common:ir_model",
+        "@ml_drift//ml_drift/common:model",
+        "@ml_drift//ml_drift/common:operations",
+        "@ml_drift//ml_drift/common:shape",
+        "@ml_drift//ml_drift/common:tensor",
+    ],
+)
+
+cc_library(
     name = "custom_transformations",
     srcs = ["custom_transformations.cc"],
     hdrs = ["custom_transformations.h"],
     deps = [
         ":fuse_qkv_norm_rope",
+        ":fuse_short_conv_step",
         "//ml_drift_delegate/delegate:delegate_options",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -462,6 +537,44 @@ alias(
 )
 
 cc_library(
+    name = "gated_delta_update_parser",
+    srcs = ["gated_delta_update_parser.cc"],
+    hdrs = ["gated_delta_update_parser.h"],
+    deps = [
+        "//ml_drift_delegate/tflite:object_reader",
+        "//ml_drift_delegate/tflite:operation_parser",
+        "//tflite/c:c_api_types",
+        "//tflite/c:common",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:model",
+    ],
+)
+
+cc_library(
+    name = "gated_delta_update_kernel",
+    srcs = ["gated_delta_update_kernel.cc"],
+    hdrs = ["gated_delta_update_kernel.h"],
+    deps = [
+        ":gated_delta_update_parser",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@ml_drift//ml_drift/common:data_type",
+        "@ml_drift//ml_drift/common:gpu_info",
+        "@ml_drift//ml_drift/common:gpu_model_builder",
+        "@ml_drift//ml_drift/common:ir_model",
+        "@ml_drift//ml_drift/common:kernel_info",
+        "@ml_drift//ml_drift/common:model",
+        "@ml_drift//ml_drift/common:types",
+        "@ml_drift//ml_drift/common/task:gpu_operation",
+        "@ml_drift//ml_drift/common/task:tuning_type",
+    ],
+)
+
+cc_library(
     name = "custom_parsers",
     srcs = ["custom_parsers.cc"],
     hdrs = [
@@ -470,15 +583,17 @@ cc_library(
     ],
     deps = [
         ":add_values_to_cache_parser",
+        ":gated_delta_update_parser",
         ":moe_experts_parser",
         ":qkv_norm_rope_parser",
         ":rope_parser",
         ":runtime_batched_matmul_parser",
         ":sdpa_transposed_parser",
+        ":short_conv_step_parser",
         ":swiglu_parser",
-        "//ml_drift_delegate/tflite:model_builder",
         "//ml_drift_delegate/tflite:operation_parser",
         "//ml_drift_delegate/tflite:unimplemented_operation_parser",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -507,6 +622,57 @@ mld_kernel_test(
     ],
 )
 
+# The Mac test targets are defined separately from mld_kernel_test to tag the
+# objc_library and cc_test with "manual", "notap", and "nobuilder". This prevents
+# non-Apple presubmits (TAP on Linux) from failing during target analysis due to
+# objc_library not being supported on non-Apple platforms, while still allowing
+# explicit test execution with:
+# bazel test -c opt --config=darwin_arm64 //third_party/odml/litert/ml_drift/delegate/composite:short_conv_step_kernel_test_mac
+objc_library(
+    name = "short_conv_step_kernel_test_objc_lib",
+    testonly = True,
+    srcs = [
+        "short_conv_step_kernel_test.cc",
+        "@ml_drift//ml_drift/common/kernels/tests:kernel_test.h",
+        "@ml_drift//ml_drift/common/kernels/tests:metal_kernel_test.mm",
+    ],
+    tags = [
+        "manual",
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        ":short_conv_step_kernel",
+        "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        # Dependency placeholder: apple_frameworks Metal,
+        "@ml_drift//ml_drift/common:data_type",
+        "@ml_drift//ml_drift/common:precision",
+        "@ml_drift//ml_drift/common:shape",
+        "@ml_drift//ml_drift/common/task:gpu_operation",
+        "@ml_drift//ml_drift/common/task:tensor_desc",
+        "@ml_drift//ml_drift/common/task:testing_util",
+        "@ml_drift//ml_drift/metal/testing:test_util",
+    ],
+)
+
+cc_test(
+    name = "short_conv_step_kernel_test_mac",
+    tags = [
+        "mac",
+        "manual",
+        "nobuilder",
+        "notap",
+        "nozapfhahn",
+    ],
+    deps = [
+        ":short_conv_step_kernel_test_objc_lib",
+    ],
+)
+
 cc_library(
     name = "litert_op_selector",
     srcs = ["litert_op_selector.cc"],
@@ -514,6 +680,8 @@ cc_library(
     deps = [
         ":add_values_to_cache_kernel",
         ":add_values_to_cache_parser",
+        ":gated_delta_update_kernel",
+        ":gated_delta_update_parser",
         ":moe_experts_kernel",
         ":moe_experts_parser",
         ":qkv_norm_rope_kernel",
@@ -522,6 +690,8 @@ cc_library(
         ":runtime_batched_matmul_parser",
         ":sdpa_transposed_kernel",
         ":sdpa_transposed_parser",
+        ":short_conv_step_kernel",
+        ":short_conv_step_parser",
         ":swiglu_kernel",
         ":swiglu_parser",
         "@com_google_absl//absl/container:flat_hash_map",

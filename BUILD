@@ -22,5 +22,6 @@ exports_files([
     "PATCH.perfetto",
     "PATCH.protobuf_port_msvc_compat",
     "PATCH.sentencepiece",
+    "litert_workspace.bzl",
     "tensorflow_source_rules.bzl",
 ])

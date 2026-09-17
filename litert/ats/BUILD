@@ -39,6 +39,7 @@ litert_define_ats(
         "(_i32<[^>]+>(?!_cst)|->.*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
         "OneHot",  # XNNPACK does not support OneHot
         "Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
+        "SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
         "tfl\\.floor_div",  # XNNPACK does not support FloorDiv
         "tfl\\.pow",  # XNNPACK does not support Pow
         "tfl\\.prelu",  # XNNPACK requires PRelu alpha to be statically allocated
@@ -303,6 +304,7 @@ litert_test(
         "--dont_register=(_i32<[^>]+>(?!_cst)|->.*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
         "--dont_register=OneHot",  # XNNPACK does not support OneHot
         "--dont_register=Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
+        "--dont_register=SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
         "--dont_register=tfl\\.floor_div",  # XNNPACK does not support FloorDiv
         "--dont_register=tfl\\.pow",  # XNNPACK does not support Pow
         "--dont_register=tfl\\.prelu",  # XNNPACK requires PRelu alpha to be statically allocated
@@ -341,24 +343,9 @@ litert_test(
         ":configure",
         ":inference_fixture",
         ":register",
-        ":register_batch_matmul",
-        ":register_binary_broadcast",
-        ":register_binary_no_bcast",
-        ":register_concatenation",
-        ":register_conv_2d",
-        ":register_depthwise_conv_2d",
-        ":register_fully_connected",
-        ":register_mean",
-        ":register_no_op",
-        ":register_one_hot",
-        ":register_pad",
-        ":register_pooling",
-        ":register_reduction",
-        ":register_reshape",
-        ":register_softmax",
+        ":register_composite_ops",
+        ":register_single_ops",
         ":register_transformer_layer",
-        ":register_transpose",
-        ":register_unary",
         "//litert/c/internal:litert_logging",
         "//litert/cc/internal:litert_detail",
         "@com_google_absl//absl/flags:flag",
@@ -418,6 +405,91 @@ litert_test(
         ":configure",
         ":inference_fixture",
         ":register",
+        ":register_composite_ops",
+        ":register_single_ops",
+        ":register_transformer_layer",
+        "//litert/c/internal:litert_logging",
+        "//litert/cc/internal:litert_detail",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+litert_test(
+    name = "webgpu_macos_ats",
+    srcs = ["ats.cc"],
+    args = [
+        "--backend=gpu",
+        "--dont_register=Binary.*i32",
+        "--dont_register=NoOp.*i32",
+        "--dont_register=OneHot",
+        "--dont_register=LogSoftmax",
+        "--dont_register=_Transpose[.]",
+        "--dont_register=FullyConnected",
+        "--dont_register=BatchMatmul",
+        "--dont_register=tfl[.]prelu",
+        "--dont_register=tfl[.]zeros_like",
+        "--dont_register=tfl[.]relu_0_to_1",
+        "--dont_register=tfl[.]floor_div",
+        "--dont_register=tfl[.]floor[{]",
+        "--dont_register=tfl[.]ceil",
+        "--dont_register=tfl[.]round",
+        "--dont_register=5d",
+        "--dont_register=6d",
+        "--dont_register=7d",
+        "--dont_register=8d",
+        "--dont_register=Pad.*[(][123]d",
+    ],
+    copts = commandline_flag_copts(),
+    data = [
+        "//litert/runtime/accelerators/gpu:ml_drift_webgpu_accelerator_dylib",
+    ],
+    env = {
+        "DYLD_LIBRARY_PATH": "third_party/odml/litert/litert/runtime/accelerators/gpu",
+        "LITERT_RUNTIME_LIB_DIR": "third_party/odml/litert/litert/runtime/accelerators/gpu",
+    },
+    linkstatic = True,
+    no_main = True,
+    tags = [
+        "local",
+        "manual",
+    ],
+    target_compatible_with = [
+        "@platforms//os:macos",
+    ],
+    ungrte = if_oss(True, False),
+    use_sys_malloc = True,
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        ":register_composite_ops",
+        ":register_single_ops",
+        ":register_transformer_layer",
+        "//litert/c/internal:litert_logging",
+        "//litert/cc/internal:litert_detail",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "register_core_ops",
+    testonly = True,
+    srcs = ["register_core_ops.cc"],
+    hdrs = ["register_core_ops.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
         ":register_batch_matmul",
         ":register_binary_broadcast",
         ":register_binary_no_bcast",
@@ -426,23 +498,43 @@ litert_test(
         ":register_depthwise_conv_2d",
         ":register_fully_connected",
         ":register_mean",
+        ":register_reduction",
+        ":register_softmax",
+        ":register_transpose",
+        ":register_unary",
+    ],
+)
+
+cc_library(
+    name = "register_single_ops",
+    testonly = True,
+    srcs = ["register_single_ops.cc"],
+    hdrs = ["register_single_ops.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register_core_ops",
         ":register_no_op",
         ":register_one_hot",
         ":register_pad",
         ":register_pooling",
-        ":register_reduction",
         ":register_reshape",
-        ":register_softmax",
-        ":register_transformer_layer",
-        ":register_transpose",
-        ":register_unary",
-        "//litert/c/internal:litert_logging",
-        "//litert/cc/internal:litert_detail",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "register_composite_ops",
+    testonly = True,
+    srcs = ["register_composite_ops.cc"],
+    hdrs = ["register_composite_ops.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register_sdpa_transposed",
     ],
 )
 
@@ -704,6 +796,23 @@ cc_library(
         "//litert/cc/internal:litert_detail",
         "//litert/test/generators:common",
         "//litert/test/generators:reshape",
+    ],
+)
+
+cc_library(
+    name = "register_sdpa_transposed",
+    testonly = True,
+    srcs = ["register_sdpa_transposed.cc"],
+    hdrs = ["register_sdpa_transposed.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:sdpa_transposed",
+        "//tflite/types:half",
     ],
 )
 
@@ -1077,6 +1186,28 @@ cc_test(
         ":common",
         ":compile_capture",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "register_ops_contract_test",
+    srcs = ["register_ops_contract_test.cc"],
+    copts = commandline_flag_copts(),
+    target_compatible_with = select({
+        "//litert:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register_composite_ops",
+        ":register_core_ops",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 

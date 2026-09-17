@@ -11,37 +11,66 @@ on:
   pull_request:
     branches:
     - main
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'g3doc/**'
-      - 'site/**'
-      - 'LICENSE'
   schedule:
     - cron: "0 10 * * *"  # Run at 2am PST (10am UTC) every day to refresh the cache.
   workflow_dispatch:
 
 jobs:
+  check:
+    name: Check Changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run_build: ${{ steps.check.outputs.run_build }}
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          predicate-quantifier: 'some-with-excludes'
+          filters: |
+            src:
+              - '**'
+              - '!*.md'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!g3doc/**'
+              - '!site/**'
+              - '!LICENSE'
+      - name: Determine if build should run
+        id: check
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" || "${{ steps.filter.outputs.src }}" == "true" ]]; then
+            echo "run_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build_android_on_linux:
     name: Build Android Artifacts on Linux
+    needs: check
+    if: needs.check.outputs.run_build == 'true'
     # Task execution time doesn't exceed 10 minutes, so we don't need to use
     # "linux-x86-n2-16". Use GitHub-hosted "ubuntu-latest" instead.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Bazelisk
-        uses: bazelbuild/setup-bazelisk@v3
+        uses: bazelbuild/setup-bazelisk@b39c379c82683a5f25d34f0d062761f62693e0b2 # v3.0.0
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         with:
           packages: >
             ndk;26.3.11579264
@@ -64,12 +93,12 @@ jobs:
 
       - name: Build Android Artifacts with Bazel
         run: |
-          bazel build --config=public_cache --extra_toolchains=@bazel_tools//tools/jdk:all --config=android_arm64 //litert/kotlin:litert
-          bazel build --config=public_cache --extra_toolchains=@bazel_tools//tools/jdk:all --config=android_arm64 //litert/vendors/arm/compiler:compiler_plugin
+          bazel build --extra_toolchains=@bazel_tools//tools/jdk:all --config=android_arm64 //litert/kotlin:litert
+          bazel build --extra_toolchains=@bazel_tools//tools/jdk:all --config=android_arm64 //litert/vendors/arm/...
 
       - name: Upload Android Artifacts
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: android-artifacts
           path: |
