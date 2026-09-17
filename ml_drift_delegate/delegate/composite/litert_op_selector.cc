@@ -34,13 +34,18 @@
 #include "ml_drift/common/task/tensor_desc.h"  // from @ml_drift
 #include "ml_drift_delegate/delegate/composite/add_values_to_cache_kernel.h"
 #include "ml_drift_delegate/delegate/composite/add_values_to_cache_parser.h"
+#include "ml_drift_delegate/delegate/composite/gated_delta_update_kernel.h"
+#include "ml_drift_delegate/delegate/composite/gated_delta_update_parser.h"
 #include "ml_drift_delegate/delegate/composite/moe_experts_kernel.h"
 #include "ml_drift_delegate/delegate/composite/moe_experts_parser.h"
 #include "ml_drift_delegate/delegate/composite/qkv_norm_rope_kernel.h"
 #include "ml_drift_delegate/delegate/composite/qkv_norm_rope_parser.h"
 #include "ml_drift_delegate/delegate/composite/runtime_batched_matmul_kernel.h"
+#include "ml_drift_delegate/delegate/composite/runtime_batched_matmul_parser.h"
 #include "ml_drift_delegate/delegate/composite/sdpa_transposed_kernel.h"
 #include "ml_drift_delegate/delegate/composite/sdpa_transposed_parser.h"
+#include "ml_drift_delegate/delegate/composite/short_conv_step_kernel.h"
+#include "ml_drift_delegate/delegate/composite/short_conv_step_parser.h"
 #include "ml_drift_delegate/delegate/composite/swiglu_kernel.h"
 #include "ml_drift_delegate/delegate/composite/swiglu_parser.h"
 
@@ -153,6 +158,10 @@ absl::Status LiteRtOpSelector::GPUOperationFromNode(
                                    node.operation.type);
     return absl::OkStatus();
   }
+  if (node.operation.type == kGatedDeltaUpdateType) {
+    return CreateGatedDeltaUpdateFromNode(op_def, inputs, outputs, node,
+                                          &gpu_info_, model_builder);
+  }
   if (node.operation.type == kRuntimeBatchedMatMulType) {
     std::vector<::ml_drift::Value*> bmm_inputs = inputs;
     if (inputs.size() > 2) {
@@ -190,6 +199,9 @@ absl::Status LiteRtOpSelector::GPUOperationFromNode(
   }
   if (node.operation.type == kQkvNormRopeType) {
     return CreateQkvNormRopeFromNode(inputs, outputs, node, model_builder);
+  }
+  if (node.operation.type == kShortConvStepType) {
+    return CreateShortConvStepFromNode(inputs, outputs, node, model_builder);
   }
   if (node.operation.type == ToString(::ml_drift::OperationType::ROPE)) {
     return CreateRoPEFromNode(inputs, outputs, node, model_builder);

@@ -576,16 +576,10 @@ absl::StatusOr<int32_t> ExecuteDecodeStep(
           decode_inputs.per_layer_token_embeddings[l], layer_ple_span));
     }
 
-    LRT_TENSOR_RETURN_IF_ERROR(decode_runner.WriteInput(
-        decode_inputs.sliding_attention_mask, 0,
-        absl::MakeConstSpan(
-            reinterpret_cast<const std::byte*>(sliding_mask.data()),
-            sliding_mask.size() * sizeof(float))));
-    LRT_TENSOR_RETURN_IF_ERROR(decode_runner.WriteInput(
-        decode_inputs.global_attention_mask, 0,
-        absl::MakeConstSpan(
-            reinterpret_cast<const std::byte*>(global_mask.data()),
-            global_mask.size() * sizeof(float))));
+    LRT_TENSOR_RETURN_IF_ERROR(decode_runner.SetInput(
+        decode_inputs.sliding_attention_mask, sliding_mask));
+    LRT_TENSOR_RETURN_IF_ERROR(decode_runner.SetInput(
+        decode_inputs.global_attention_mask, global_mask));
   }
 
   {
@@ -703,6 +697,9 @@ absl::StatusOr<ModelVariant> DeduceModelVariant(
 absl::Status Run(const std::string& weights_path,
                  const std::string& tokenizer_path,
                  const std::string& raw_prompt, int max_tokens, bool verbose) {
+  if (max_tokens <= 0) {
+    return absl::InvalidArgumentError("max_tokens must be positive");
+  }
   if (xnn_initialize(/*allocator=*/nullptr) != xnn_status_success) {
     return absl::InternalError("Failed to initialize XNNPACK");
   }
@@ -728,10 +725,13 @@ absl::Status Run(const std::string& weights_path,
   const Config config = Config::From(model_variant);
 
   std::string prompt = raw_prompt;
-  if (model_variant == ModelVariant::kE4B &&
-      !absl::StrContains(raw_prompt, "<start_of_turn>")) {
-    prompt = absl::StrCat("<start_of_turn>user\n", raw_prompt,
-                          "<end_of_turn>\n<start_of_turn>model\n");
+  if (const std::string start_of_turn =
+          tokenizer.DecodeToken(kStartOfTurnToken);
+      model_variant == ModelVariant::kE4B &&
+      !absl::StrContains(raw_prompt, start_of_turn)) {
+    prompt = absl::StrCat(start_of_turn, "user\n", raw_prompt,
+                          tokenizer.DecodeToken(kEndOfTurnToken), "\n",
+                          start_of_turn, "model\n");
   }
 
   ABSL_LOG(INFO) << "Using Gemma4 " << AbslUnparseFlag(model_variant)
@@ -767,6 +767,7 @@ absl::Status Run(const std::string& weights_path,
   TRACE_EVENT_BEGIN(kTensorApiCategory, "TokenizerEncode");
   std::vector<int32_t> input_tokens =
       tokenizer.Encode(prompt, /*add_bos=*/true);
+
   TRACE_EVENT_END(kTensorApiCategory);
   int seq_len = static_cast<int>(input_tokens.size());
 
@@ -815,15 +816,20 @@ absl::Status Run(const std::string& weights_path,
                      << current_token << ")";
     }
     std::cout << std::endl;
-    if (perfetto_session) {
-      LRT_TENSOR_RETURN_IF_ERROR(perfetto_session->StopAndSave());
-    }
+    return absl::OkStatus();
+  }
+
+  TokenPrinter printer(absl::GetFlag(FLAGS_print), max_tokens);
+  printer.Push(tokenizer.DecodeToken(current_token));
+  // Prefill already predicted the first generated token.
+  if (max_tokens == 1) {
+    printer.Flush();
     return absl::OkStatus();
   }
 
   // Initialize decode runner KV caches with prefill K/V
   int cache_len = seq_len;
-  const int max_cache_len = seq_len + max_tokens;
+  const int max_cache_len = seq_len + max_tokens - 1;
   const int batch_size = 1;
   DecodeTiming decode_timing;
   std::vector<int> sharing_patterns = GetKvCacheSharingPatterns(config);
@@ -877,16 +883,13 @@ absl::Status Run(const std::string& weights_path,
     }
   }
 
-  TokenPrinter printer(absl::GetFlag(FLAGS_print), max_tokens);
-  printer.Push(tokenizer.DecodeToken(current_token));
-
   std::vector<float> global_cos(config.global_key_size);
   std::vector<float> global_sin(config.global_key_size);
   std::vector<float> local_cos(config.head_dim);
   std::vector<float> local_sin(config.head_dim);
 
   int tokens_generated = 0;
-  for (int step = 0; step < max_tokens; ++step) {
+  for (int step = 1; step < max_tokens; ++step) {
     TRACE_EVENT(kTensorApiCategory, "DecodeStep");
     LRT_TENSOR_ASSIGN_OR_RETURN(
         current_token,

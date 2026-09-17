@@ -103,6 +103,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@flatbuffers",
+        "@ml_drift//ml_drift/common:data_type",
         "@ml_drift//ml_drift/common:ir_model",
         "@ml_drift//ml_drift/common:operations",
         "@ml_drift//ml_drift/common:shape",
@@ -148,15 +149,68 @@ cc_library(
 )
 
 cc_library(
+    name = "short_conv_step_parser",
+    srcs = ["short_conv_step_parser.cc"],
+    hdrs = ["short_conv_step_parser.h"],
+    deps = [
+        "//ml_drift_delegate/delegate/composite:short_conv_step_parser",
+        "//ml_drift_delegate/tflite:custom_ir_operation_parser",
+        "//ml_drift_delegate/tflite:ir_model_builder_helper",
+        "//tflite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:ir_model",
+    ],
+)
+
+cc_library(
+    name = "rope_parser",
+    srcs = ["rope_parser.cc"],
+    hdrs = ["rope_parser.h"],
+    deps = [
+        "//ml_drift_delegate/tflite:custom_ir_operation_parser",
+        "//ml_drift_delegate/tflite:ir_model_builder_helper",
+        "//tflite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:ir_model",
+        "@ml_drift//ml_drift/common:operations",
+    ],
+)
+
+cc_library(
+    name = "gated_delta_update_parser",
+    srcs = ["gated_delta_update_parser.cc"],
+    hdrs = ["gated_delta_update_parser.h"],
+    deps = [
+        "//ml_drift_delegate/delegate/composite:gated_delta_update_parser",
+        "//ml_drift_delegate/tflite:custom_ir_operation_parser",
+        "//ml_drift_delegate/tflite:ir_model_builder_helper",
+        "//tflite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:ir_model",
+    ],
+)
+
+cc_library(
     name = "custom_parsers",
     srcs = ["custom_parsers.cc"],
     hdrs = ["custom_parsers.h"],
     deps = [
         ":add_values_to_cache_parser",
+        ":gated_delta_update_parser",
         ":moe_experts_parser",
         ":qkv_norm_rope_parser",
+        ":rope_parser",
         ":runtime_batched_matmul_parser",
         ":sdpa_transposed_parser",
+        ":short_conv_step_parser",
         ":swiglu_parser",
         "//ml_drift_delegate/tflite:custom_ir_operation_parser",
         "//tflite/c:common",
@@ -170,10 +224,12 @@ cc_library(
     hdrs = ["litert_op_selector.h"],
     deps = [
         "//ml_drift_delegate/delegate/composite:add_values_to_cache_kernel",
+        "//ml_drift_delegate/delegate/composite:gated_delta_update_kernel",
         "//ml_drift_delegate/delegate/composite:moe_experts_kernel",
         "//ml_drift_delegate/delegate/composite:qkv_norm_rope_kernel",
         "//ml_drift_delegate/delegate/composite:runtime_batched_matmul_kernel",
         "//ml_drift_delegate/delegate/composite:sdpa_transposed_kernel",
+        "//ml_drift_delegate/delegate/composite:short_conv_step_kernel",
         "//ml_drift_delegate/delegate/composite:swiglu_kernel",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -268,6 +324,25 @@ cc_test(
 )
 
 cc_test(
+    name = "rope_parser_test",
+    srcs = ["rope_parser_test.cc"],
+    deps = [
+        ":rope_parser",
+        "//ml_drift_delegate/tflite:custom_ir_operation_parser",
+        "//ml_drift_delegate/tflite/convert:convert_testing_utils",
+        "//ml_drift_delegate/tflite/convert:stub_delegate",
+        "//tflite:builtin_ops",
+        "//tflite:framework_stable",
+        "//tflite/c:common",
+        "//tflite/core/c:private_common",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:ir_model",
+        "@ml_drift//ml_drift/common:operations",
+    ],
+)
+
+cc_test(
     name = "swiglu_parser_test",
     srcs = ["swiglu_parser_test.cc"],
     deps = [
@@ -299,6 +374,24 @@ cc_test(
         "//tflite:framework_stable",
         "//tflite/c:common",
         "//tflite/core/c:private_common",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+        "@ml_drift//ml_drift/common:ir_model",
+    ],
+)
+
+cc_test(
+    name = "gated_delta_update_parser_test",
+    srcs = ["gated_delta_update_parser_test.cc"],
+    deps = [
+        ":gated_delta_update_parser",
+        "//ml_drift_delegate/delegate/composite:gated_delta_update_parser",
+        "//ml_drift_delegate/tflite:custom_ir_operation_parser",
+        "//ml_drift_delegate/tflite/convert:convert_testing_utils",
+        "//ml_drift_delegate/tflite/convert:stub_delegate",
+        "//tflite:builtin_ops",
+        "//tflite:framework_stable",
+        "//tflite/c:common",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "@ml_drift//ml_drift/common:ir_model",

@@ -16,7 +16,6 @@ limitations under the License.
 #define THIRD_PARTY_ODML_LITERT_TENSOR_EXAMPLES_GEMMA3_GRAPH_HELPERS_H_
 
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/types/span.h"  // from @com_google_absl
 #include "tensor/arithmetic.h"
-#include "tensor/buffer.h"
 #include "tensor/datatypes.h"
 #include "tensor/examples/gemma3/config.h"
 #include "tensor/examples/ops/transformer/transformer_ops.h"
@@ -68,17 +66,13 @@ Tensor<Mixins...> Gemma3RmsNorm(const Tensor<Mixins...>& input,
   int last_axis = static_cast<int>(input.GetShape().size()) - 1;
   Tensor sum_squared = Sum(x_squared, {last_axis}, /*keep_dims=*/true);
   const float inv_dim = 1.0f / static_cast<float>(input.GetShape().back());
-  Tensor inv_dim_tensor = Tensor<Mixins...>(
-      {.type = Type::kFP32,
-       .shape = {1},
-       .buffer = OwningCpuBuffer::Copy<Type::kFP32>({inv_dim})});
+  Tensor<Mixins...> inv_dim_tensor(
+      {.type = Type::kFP32, .shape = {1}, .buffer = inv_dim});
   Tensor mean_squared = Mul(sum_squared, inv_dim_tensor);
 
   // Add epsilon and compute rsqrt.
-  Tensor eps_tensor =
-      Tensor<Mixins...>({.type = Type::kFP32,
-                         .shape = {1},
-                         .buffer = OwningCpuBuffer::Copy<Type::kFP32>({eps})});
+  Tensor<Mixins...> eps_tensor(
+      {.type = Type::kFP32, .shape = {1}, .buffer = eps});
   Tensor variance_plus_eps = Add(mean_squared, eps_tensor);
   Tensor inv_rms = Rsqrt(variance_plus_eps);
 
@@ -109,77 +103,13 @@ Tensor<Mixins...> MakeFeedForwardLayer(
       GetWeight(weights, absl::StrCat(name, ".down_proj.weight"), Type::kFP32,
                 {config.emb_dim, config.hidden_dim});
 
-  // SwiGLU: out = down_proj(up_proj(x) * gelu(gate_proj(x))).
-  Tensor up = FullyConnected(input, up_proj);
-  Tensor gate = GeluTanh(FullyConnected(input, gate_proj));
-  Tensor ffn_out = FullyConnected(Mul(up, gate), down_proj);
+  Tensor ffn_out = FeedForward(input, gate_proj, up_proj, down_proj,
+                               FFNActivation::kGeluApproximate);
   ffn_out.SetName(absl::StrCat(name, ".output"));
   return ffn_out;
 }
 
-// Rotary positional embedding (statically sliced for CPU/standard runners).
-template <class... Mixins>
-Tensor<Mixins...> ApplyRotaryEmbedding(const Tensor<Mixins...>& x,
-                                       const Tensor<Mixins...>& cos,
-                                       const Tensor<Mixins...>& sin) {
-  const Shape& x_shape = x.GetShape();
-  int num_dims = static_cast<int>(x_shape.size());
-
-  std::vector<int> begin1(num_dims, 0);
-  std::vector<int> size1(num_dims, -1);
-  size1[num_dims - 1] = x_shape[num_dims - 1] / 2;
-
-  std::vector<int> begin2(num_dims, 0);
-  begin2[num_dims - 1] = x_shape[num_dims - 1] / 2;
-  std::vector<int> size2(num_dims, -1);
-  size2[num_dims - 1] = x_shape[num_dims - 1] / 2;
-
-  Tensor x1 = Slice(x, begin1, size1);
-  Tensor x2 = Slice(x, begin2, size2);
-
-  // rotated = cat(-x2, x1).
-  Tensor neg_one = Tensor<Mixins...>(
-      {.type = Type::kFP32,
-       .shape = {1},
-       .buffer = OwningCpuBuffer::Copy<Type::kFP32>({-1.0f})});
-  Tensor neg_x2 = Mul(x2, neg_one);
-  Tensor rotated = Concatenation({neg_x2, x1}, /*axis=*/num_dims - 1);
-
-  // Apply rotation: x * cos + rotated * sin.
-  Tensor x_cos = Mul(x, cos);
-  Tensor rotated_sin = Mul(rotated, sin);
-
-  return Add(x_cos, rotated_sin);
-}
-
-// Rotary positional embedding.
-template <class... Mixins>
-Tensor<Mixins...> ApplyRotaryEmbedding(const Tensor<Mixins...>& x,
-                                       const Tensor<Mixins...>& cos,
-                                       const Tensor<Mixins...>& sin,
-                                       const Tensor<Mixins...>& slice_offset_1,
-                                       const Tensor<Mixins...>& slice_size_1,
-                                       const Tensor<Mixins...>& slice_offset_2,
-                                       const Tensor<Mixins...>& slice_size_2) {
-  // Split x into first and second half along head_dim using dynamic CPU-staged
-  // slices!
-  Tensor x1 = Slice(x, slice_offset_1, slice_size_1);
-  Tensor x2 = Slice(x, slice_offset_2, slice_size_2);
-
-  // rotated = cat(-x2, x1).
-  Tensor neg_one = Tensor<Mixins...>(
-      {.type = Type::kFP32,
-       .shape = {1},
-       .buffer = OwningCpuBuffer::Copy<Type::kFP32>({-1.0f})});
-  Tensor neg_x2 = Mul(x2, neg_one);
-  Tensor rotated = Concatenation({neg_x2, x1}, /*axis=*/3);
-
-  // Apply rotation: x * cos + rotated * sin.
-  Tensor x_cos = Mul(x, cos);
-  Tensor rotated_sin = Mul(rotated, sin);
-
-  return Add(x_cos, rotated_sin);
-}
+using ::litert::tensor::RoPE;
 
 // Self-attention layer output structure.
 template <class... Mixins>
@@ -250,10 +180,8 @@ SelfAttentionOutput<Mixins...> MakeSelfAttentionLayer(
   k = Gemma3RmsNorm(k, k_norm, config.rms_norm_eps);
 
   // Apply rotary positional embedding.
-  q = ApplyRotaryEmbedding(q, cos, sin, slice_offset_1, slice_size_1,
-                           slice_offset_2, slice_size_2);
-  k = ApplyRotaryEmbedding(k, cos, sin, slice_offset_1, slice_size_1,
-                           slice_offset_2, slice_size_2);
+  q = RoPE(q, cos, sin);
+  k = RoPE(k, cos, sin);
 
   Tensor updated_key_cache = k;
   Tensor updated_value_cache = v;
@@ -295,10 +223,8 @@ SelfAttentionOutput<Mixins...> MakeSelfAttentionLayer(
 
   // Scale by query_pre_attn_scalar^(-0.5).
   float scale = 1.0f / std::sqrt(config.query_pre_attn_scalar);
-  Tensor scale_tensor = Tensor<Mixins...>(
-      {.type = Type::kFP32,
-       .shape = {1},
-       .buffer = OwningCpuBuffer::Copy<Type::kFP32>({scale})});
+  Tensor<Mixins...> scale_tensor(
+      {.type = Type::kFP32, .shape = {1}, .buffer = scale});
   scores = Mul(scores, scale_tensor);
 
   // Apply attention mask (add -inf for masked positions).

@@ -105,6 +105,7 @@ cc_library(
         "//tensor:arithmetic",
         "//tensor:buffer",
         "//tensor:datatypes",
+        "//tensor/backends/common_nnpack:conversion",
         "//tensor/backends/xnnpack:arithmetic",
         "//tensor/backends/xnnpack:conversion",
         "//tensor/backends/xnnpack:utils",
@@ -163,6 +164,20 @@ cc_library(
 #         "//tensor/parsers/tflite:tflite_flatbuffer_parser",
 #         "//tensor/runners/ml_drift:ml_drift_dummy_weight_creator",
 #         "//tensor/utils:macros",
+#         "//tensor/utils:matchers",
+#     ],
+# )
+#
+# cc_test(
+#     name = "transformer_ops_test",
+#     srcs = ["transformer_ops_test.cc"],
+#     deps = [
+#         ":transformer_ops",
+#         "@com_google_googletest//:gtest_main",
+#         "//tensor",
+#         "//tensor:datatypes",
+#         "//tensor/backends/xnnpack:arithmetic",
+#         "//tensor/runners/xnnpack:runner",
 #         "//tensor/utils:matchers",
 #     ],
 # )
