@@ -247,6 +247,17 @@ LiteRtCompilerContext* LrtGetCompilerContext() {
       .build_batch_matmul_op_option = LiteRtBuilderBuildBatchMatmulOpOption,
       .get_block_wise_quantization = LiteRtGetBlockWiseQuantization,
       .build_shlo_composite_op_option = LiteRtBuilderBuildShloCompositeOpOption,
+
+      .get_lstm_cell_clip_option = LiteRtGetLstmCellClipOption,
+      .get_lstm_proj_clip_option = LiteRtGetLstmProjClipOption,
+      .get_lstm_kernel_type_option = LiteRtGetLstmKernelTypeOption,
+
+      .get_unidirectional_sequence_lstm_cell_clip_option =
+          LiteRtGetUnidirectionalSequenceLstmCellClipOption,
+      .get_unidirectional_sequence_lstm_proj_clip_option =
+          LiteRtGetUnidirectionalSequenceLstmProjClipOption,
+      .get_unidirectional_sequence_lstm_time_major_option =
+          LiteRtGetUnidirectionalSequenceLstmTimeMajorOption,
   };
   return &ctx;
 }
