@@ -141,6 +141,192 @@ set(ABSEIL_TOOL_LIBS
     absl::statusor
 )
 
+# TFLite's CMake file only exposes the benchmark as an executable target. Reuse
+# that target's sources, minus its main(), so LiteRT can link its own benchmark
+# wrapper against the same implementation.
+if(NOT TARGET benchmark_model)
+    message(FATAL_ERROR "TFLite benchmark_model target is required to build benchmark_litert_model")
+endif()
+get_target_property(LITERT_TFLITE_BENCHMARK_SRCS benchmark_model SOURCES)
+list(FILTER LITERT_TFLITE_BENCHMARK_SRCS EXCLUDE REGEX "(^|/)benchmark_main\\.cc$")
+if(NOT LITERT_TFLITE_BENCHMARK_SRCS)
+    message(FATAL_ERROR "Unable to discover TFLite benchmark_model sources")
+endif()
+add_library(litert_tflite_benchmark_model STATIC
+    ${LITERT_TFLITE_BENCHMARK_SRCS}
+)
+
+get_target_property(
+    LITERT_TFLITE_BENCHMARK_COMPILE_OPTIONS
+    benchmark_model
+    COMPILE_OPTIONS
+)
+if(LITERT_TFLITE_BENCHMARK_COMPILE_OPTIONS)
+    target_compile_options(litert_tflite_benchmark_model
+        PRIVATE
+            ${LITERT_TFLITE_BENCHMARK_COMPILE_OPTIONS}
+    )
+endif()
+
+get_target_property(
+    LITERT_TFLITE_BENCHMARK_COMPILE_DEFINITIONS
+    benchmark_model
+    COMPILE_DEFINITIONS
+)
+if(LITERT_TFLITE_BENCHMARK_COMPILE_DEFINITIONS)
+    target_compile_definitions(litert_tflite_benchmark_model
+        PRIVATE
+            ${LITERT_TFLITE_BENCHMARK_COMPILE_DEFINITIONS}
+    )
+endif()
+
+get_target_property(
+    LITERT_TFLITE_BENCHMARK_INCLUDE_DIRS
+    benchmark_model
+    INCLUDE_DIRECTORIES
+)
+if(LITERT_TFLITE_BENCHMARK_INCLUDE_DIRS)
+    target_include_directories(litert_tflite_benchmark_model
+        PRIVATE
+            ${LITERT_TFLITE_BENCHMARK_INCLUDE_DIRS}
+    )
+endif()
+
+target_include_directories(litert_tflite_benchmark_model
+    PUBLIC
+        $<BUILD_INTERFACE:${TFLITE_SOURCE_DIR}/..>
+        $<BUILD_INTERFACE:${TFLITE_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}/third_party/xla>
+        $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+)
+
+get_target_property(
+    LITERT_TFLITE_BENCHMARK_LIBS
+    benchmark_model
+    LINK_LIBRARIES
+)
+if(LITERT_TFLITE_BENCHMARK_LIBS)
+    target_link_libraries(litert_tflite_benchmark_model
+        PUBLIC
+            ${LITERT_TFLITE_BENCHMARK_LIBS}
+    )
+endif()
+
+# LiteRT benchmark model library
+add_library(litert_benchmark_litert_model STATIC
+    benchmark_litert_model.cc
+    ../core/util/perfetto_profiling.cc
+)
+
+target_include_directories(litert_benchmark_litert_model
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
+        $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${TFLITE_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(litert_benchmark_litert_model
+    PUBLIC
+        litert_tflite_benchmark_model
+        ${LITERT_TOOL_COMMON_LIBS}
+        tensorflow-lite
+        benchmark_result_proto
+        model_runtime_info_proto
+        absl::flat_hash_map
+        absl::strings
+        absl::string_view
+        absl::span
+        absl::status
+        absl::statusor
+)
+
+# benchmark_litert_model
+add_executable(benchmark_litert_model
+    benchmark_litert_model_main.cc
+)
+
+target_include_directories(benchmark_litert_model
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        ${TENSORFLOW_SOURCE_DIR}
+        ${TFLITE_SOURCE_DIR}
+        ${CMAKE_BINARY_DIR}
+)
+
+if(ANDROID)
+    target_compile_definitions(benchmark_litert_model PRIVATE ABSL_FLAGS_STRIP_NAMES=0)
+endif()
+
+if(ANDROID)
+    target_link_libraries(benchmark_litert_model
+        PRIVATE
+            litert_benchmark_litert_model
+            litert_tflite_benchmark_model
+            "-Wl,--whole-archive"
+            litert_tool_flags_google_tensor
+            litert_tool_flags_intel_openvino
+            litert_tool_flags_mediatek
+            litert_tool_flags_qualcomm
+            litert_tool_flags_samsung
+            "-Wl,--no-whole-archive"
+            ${LITERT_TOOL_COMMON_LIBS}
+            tensorflow-lite
+            ${ABSEIL_TOOL_LIBS}
+            absl::flags_reflection
+            absl::flat_hash_map
+            absl::strings
+            Threads::Threads
+    )
+elseif(APPLE)
+    target_link_libraries(benchmark_litert_model
+        PRIVATE
+            litert_benchmark_litert_model
+            litert_tflite_benchmark_model
+            litert_tool_flags_google_tensor
+            litert_tool_flags_intel_openvino
+            litert_tool_flags_mediatek
+            litert_tool_flags_qualcomm
+            litert_tool_flags_samsung
+            ${LITERT_TOOL_COMMON_LIBS}
+            tensorflow-lite
+            ${ABSEIL_TOOL_LIBS}
+            absl::flags_reflection
+            absl::flat_hash_map
+            absl::strings
+            Threads::Threads
+    )
+else()
+    target_link_libraries(benchmark_litert_model
+        PRIVATE
+            "-Wl,--whole-archive"
+            litert_tool_flags_google_tensor
+            litert_tool_flags_intel_openvino
+            litert_tool_flags_mediatek
+            litert_tool_flags_qualcomm
+            litert_tool_flags_samsung
+            "-Wl,--no-whole-archive"
+            Threads::Threads
+            tensorflow-lite
+            "-Wl,--start-group"
+            litert_benchmark_litert_model
+            litert_tflite_benchmark_model
+            ${ABSEIL_TOOL_LIBS}
+            ${LITERT_TOOL_COMMON_LIBS}
+            absl::flags_reflection
+            absl::flat_hash_map
+            absl::strings
+            "-Wl,--end-group"
+            ${CMAKE_DL_LIBS}
+    )
+endif()
+
 # NPU numerics check
 add_executable(litert_npu_numerics_check
     npu_numerics_check.cc
@@ -483,12 +669,14 @@ endif()
 if(LITERT_PLATFORM_ANDROID)
     target_link_libraries(analyze_model PRIVATE ${LOG_LIB})
     target_link_libraries(apply_plugin_main PRIVATE ${LOG_LIB})
+    target_link_libraries(benchmark_litert_model PRIVATE ${LOG_LIB})
     target_link_libraries(extract_bytecode PRIVATE ${LOG_LIB})
     target_link_libraries(run_model PRIVATE ${LOG_LIB})
     # Statically link TFLite GPU/GL core objects for tool executables on Android.
     if(TARGET litert_tflite_gpu_gl_core)
         target_link_libraries(analyze_model PRIVATE litert_tflite_gpu_gl_core)
         target_link_libraries(apply_plugin_main PRIVATE litert_tflite_gpu_gl_core)
+        target_link_libraries(benchmark_litert_model PRIVATE litert_tflite_gpu_gl_core)
         target_link_libraries(extract_bytecode PRIVATE litert_tflite_gpu_gl_core)
         target_link_libraries(litert_npu_numerics_check PRIVATE litert_tflite_gpu_gl_core)
         target_link_libraries(npu_numerics_check PRIVATE litert_tflite_gpu_gl_core)
@@ -497,6 +685,6 @@ if(LITERT_PLATFORM_ANDROID)
 endif()
 
 # Install targets
-install(TARGETS run_model analyze_model apply_plugin_main extract_bytecode
+install(TARGETS run_model analyze_model apply_plugin_main benchmark_litert_model extract_bytecode
     RUNTIME DESTINATION bin
 )
