@@ -53,6 +53,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@ml_drift//ml_drift/cl:buffer",
@@ -148,6 +149,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -243,6 +245,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@ml_drift//ml_drift/common:data_type",
@@ -394,6 +397,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@ml_drift//ml_drift/common:data_type",
@@ -697,6 +701,7 @@ cc_library(
         "@ml_drift//ml_drift/cl:environment",
         "@ml_drift//ml_drift/cl:opencl_wrapper",
         "@ml_drift//ml_drift/cl:util_types",
+        "@ml_drift//ml_drift/common:gpu_info",
         "@ml_drift//ml_drift/common:precision",
     ] + select({
         # copybara:uncomment_begin(google-only)
@@ -848,6 +853,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@ml_drift//ml_drift/common:gpu_info",
         "@ml_drift//ml_drift/common:precision",
         # copybara:uncomment_begin(google-only)
         # "@ml_drift//ml_drift/pelong:egl_environment",

@@ -54,6 +54,8 @@ litert_define_ats(
         "Conv2d.*f16",  # XNNPACK delegate at ToT does not yet support f16 Conv2d
         "BatchMatmul.*f16",  # XNNPACK delegate at ToT does not yet support f16 BatchMatmul
         "FullyConnected.*(f16|i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
+        "Sdpa.*f16",  # XNNPACK delegate does not support f16 SDPA
+        "Sdpa.*x8x[0-9]+>.*x1x[0-9]+>",  # XNNPACK delegate does not support 8-head MQA decode
         "FullyConnected.*,2d_f32.*,1d_f32",
         "FullyConnected.*,2d_f32[^c]",
         "FullyConnected.*_cst.*,1d_f32[^c]",
@@ -320,6 +322,8 @@ litert_test(
         "--dont_register=Conv2d.*f16",  # XNNPACK delegate at ToT does not yet support f16 Conv2d
         "--dont_register=BatchMatmul.*f16",  # XNNPACK delegate at ToT does not yet support f16 BatchMatmul
         "--dont_register=FullyConnected.*(f16|i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
+        "--dont_register=Sdpa.*f16",  # XNNPACK delegate does not support f16 SDPA
+        "--dont_register=Sdpa.*x8x[0-9]+>.*x1x[0-9]+>",  # XNNPACK delegate does not support 8-head MQA decode
         "--dont_register=FullyConnected.*,2d_f32.*,1d_f32",
         "--dont_register=FullyConnected.*,2d_f32[^c]",
         "--dont_register=FullyConnected.*_cst.*,1d_f32[^c]",
@@ -502,6 +506,7 @@ cc_library(
         ":register_mean",
         ":register_reduction",
         ":register_select_v2",
+        ":register_slice",
         ":register_softmax",
         ":register_transpose",
         ":register_unary",
@@ -537,6 +542,7 @@ cc_library(
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
+        ":register_sdpa",
         ":register_sdpa_transposed",
     ],
 )
@@ -803,6 +809,23 @@ cc_library(
 )
 
 cc_library(
+    name = "register_sdpa",
+    testonly = True,
+    srcs = ["register_sdpa.cc"],
+    hdrs = ["register_sdpa.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:sdpa",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
     name = "register_sdpa_transposed",
     testonly = True,
     srcs = ["register_sdpa_transposed.cc"],
@@ -815,6 +838,24 @@ cc_library(
         ":register",
         "//litert/cc/internal:litert_detail",
         "//litert/test/generators:sdpa_transposed",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
+    name = "register_slice",
+    testonly = True,
+    srcs = ["register_slice.cc"],
+    hdrs = ["register_slice.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:common",
+        "//litert/test/generators:slice",
         "//tflite/types:half",
     ],
 )
