@@ -16,6 +16,7 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("//tflite/core/shims:cc_library_with_tflite.bzl", "java_test_with_tflite")
 load(
     "//litert/build_common:special_rule.bzl",
     "litert_android_linkopts",
@@ -118,6 +119,7 @@ cc_library(
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -189,6 +191,20 @@ tflite_jni_binary(
         ":litert_environment_jni",
         ":litert_tensor_buffer_jni",
         "//litert/c/internal:litert_runtime_builtin_none",
+    ],
+)
+
+tflite_jni_binary(
+    name = "test/litert_jni",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined() + litert_android_linkopts(),
+    linkscript = ":litert_api_version_script.lds",
+    stamp = 0,
+    testonly = True,
+    deps = [
+        ":litert_compiled_model_jni",
+        ":litert_environment_jni",
+        ":litert_tensor_buffer_jni",
+        "//litert/c/internal:litert_runtime_builtin_static",
     ],
 )
 
@@ -346,6 +362,23 @@ kt_android_library(
     proguard_specs = ["//tflite/java:proguard.flags"],
     visibility = litert_jni_friends(),
     deps = LITERT_KOTLIN_DEPS,
+)
+
+java_test_with_tflite(
+    name = "compiled_model_resize_test",
+    size = "small",
+    srcs = ["src/test/java/com/google/ai/edge/litert/CompiledModelResizeTest.java"],
+    data = [
+        "//litert/test:testdata/dynamic_add_model.tflite",
+        "//litert/test:testdata/simple_model.tflite",
+    ],
+    test_class = "com.google.ai.edge.litert.CompiledModelResizeTest",
+    tflite_jni_binaries = [":test/litert_jni"],
+    deps = [
+        ":litert_compiled_model_api_no_jni",
+        "@com_google_truth",
+        "@junit",
+    ],
 )
 
 # Android library for the litert package, CompiledModel API only.
