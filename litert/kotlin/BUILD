@@ -391,6 +391,7 @@ android_library(
     exports = [
         ":litert_api_jni",  # liblitert_jni.so
         ":litert_compiled_model_api_no_jni",
+        ":litert_impl_jni",  # libLiteRt.so, loaded by liblitert_jni.so
     ],
 )
 
