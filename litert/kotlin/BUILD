@@ -16,6 +16,7 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("//tflite/core/shims:cc_library_with_tflite.bzl", "java_test_with_tflite")
 load(
     "//litert/build_common:special_rule.bzl",
     "litert_android_linkopts",
@@ -192,6 +193,22 @@ tflite_jni_binary(
     ],
 )
 
+# Host JVM tests require a self-contained LiteRT runtime. Keep this separate
+# from the production JNI binary, which loads the runtime independently.
+tflite_jni_binary(
+    name = "test/litert_jni",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined() + litert_android_linkopts(),
+    linkscript = ":litert_api_version_script.lds",
+    stamp = 0,
+    testonly = True,
+    deps = [
+        ":litert_compiled_model_jni",
+        ":litert_environment_jni",
+        ":litert_tensor_buffer_jni",
+        "//litert/c/internal:litert_runtime_builtin_static",
+    ],
+)
+
 cc_library(
     name = "litert_api_jni_lib",
     srcs = [":litert_jni"],
@@ -346,6 +363,20 @@ kt_android_library(
     proguard_specs = ["//tflite/java:proguard.flags"],
     visibility = litert_jni_friends(),
     deps = LITERT_KOTLIN_DEPS,
+)
+
+java_test_with_tflite(
+    name = "compiled_model_int16_test",
+    size = "small",
+    srcs = ["src/test/java/com/google/ai/edge/litert/CompiledModelInt16Test.java"],
+    data = ["//litert/test:testdata/single_add_default_a16w8_recipe_quantized.tflite"],
+    test_class = "com.google.ai.edge.litert.CompiledModelInt16Test",
+    tflite_jni_binaries = [":test/litert_jni"],
+    deps = [
+        ":litert_compiled_model_api_no_jni",
+        "@com_google_truth",
+        "@junit",
+    ],
 )
 
 # Android library for the litert package, CompiledModel API only.
