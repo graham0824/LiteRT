@@ -41,7 +41,7 @@ runs:
         CACHE_CERT=${CACHE_DIR}/qualcomm-nscacert.crt
         if [ ! -f "${CACHE_CERT}" ]; then
           mkdir -p "${CACHE_DIR}"
-          wget -q https://github.qualcomm.com/netskope-ssl/download \
+          wget -q https://github.qualcomm.com/raw/netskope-ssl/download/main/nscacert.cer \
             -O "${CACHE_CERT}"
         fi
         cp "${CACHE_CERT}" /usr/local/share/ca-certificates/qualcomm-nscacert.crt
