@@ -56,6 +56,10 @@ class QnnBackend {
   // state.
   virtual bool SetPerformanceMode(const Options& options) { return true; }
 
+  // Stops backend-owned background work before QNN shared libraries begin
+  // process-exit teardown. This does not release QNN backend/device handles.
+  virtual void StopBackgroundWork() {}
+
   const SocInfo& GetSocInfo() const { return soc_info_; }
 
   virtual GraphConfigBuilder BuildGraphConfigs(
