@@ -42,10 +42,10 @@ struct TestNames {
   // Create using repr of ops as desc. Only use if the model has 1-ish ops.
   static TestNames Create(size_t test_id, absl::string_view family,
                           absl::string_view logic, const LiteRtModelT& graph) {
-    auto suite = MakeSuite(test_id, family, logic);
-    auto test = absl::StrFormat("%v", graph.Subgraph(0).Ops());
-    auto desc = test;
-    auto report_id = suite;
+    auto suite = MakeSuite(family, logic);
+    auto desc = absl::StrFormat("%v", graph.Subgraph(0).Ops());
+    auto test = NormalizeOpSignature(desc);
+    auto report_id = MakeReportId(test_id, family, logic);
     return {suite, test, desc, report_id, false};
   }
 
@@ -54,15 +54,50 @@ struct TestNames {
                           absl::string_view source, absl::string_view test,
                           absl::string_view report_id,
                           absl::string_view desc = "") {
-    auto suite = MakeSuite(test_id, fixture, source);
-    return {suite, std::string(test), std::string(desc),
-            std::string(report_id), false};
+    auto suite = MakeSuite(fixture, source);
+    auto full_desc = desc.empty() ? std::string(test) : std::string(desc);
+    return {suite, std::string(test), full_desc, std::string(report_id), false};
   }
 
  private:
-  static std::string MakeSuite(size_t test_id, absl::string_view family,
+  static std::string MakeSuite(absl::string_view family,
                                absl::string_view logic) {
+    return absl::StrFormat("%s_%s", family, logic);
+  }
+
+  static std::string MakeReportId(size_t test_id, absl::string_view family,
+                                  absl::string_view logic) {
     return absl::StrFormat("ats_%lu_%s_%s", test_id, family, logic);
+  }
+
+  // Strips concrete random tensor dimensions (`<4x5>`) and buffer byte sizes
+  // (`[120B]`) from an op signature so that all random-shape iterations of the
+  // same op configuration share a deterministic GTest test name for TestGrid.
+  static std::string NormalizeOpSignature(absl::string_view sig) {
+    std::string out;
+    out.reserve(sig.size());
+    int angle_depth = 0;
+    int bracket_depth = 0;
+    for (char c : sig) {
+      if (c == '<') {
+        ++angle_depth;
+      } else if (c == '>') {
+        if (angle_depth > 0) {
+          --angle_depth;
+        } else {
+          out.push_back(c);
+        }
+      } else if (c == '[') {
+        ++bracket_depth;
+      } else if (c == ']') {
+        if (bracket_depth > 0) {
+          --bracket_depth;
+        }
+      } else if (angle_depth == 0 && bracket_depth == 0) {
+        out.push_back(c);
+      }
+    }
+    return out;
   }
 };
 

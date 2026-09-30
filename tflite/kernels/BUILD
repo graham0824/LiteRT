@@ -174,8 +174,10 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -183,7 +185,6 @@ cc_library(
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@flatbuffers",
-        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -2268,6 +2269,7 @@ cc_test(
         "//tflite/schema:schema_fbs",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -2526,10 +2528,17 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tflite:string_util",
+        "//tflite/core/c:common",
+        "//tflite/kernels/internal:reference_base",
+        "//tflite/kernels/internal:tensor",
+        "//tflite/kernels/internal:types",
         "//tflite/schema:schema_fbs",
         "//tflite/types:half",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 

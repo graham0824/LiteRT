@@ -101,13 +101,6 @@ constexpr bool kForceCompletion = true;
 constexpr bool kForceCompletion = false;
 #endif
 
-// The threshold for the total number of tensors in the shared memory
-// serialization cache. If the number of tensors in the cache is smaller than
-// this threshold AND gpu weight rearrangement is enabled, the serialization
-// cache will not be used. Otherwise the gpu weight rearrangement is always
-// preferred.
-constexpr size_t kSharedMemorySerializationCacheSizeThreshold = 100;
-
 }  // namespace
 
 DelegateKernel::~DelegateKernel() {
@@ -262,7 +255,7 @@ absl::Status DelegateKernel::InitializeGraphFloat32(
   options.enable_infinite_float_capping =
       delegate_data_->options->enable_infinite_float_capping;
   options.enable_reduced_precision = delegate_data_->calculation_precision !=
-                                     ::ml_drift::CalculationsPrecision::F32;
+                                     ::ml_drift::CalculationsPrecision::kF32;
   // Build GraphFloat32.
   ::ml_drift::GraphFloat32 graph;
   CustomOperationParserFactory custom_parser_factory;
@@ -389,10 +382,6 @@ absl::Status DelegateKernel::InitializeExternalSharedConstantTensors(
       shared_memory_serialization_cache,
       TryInitializingExternalTensorsSerialization(context, delegate_params,
                                                   prepare_weights_in_batches));
-  size_t shared_memory_serialization_cache_size =
-      (shared_memory_serialization_cache
-           ? shared_memory_serialization_cache->GetCurrentSize()
-           : 0);
 
   ABSL_ASSIGN_OR_RETURN(
       auto shared_mem_manager,
@@ -404,9 +393,7 @@ absl::Status DelegateKernel::InitializeExternalSharedConstantTensors(
       delegate_data_->options->enable_constant_tensors_sharing) {
     ABSL_ASSIGN_OR_RETURN(auto gpu_info, backend_->GetInfo());
     if (!::ml_drift::WeightsManager::IsGpuWeightsPreparationSupported(
-            gpu_info) ||
-        shared_memory_serialization_cache_size >
-            kSharedMemorySerializationCacheSizeThreshold) {
+            gpu_info)) {
       delegate_data_->options->convert_weights_on_gpu = false;
     } else {
       ABSL_ASSIGN_OR_RETURN(auto weights_manager,
@@ -743,7 +730,9 @@ bool DelegateKernel::ReadFromSerializedData() {
 }
 
 std::string DelegateKernel::ComputeOptionsFingerprint() const {
-  // Generate fingerprints for the relevant delegate data options.
+// Generate fingerprints for the relevant delegate data options.
+// Pack the struct to prevent hashing uninitialized alignment padding bytes.
+#pragma pack(push, 1)
   struct {
     MlDriftDelegatePrecision precision;
     bool convert_weights_on_gpu;
@@ -770,6 +759,7 @@ std::string DelegateKernel::ComputeOptionsFingerprint() const {
     bool use_metal_argument_buffers;
 #endif  // __APPLE__
   } options_to_fingerprint = {};
+#pragma pack(pop)
   options_to_fingerprint.precision = delegate_data_->options->precision;
   options_to_fingerprint.convert_weights_on_gpu =
       delegate_data_->options->convert_weights_on_gpu;
@@ -1104,7 +1094,7 @@ absl::Status DelegateKernel::InitializeIrModel(
   options.enable_infinite_float_capping =
       delegate_data_->options->enable_infinite_float_capping;
   options.enable_reduced_precision = delegate_data_->calculation_precision !=
-                                     ::ml_drift::CalculationsPrecision::F32;
+                                     ::ml_drift::CalculationsPrecision::kF32;
   std::unique_ptr<::ml_drift::ir::IrModel> ir_model;
 
   const TfLiteIntArray* input_tensors = delegate_params->input_tensors;
@@ -1169,12 +1159,12 @@ absl::Status DelegateKernel::InitializeIrModel(
     auto consumers = ir_model->FindConsumers(tensor_id);
     if (producer == nullptr && consumers.empty()) continue;
     const auto* t = ir_model->tensor(tensor_id);
-    if (t != nullptr && t->buffer_source.tflite_tensor_id >= 0) {
+    if (t != nullptr && t->buffer_source.tensor_id >= 0) {
       const TfLiteTensor* tensor =
-          context->tensors + t->buffer_source.tflite_tensor_id;
+          context->tensors + t->buffer_source.tensor_id;
       if (!tflite::IsConstantTensor(tensor)) {
         input_ids_.push_back(tensor_id);
-        input_indices_.push_back(t->buffer_source.tflite_tensor_id);
+        input_indices_.push_back(t->buffer_source.tensor_id);
       }
     }
   }
@@ -1185,9 +1175,9 @@ absl::Status DelegateKernel::InitializeIrModel(
     auto consumers = ir_model->FindConsumers(tensor_id);
     if (producer == nullptr && consumers.empty()) continue;
     const auto* t = ir_model->tensor(tensor_id);
-    if (t != nullptr && t->buffer_source.tflite_tensor_id >= 0) {
+    if (t != nullptr && t->buffer_source.tensor_id >= 0) {
       output_ids_.push_back(tensor_id);
-      output_indices_.push_back(t->buffer_source.tflite_tensor_id);
+      output_indices_.push_back(t->buffer_source.tensor_id);
     }
   }
 

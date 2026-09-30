@@ -26,7 +26,6 @@
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
-#include "ml_drift/common/convert.h"  // from @ml_drift
 #include "ml_drift/common/data_type.h"  // from @ml_drift
 #include "ml_drift/common/gpu_model_builder.h"  // from @ml_drift
 #include "ml_drift/metal/buffer.h"  // from @ml_drift
@@ -336,10 +335,10 @@ absl::Status GpuBackendMetal::UpdateSpatialTensor(::ml_drift::GpuSpatialTensor* 
 
   auto* metal_tensor = static_cast<::ml_drift::metal::MetalSpatialTensor*>(tensor);
 
-  if (release_data_callback && desc.GetStorageType() == ::ml_drift::TensorStorageType::BUFFER &&
-      (desc.GetDataType() == ::ml_drift::DataType::UINT8 ||
-       desc.GetDataType() == ::ml_drift::DataType::UINT4 ||
-       desc.GetDataType() == ::ml_drift::DataType::UINT2)) {
+  if (release_data_callback && desc.GetStorageType() == ::ml_drift::TensorStorageType::kBuffer &&
+      (desc.GetDataType() == ::ml_drift::DataType::kUint8 ||
+       desc.GetDataType() == ::ml_drift::DataType::kUint4 ||
+       desc.GetDataType() == ::ml_drift::DataType::kUint2)) {
     const uint8_t* data = desc.GetData().data();
     size_t size = desc.GetData().size();
     const uint8_t* raw_data = data - page_adjusted_offset;

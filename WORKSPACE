@@ -123,33 +123,21 @@ load("//:tensorflow_source_rules.bzl", "tensorflow_source_repo")
 
 tensorflow_source_repo(
     name = "org_tensorflow",
-    patches = ["//:PATCH.flatbuffers_windows_no_bash"],
-    protobuf_patches = ["//:PATCH.protobuf_port_msvc_compat"],
     sha256 = "7bf06cfd5ff9b462b1b25ca4dc3613fa5e3847fd8e291ff0a8de2ca5a812590a",
     strip_prefix = "tensorflow-5c0b7a5946f0f485e3a532b2a00e03f42a6e14c1",
     urls = ["https://github.com/tensorflow/tensorflow/archive/5c0b7a5946f0f485e3a532b2a00e03f42a6e14c1.tar.gz"],
 )
 
-# Initialize the TensorFlow repository and all dependencies.
-#
-# The cascade of load() statements and tf_workspace?() calls works around the
-# restriction that load() statements need to be at the top of .bzl files.
-# E.g. we can not retrieve a new repository with http_archive and then load()
-# a macro from that repository in the same file.
+# Declare LiteRT-owned repositories first so they take precedence over any
+# fallback declarations in TensorFlow's workspace macros.
+load("//:litert_workspace.bzl", "litert_workspace")
+
+litert_workspace()
+
 load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
 
-# Mirror the repository initialization that TensorFlow's own WORKSPACE performs
-# between tf_workspace3() and tf_workspace2(). Both repositories are fetched by
-# tf_workspace3(), and both must be initialized before tf_workspace2() pulls in
-# dependencies that load from them, because the repositories have to exist while
-# Bazel computes the main repo mapping.
-#
-# bazel_features_deps() defines `@bazel_features_version`, which is loaded
-# transitively by `@rules_cc`. compatibility_proxy_repo() defines
-# `@cc_compatibility_proxy`; tf_workspace1() also declares it, but that runs too
-# late.
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 
 bazel_features_deps()
@@ -159,7 +147,7 @@ load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
 compatibility_proxy_repo()
 
 # Initialize hermetic Python
-load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
+load("//third_party/py:python_init_rules.bzl", "python_init_rules")
 
 python_init_rules()
 
@@ -172,14 +160,14 @@ python_init_repositories(
         "tensorflow*",
         "tf_nightly*",
     ],
-    local_wheel_workspaces = ["@org_tensorflow//:WORKSPACE"],
+    local_wheel_workspaces = ["@//:WORKSPACE"],
     requirements = {
-        "3.10": "@org_tensorflow//:requirements_lock_3_10.txt",
-        "3.11": "@org_tensorflow//:requirements_lock_3_11.txt",
-        "3.12": "@org_tensorflow//:requirements_lock_3_12.txt",
-        "3.13": "@org_tensorflow//:requirements_lock_3_13.txt",
-        "3.14": "@org_tensorflow//:requirements_lock_3_14.txt",
-        "3.14-freethreaded": "@org_tensorflow//:requirements_lock_3_14_freethreaded.txt",
+        "3.10": "@//:requirements_lock_3_10.txt",
+        "3.11": "@//:requirements_lock_3_11.txt",
+        "3.12": "@//:requirements_lock_3_12.txt",
+        "3.13": "@//:requirements_lock_3_13.txt",
+        "3.14": "@//:requirements_lock_3_14.txt",
+        "3.14-freethreaded": "@//:requirements_lock_3_14_freethreaded.txt",
     },
 )
 
@@ -196,10 +184,6 @@ load("@pypi//:requirements.bzl", "install_deps")
 install_deps()
 # End hermetic Python initialization
 
-load("//:litert_workspace.bzl", "litert_workspace")
-
-litert_workspace()
-
 load("@org_tensorflow//tensorflow:workspace2.bzl", "tf_workspace2")
 
 tf_workspace2()
@@ -213,7 +197,7 @@ load("@org_tensorflow//tensorflow:workspace0.bzl", "tf_workspace0")
 tf_workspace0()
 
 load(
-    "@xla//third_party/py:python_wheel.bzl",
+    "//third_party/py:python_wheel.bzl",
     "python_wheel_version_suffix_repository",
 )
 
@@ -375,6 +359,15 @@ http_archive(
     sha256 = "8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155",
     strip_prefix = "tomlplusplus-3.4.0",
     url = "https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz",
+)
+
+# SafeInt
+http_archive(
+    name = "SafeInt",
+    build_file = "@//:BUILD.SafeInt",
+    sha256 = "4bd737e5885112e796742b7b6ba7181ff346855dc22d29ed2b258de567a1de8d",
+    strip_prefix = "SafeInt-72f0745e26091af6d1186fd91426377f16688ba7",
+    url = "https://github.com/dcleblanc/SafeInt/archive/72f0745e26091af6d1186fd91426377f16688ba7.tar.gz",
 )
 
 # RE2

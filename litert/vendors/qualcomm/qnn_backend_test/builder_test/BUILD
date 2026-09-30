@@ -17,7 +17,7 @@ _COMPATIBLE_OS = select({
 })
 
 _QNN_DEPS = select({
-    "@org_tensorflow//tensorflow:linux_x86_64": [
+    "//litert:linux_x86_64": [
         # copybara:uncomment_begin(google-only)
         # "@qairt//:linux_deps",
         # copybara:uncomment_end
@@ -90,6 +90,39 @@ litert_test(
         "//litert/vendors/qualcomm/core/utils:test_main",
         "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
         "//litert/vendors/qualcomm/qnn_backend_test:test_utils",
+        "@qairt//:qnn_lib_headers",
+    ] + _QNN_DEPS,
+)
+
+litert_test(
+    name = "quantize_test",
+    srcs = ["quantize_test.cc"],
+    linkopts = select({
+        "//litert:android": [],
+        "//conditions:default": [
+            make_rpaths([
+                "//litert/c:litert_runtime_c_api_so",
+            ]),
+        ],
+    }),
+    linkstatic = True,
+    no_main = True,
+    tags = [
+        "noasan",
+        "nomsan",
+        "nosan",
+        "notsan",
+    ],
+    target_compatible_with = _COMPATIBLE_OS,
+    ungrte = True,
+    use_sys_malloc = True,
+    deps = [
+        "//litert/vendors/qualcomm/core:common",
+        "//litert/vendors/qualcomm/core:tensor_pool",
+        "//litert/vendors/qualcomm/core/builders:quantize_op_builder",
+        "//litert/vendors/qualcomm/core/utils:test_main",
+        "//litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "@qairt//:qnn_lib_headers",
     ] + _QNN_DEPS,
 )
