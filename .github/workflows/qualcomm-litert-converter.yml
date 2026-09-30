@@ -34,7 +34,7 @@ jobs:
 
       - name: Install Python dependencies
         shell: bash
-        run: pip3 install --quiet pyyaml tflite==2.18.0
+        run: pip3 install --quiet pyyaml tflite==2.18.0 matplotlib openpyxl
 
       - name: Run qairt-converter for each model
         shell: bash
@@ -264,6 +264,13 @@ jobs:
               print(f"{name:<{name_col}} {times['qairt']:<{val_col}} {times['litert']:<{val_col}}", flush=True)
           print("=" * total, flush=True)
 
+          # Write results JSON for downstream report step
+          import json
+          report_dir = os.environ["REPORT_OUTPUT_ROOT"]
+          pathlib.Path(report_dir).mkdir(parents=True, exist_ok=True)
+          with open(os.path.join(report_dir, "profiling_results.json"), "w") as f:
+              json.dump(results, f, indent=2)
+
           if failures:
               print(f"\n[SUMMARY] Profiling failed for: {failures}", flush=True)
               sys.exit(1)
@@ -274,6 +281,202 @@ jobs:
           MODELS_CONFIG: ${{ github.workspace }}/.github/qualcomm-litert-converter-models.yml
           DLC_OUTPUT_ROOT: ${{ github.workspace }}/dlc_output
           PROFILING_OUTPUT_ROOT: ${{ github.workspace }}/profiling_output
+          REPORT_OUTPUT_ROOT: ${{ github.workspace }}/report_output
+          MODEL_ZOO_ROOT: /model_zoo_root
+
+      - name: Generate report artifacts (bar chart + xlsx)
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, pathlib, re, yaml
+
+          report_dir    = os.environ["REPORT_OUTPUT_ROOT"]
+          models_config = os.environ["MODELS_CONFIG"]
+          model_zoo_root = os.environ["MODEL_ZOO_ROOT"]
+          workspace     = os.environ["GITHUB_WORKSPACE"]
+          dlc_root      = os.environ["DLC_OUTPUT_ROOT"]
+          qairt_sdk     = os.environ["QAIRT_SDK"]
+
+          results_path = os.path.join(report_dir, "profiling_results.json")
+          if not pathlib.Path(results_path).exists():
+              print("[SKIP] profiling_results.json not found, skipping report generation", flush=True)
+              exit(0)
+
+          with open(results_path) as f:
+              results = json.load(f)
+
+          with open(models_config) as f:
+              config = yaml.safe_load(f)
+
+          apply_plugin  = os.path.join(workspace, "bazel-bin/litert/tools/apply_plugin_main")
+          compiler_libs = os.path.join(workspace, "bazel-bin/litert/vendors/qualcomm/compiler")
+
+          def extract_us(time_str):
+              m = re.search(r"NetRun:\s*([\d,]+)\s*us", time_str or "")
+              if m:
+                  return int(m.group(1).replace(",", ""))
+              return None
+
+          def extract_pct(litert_display):
+              m = re.search(r"\(([+-]?[\d.]+)%\)", litert_display or "")
+              if m:
+                  return float(m.group(1))
+              return None
+
+          # --- Bar chart ---
+          import matplotlib
+          matplotlib.use("Agg")
+          import matplotlib.pyplot as plt
+
+          names, diffs = [], []
+          for name, times in results.items():
+              pct = extract_pct(times.get("litert", ""))
+              if pct is not None:
+                  names.append(name)
+                  diffs.append(pct)
+
+          if names:
+              names, diffs = zip(*sorted(zip(names, diffs), key=lambda x: x[1]))
+              names, diffs = list(names), list(diffs)
+              colors = ["#d62728" if d > 0 else "#2ca02c" for d in diffs]
+              fig, ax = plt.subplots(figsize=(10, max(6, len(names) * 0.3)))
+              bars = ax.barh(names, diffs, color=colors)
+              ax.axvline(0, color="black", linewidth=0.8)
+              ax.set_ylabel("Model")
+              ax.set_xlabel("LiteRT vs qairt-converter diff (%)")
+              ax.set_title("Inference time delta: LiteRT / qairt-converter")
+              for bar, val in zip(bars, diffs):
+                  sign = "+" if val >= 0 else ""
+                  ax.text(val, bar.get_y() + bar.get_height() / 2,
+                          f" {sign}{val:.1f}%", ha="left" if val >= 0 else "right",
+                          va="center", fontsize=8)
+              fig.tight_layout()
+              chart_path = os.path.join(report_dir, "inference_diff.png")
+              fig.savefig(chart_path, dpi=150)
+              print(f"[report] Bar chart saved to {chart_path}", flush=True)
+          else:
+              print("[report] No numeric diff data available, skipping bar chart", flush=True)
+
+          # --- xlsx ---
+          import openpyxl
+          from openpyxl.styles import Font, PatternFill, Alignment
+
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.title = "Converter Comparison"
+
+          headers = [
+              "Model",
+              "qairt-converter command",
+              "litert-converter command",
+              "net-run command (qairt DLC)",
+              "net-run command (litert DLC)",
+              "qairt inference time",
+              "litert inference time",
+              "diff (%)",
+          ]
+          header_fill = PatternFill("solid", fgColor="4472C4")
+          header_font = Font(bold=True, color="FFFFFF")
+          for col, h in enumerate(headers, 1):
+              cell = ws.cell(row=1, column=col, value=h)
+              cell.fill = header_fill
+              cell.font = header_font
+              cell.alignment = Alignment(wrap_text=True)
+
+          entry_map = {e["name"]: e for e in config["models"]}
+
+          sorted_results = sorted(
+              results.items(),
+              key=lambda x: extract_pct(x[1].get("litert", "")) or float("inf"),
+          )
+          for row_idx, (name, times) in enumerate(sorted_results, 2):
+              entry = entry_map.get(name, {})
+              model_input = os.path.join(model_zoo_root, entry.get("model_path", ""))
+              dlc_dir     = os.path.join(dlc_root, name)
+              dlc_output  = os.path.join(dlc_dir, f"{name}.dlc")
+              inputs_pth  = os.path.join(model_zoo_root, entry.get("input_path", ""))
+
+              # qairt-converter command
+              qairt_extra = []
+              for p in entry.get("qairt_converter_params", []):
+                  qairt_extra.extend(p if isinstance(p, list) else [p])
+              qairt_cmd = " ".join(
+                  ["qairt-converter", "-i", model_input, "-o", dlc_output] + qairt_extra
+              )
+
+              # litert-converter (apply_plugin_main) command
+              litert_extra = []
+              for p in entry.get("litert_converter_params", []):
+                  litert_extra.extend(p if isinstance(p, list) else [p])
+              dummy_out = os.path.join(dlc_dir, "dummy.tflite")
+              litert_cmd = " ".join([
+                  apply_plugin,
+                  "--cmd", "compile",
+                  "--libs", compiler_libs,
+                  "--model", model_input,
+                  "--qualcomm_dlc_dir", dlc_dir,
+                  "--soc_manufacturer", "Qualcomm",
+                  "-o", dummy_out,
+              ] + litert_extra)
+
+              # net_run command template
+              net_run_params = entry.get("net_run_params", {})
+              num_inf   = net_run_params.get("num_inferences", 50)
+              prof_lvl  = net_run_params.get("profiling_level", "client")
+              use_native = net_run_params.get("use_native_input_files", True)
+              net_run_base = [
+                  "python3", "/astrobot/QNNTools/net_run.py",
+                  "--inputs_pth",      inputs_pth,
+                  "--qnn_sdk_root",    qairt_sdk,
+                  "--num_inferences",  str(num_inf),
+                  "--profiling_level", prof_lvl,
+              ]
+              if not use_native:
+                  net_run_base += ["--no-use_native_input_files"]
+              qairt_net_run_cmd  = " ".join(net_run_base + ["--model_pth", dlc_output])
+              litert_dlc_glob = sorted(pathlib.Path(dlc_dir).glob("qnn_partition_*.dlc"))
+              litert_dlc_pth = str(litert_dlc_glob[0]) if litert_dlc_glob else f"{dlc_dir}/qnn_partition_0.dlc"
+              litert_net_run_cmd = " ".join(net_run_base + ["--model_pth", litert_dlc_pth])
+
+              qairt_time_str  = times.get("qairt", "")
+              litert_time_str = times.get("litert", "")
+              diff_pct        = extract_pct(litert_time_str)
+
+              row = [
+                  name,
+                  qairt_cmd,
+                  litert_cmd,
+                  qairt_net_run_cmd,
+                  litert_net_run_cmd,
+                  qairt_time_str,
+                  litert_time_str,
+                  diff_pct,
+              ]
+              for col, val in enumerate(row, 1):
+                  cell = ws.cell(row=row_idx, column=col, value=val)
+                  cell.alignment = Alignment(wrap_text=True)
+              # Colour diff cell: red if positive (LiteRT slower), green if negative
+              diff_cell = ws.cell(row=row_idx, column=8)
+              if diff_pct is not None:
+                  fill_color = "FFCCCC" if diff_pct > 0 else "CCFFCC"
+                  diff_cell.fill = PatternFill("solid", fgColor=fill_color)
+
+          # Auto-fit column widths (cap at 80)
+          for col in ws.columns:
+              max_len = max((len(str(c.value or "")) for c in col), default=0)
+              ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 80)
+
+          xlsx_path = os.path.join(report_dir, "converter_comparison.xlsx")
+          wb.save(xlsx_path)
+          print(f"[report] xlsx saved to {xlsx_path}", flush=True)
+
+          PYEOF
+        env:
+          QAIRT_SDK: /qairt/${{ steps.setup.outputs.qairt_version }}
+          MODELS_CONFIG: ${{ github.workspace }}/.github/qualcomm-litert-converter-models.yml
+          DLC_OUTPUT_ROOT: ${{ github.workspace }}/dlc_output
+          REPORT_OUTPUT_ROOT: ${{ github.workspace }}/report_output
           MODEL_ZOO_ROOT: /model_zoo_root
 
       - name: Clean up profiling output
