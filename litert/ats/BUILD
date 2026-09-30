@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# copybara:uncomment load(INTERNAL_PHYSICAL_MOBILE_TESTING_INFRA, "guitar", "guitar_workflow_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//litert/ats:ats.bzl", "litert_define_ats")
 load("//litert/build_common:litert_build_defs.bzl", "commandline_flag_copts", "if_oss", "litert_test")
 load("//litert/integration_test:litert_device.bzl", "litert_device_test")
 load("//litert/integration_test:litert_device_script.bzl", "make_download_model_provider")
+# copybara:uncomment load("//litert/integration_test/google:litert_device_guitar.bzl", "litert_macos_mh_guitar_test", "litert_mediatek_mh_guitar_test", "litert_pixel_9_mh_guitar_test", "litert_qualcomm_mh_guitar_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["@org_tensorflow//tensorflow:license"],
@@ -40,6 +42,8 @@ litert_define_ats(
         "OneHot",  # XNNPACK does not support OneHot
         "Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
         "SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
+        "QkvNormRope",  # XNNPACK does not support QkvNormRope composite op
+        "Swiglu",  # XNNPACK does not support SwiGLU op
         "SelectV2",  # XNNPACK does not support SelectV2
         "tfl\\.floor_div",  # XNNPACK does not support FloorDiv
         "tfl\\.pow",  # XNNPACK does not support Pow
@@ -51,9 +55,7 @@ litert_define_ats(
         "tfl\\.reduce_prod",  # XNNPACK does not support ReduceProd
         "LogSoftmax",  # XNNPACK does not support LogSoftmax
         "Pooling",  # XNNPACK rejects pooling when stride > filter size
-        "Conv2d.*f16",  # XNNPACK delegate at ToT does not yet support f16 Conv2d
-        "BatchMatmul.*f16",  # XNNPACK delegate at ToT does not yet support f16 BatchMatmul
-        "FullyConnected.*(f16|i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
+        "FullyConnected.*(i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
         "Sdpa.*f16",  # XNNPACK delegate does not support f16 SDPA
         "Sdpa.*x8x[0-9]+>.*x1x[0-9]+>",  # XNNPACK delegate does not support 8-head MQA decode
         "FullyConnected.*,2d_f32.*,1d_f32",
@@ -206,6 +208,7 @@ litert_define_ats(
     compile_only_suffix = "_aot",
     do_register = [
         "SingleOp",
+        "SdpaTransposed",
         "hf_mobilevit_small",
         "qai_hub_midas",
         "torchvision_mobilenet_v2",
@@ -229,8 +232,8 @@ litert_define_ats(
         "7d",  # OpenCL delegate only supports up to 4D tensor layouts
         "8d",  # OpenCL delegate only supports up to 4D tensor layouts
         "Pad.*[(][123]d",  # OpenCL Pad kernel requires 4D tensor layouts
-        "Transpose.*[(]1d_",  # OpenCL Transpose requires multidimensional tensors (rank >= 2)
-        "Transpose.*[(][1-8]d_(f32|i1|i4|i8|u8|i16|u16|i32|u32|i64|u64)<",  # OpenCL Transpose executes in FP16 texture buffers; only explicit FP16 Transpose is supported
+        "Transpose[^d].*[(]1d_",  # OpenCL Transpose requires multidimensional tensors (rank >= 2)
+        "Transpose[^d].*[(][1-8]d_(f32|i1|i4|i8|u8|i16|u16|i32|u32|i64|u64)<",  # OpenCL Transpose executes in FP16 texture buffers; only explicit FP16 Transpose is supported
         "FullyConnected.*(i8|u8)",  # OpenCL delegate does not support quantized INT8/UINT8 GEMM
         "FullyConnected.*_cst.*,1d_f32[^c]",  # OpenCL does not support dynamic bias
         "FullyConnected.*,2d_f32[^c]",  # OpenCL does not support dynamic weights
@@ -238,6 +241,10 @@ litert_define_ats(
         "BatchMatmul.*2d.*,[34]d",  # OpenCL does not support rank-asymmetric batch broadcasting
         "BatchMatmul.*3d",  # ATS generator forces 1xB broadcast on 3D BatchMatmul
         "BatchMatmul.*4d",  # ATS generator forces 1xB broadcast on 4D BatchMatmul
+        "Swiglu.*3d_f(16|32)<(?!1x)",  # GPU accelerator does not support SwiGLU with batch > 1
+        "QkvNormRope.*4d_f(16|32)<(?!1x)",  # GPU accelerator does not support QkvNormRope with batch > 1
+        "SelectV2",  # OpenCL SelectV2 rejects multidimensional if/else broadcasting and uses kExact on FP16-rounded f32
+        "Slice",  # OpenCL Slice uses kExact byte comparison on FP16-rounded f32 buffers
     ],
     extra_flags = [
         "--data_seed=42",
@@ -295,6 +302,127 @@ litert_define_ats(
     jit_suffix = "",
 )
 
+litert_define_ats(
+    name = "cpu_macos_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    dont_register = [
+        "(_i32<[^>]+>(?!_cst)|->.*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
+        "OneHot",  # XNNPACK does not support OneHot
+        "Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
+        "SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
+        "QkvNormRope",  # XNNPACK does not support QkvNormRope composite op
+        "Swiglu",  # XNNPACK does not support SwiGLU op
+        "SelectV2",  # XNNPACK does not support SelectV2
+        "tfl\\.floor_div",  # XNNPACK does not support FloorDiv
+        "tfl\\.pow",  # XNNPACK does not support Pow
+        "tfl\\.prelu",  # XNNPACK requires PRelu alpha to be statically allocated
+        "tfl\\.zeros_like",  # XNNPACK does not support ZerosLike
+        "tfl\\.sign",  # XNNPACK does not support Sign
+        "tfl\\.relu_0_to_1",  # XNNPACK does not support Relu0To1
+        "tfl\\.elu",  # XNNPACK does not support Elu
+        "tfl\\.reduce_prod",  # XNNPACK does not support ReduceProd
+        "LogSoftmax",  # XNNPACK does not support LogSoftmax
+        "Pooling",  # XNNPACK rejects pooling when stride > filter size
+        "Conv2d.*f16",  # XNNPACK delegate at ToT does not yet support f16 Conv2d
+        "BatchMatmul.*f16",  # XNNPACK delegate at ToT does not yet support f16 BatchMatmul
+        "FullyConnected.*(f16|i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
+        "Sdpa.*f16",  # XNNPACK delegate does not support f16 SDPA
+        "Sdpa.*x8x[0-9]+>.*x1x[0-9]+>",  # XNNPACK delegate does not support 8-head MQA decode
+        "FullyConnected.*,2d_f32.*,1d_f32",
+        "FullyConnected.*,2d_f32[^c]",
+        "FullyConnected.*_cst.*,1d_f32[^c]",
+        "Transpose.*([(][78]d|[(][1-8]d_(i1|i4|i16|u16|i32|u32|i64|u64)<)",  # XNNPACK Transpose supports FP32, FP16, INT8, and UINT8 types up to rank 6
+        # Explicit ExtraModel exclusions (unsupported by XNNPACK):
+        "simple_add_dynamic_shape",
+        "hf_all_minilm_l6_v2",
+        "u2net_lite",
+        "whisper_tiny_decoder",
+        "yolo11n",
+    ],
+    extra_flags = [
+        "--data_seed=42",
+    ],
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "metal_macos_ats",
+    backend = "metal",
+    compile_only_suffix = None,
+    dont_register = [
+        "Binary.*i32",
+        "NoOp.*i32",
+        "OneHot",
+        "LogSoftmax",
+        "Transpose.*[(]1d_",
+        "Transpose.*[(][1-8]d_(f32|i1|i4|i8|u8|i16|u16|i32|u32|i64|u64)<",
+        "FullyConnected",
+        "BatchMatmul",
+        "tfl[.]prelu",
+        "tfl[.]zeros_like",
+        "tfl[.]relu_0_to_1",
+        "tfl[.]floor_div",
+        "tfl[.]floor[{]",
+        "tfl[.]ceil",
+        "tfl[.]round",
+        "5d",
+        "6d",
+        "7d",
+        "8d",
+        "Pad.*[(][123]d",
+        "Swiglu.*3d_f(16|32)<(?!1x)",  # Metal accelerator does not support SwiGLU with batch > 1
+        "QkvNormRope.*4d_f(16|32)<(?!1x)",  # Metal accelerator does not support QkvNormRope with batch > 1
+        "SelectV2",
+        "Slice",
+        "scaled_dot_product_attention",
+    ],
+    extra_flags = [
+        "--data_seed=42",
+    ],
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "webgpu_macos_ats",
+    backend = "webgpu",
+    compile_only_suffix = None,
+    dont_register = [
+        "Binary.*i32",
+        "NoOp.*i32",
+        "OneHot",
+        "LogSoftmax",
+        "Transpose.*[(]1d_",
+        "Transpose.*[(][1-8]d_(f32|i1|i4|i8|u8|i16|u16|i32|u32|i64|u64)<",
+        "FullyConnected",
+        "BatchMatmul",
+        "tfl[.]prelu",
+        "tfl[.]zeros_like",
+        "tfl[.]relu_0_to_1",
+        "tfl[.]floor_div",
+        "tfl[.]floor[{]",
+        "tfl[.]ceil",
+        "tfl[.]round",
+        "5d",
+        "6d",
+        "7d",
+        "8d",
+        "Pad.*[(][123]d",
+        "Swiglu.*3d_f(16|32)<(?!1x)",  # WebGPU accelerator does not support SwiGLU with batch > 1
+        "QkvNormRope.*4d_f(16|32)<(?!1x)",  # WebGPU accelerator does not support QkvNormRope with batch > 1
+        "SelectV2",
+        "Slice",
+        "scaled_dot_product_attention",
+    ],
+    extra_flags = [
+        "--data_seed=42",
+    ],
+    jit_suffix = "",
+    platform = "macos",
+)
+
 # SOURCE CODES #####################################################################################
 
 # Note: The `litert_test` target below (`ats`) is the base test binary executed directly on the host
@@ -308,6 +436,8 @@ litert_test(
         "--dont_register=OneHot",  # XNNPACK does not support OneHot
         "--dont_register=Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
         "--dont_register=SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
+        "--dont_register=QkvNormRope",  # XNNPACK does not support QkvNormRope composite op
+        "--dont_register=Swiglu",  # XNNPACK does not support SwiGLU op
         "--dont_register=SelectV2",  # XNNPACK does not support SelectV2
         "--dont_register=tfl\\.floor_div",  # XNNPACK does not support FloorDiv
         "--dont_register=tfl\\.pow",  # XNNPACK does not support Pow
@@ -319,9 +449,7 @@ litert_test(
         "--dont_register=tfl\\.reduce_prod",  # XNNPACK does not support ReduceProd
         "--dont_register=LogSoftmax",  # XNNPACK does not support LogSoftmax
         "--dont_register=Pooling",  # XNNPACK rejects pooling when stride > filter size
-        "--dont_register=Conv2d.*f16",  # XNNPACK delegate at ToT does not yet support f16 Conv2d
-        "--dont_register=BatchMatmul.*f16",  # XNNPACK delegate at ToT does not yet support f16 BatchMatmul
-        "--dont_register=FullyConnected.*(f16|i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
+        "--dont_register=FullyConnected.*(i8|u8|SHUFFLED)",  # XNNPACK delegate at ToT does not yet support these FullyConnected presets
         "--dont_register=Sdpa.*f16",  # XNNPACK delegate does not support f16 SDPA
         "--dont_register=Sdpa.*x8x[0-9]+>.*x1x[0-9]+>",  # XNNPACK delegate does not support 8-head MQA decode
         "--dont_register=FullyConnected.*,2d_f32.*,1d_f32",
@@ -342,130 +470,6 @@ litert_test(
         "//litert:windows": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),
-    ungrte = if_oss(True, False),
-    use_sys_malloc = True,
-    deps = [
-        ":compile_fixture",
-        ":configure",
-        ":inference_fixture",
-        ":register",
-        ":register_composite_ops",
-        ":register_single_ops",
-        ":register_transformer_layer",
-        "//litert/c/internal:litert_logging",
-        "//litert/cc/internal:litert_detail",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-litert_test(
-    name = "metal_macos_ats",
-    srcs = ["ats.cc"],
-    args = [
-        "--backend=gpu",
-        "--dont_register=Binary.*i32",
-        "--dont_register=NoOp.*i32",
-        "--dont_register=OneHot",
-        "--dont_register=LogSoftmax",
-        "--dont_register=_Transpose[.]",
-        "--dont_register=FullyConnected",
-        "--dont_register=BatchMatmul",
-        "--dont_register=tfl[.]prelu",
-        "--dont_register=tfl[.]zeros_like",
-        "--dont_register=tfl[.]relu_0_to_1",
-        "--dont_register=tfl[.]floor_div",
-        "--dont_register=tfl[.]floor[{]",
-        "--dont_register=tfl[.]ceil",
-        "--dont_register=tfl[.]round",
-        "--dont_register=5d",
-        "--dont_register=6d",
-        "--dont_register=7d",
-        "--dont_register=8d",
-        "--dont_register=Pad.*[(][123]d",
-    ],
-    copts = commandline_flag_copts(),
-    data = [
-        "//litert/runtime/accelerators/gpu:ml_drift_metal_accelerator_dylib",
-    ],
-    env = {
-        "DYLD_LIBRARY_PATH": "third_party/odml/litert/litert/runtime/accelerators/gpu",
-        "LITERT_RUNTIME_LIB_DIR": "third_party/odml/litert/litert/runtime/accelerators/gpu",
-    },
-    linkstatic = True,
-    no_main = True,
-    tags = [
-        "local",
-        "manual",
-    ],
-    target_compatible_with = [
-        "@platforms//os:macos",
-    ],
-    ungrte = if_oss(True, False),
-    use_sys_malloc = True,
-    deps = [
-        ":compile_fixture",
-        ":configure",
-        ":inference_fixture",
-        ":register",
-        ":register_composite_ops",
-        ":register_single_ops",
-        ":register_transformer_layer",
-        "//litert/c/internal:litert_logging",
-        "//litert/cc/internal:litert_detail",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-litert_test(
-    name = "webgpu_macos_ats",
-    srcs = ["ats.cc"],
-    args = [
-        "--backend=gpu",
-        "--dont_register=Binary.*i32",
-        "--dont_register=NoOp.*i32",
-        "--dont_register=OneHot",
-        "--dont_register=LogSoftmax",
-        "--dont_register=_Transpose[.]",
-        "--dont_register=FullyConnected",
-        "--dont_register=BatchMatmul",
-        "--dont_register=tfl[.]prelu",
-        "--dont_register=tfl[.]zeros_like",
-        "--dont_register=tfl[.]relu_0_to_1",
-        "--dont_register=tfl[.]floor_div",
-        "--dont_register=tfl[.]floor[{]",
-        "--dont_register=tfl[.]ceil",
-        "--dont_register=tfl[.]round",
-        "--dont_register=5d",
-        "--dont_register=6d",
-        "--dont_register=7d",
-        "--dont_register=8d",
-        "--dont_register=Pad.*[(][123]d",
-    ],
-    copts = commandline_flag_copts(),
-    data = [
-        "//litert/runtime/accelerators/gpu:ml_drift_webgpu_accelerator_dylib",
-    ],
-    env = {
-        "DYLD_LIBRARY_PATH": "third_party/odml/litert/litert/runtime/accelerators/gpu",
-        "LITERT_RUNTIME_LIB_DIR": "third_party/odml/litert/litert/runtime/accelerators/gpu",
-    },
-    linkstatic = True,
-    no_main = True,
-    tags = [
-        "local",
-        "manual",
-    ],
-    target_compatible_with = [
-        "@platforms//os:macos",
-    ],
     ungrte = if_oss(True, False),
     use_sys_malloc = True,
     deps = [
@@ -542,8 +546,10 @@ cc_library(
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
+        ":register_qkv_norm_rope",
         ":register_sdpa",
         ":register_sdpa_transposed",
+        ":register_swiglu",
     ],
 )
 
@@ -809,6 +815,23 @@ cc_library(
 )
 
 cc_library(
+    name = "register_qkv_norm_rope",
+    testonly = True,
+    srcs = ["register_qkv_norm_rope.cc"],
+    hdrs = ["register_qkv_norm_rope.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:qkv_norm_rope",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
     name = "register_sdpa",
     testonly = True,
     srcs = ["register_sdpa.cc"],
@@ -838,6 +861,23 @@ cc_library(
         ":register",
         "//litert/cc/internal:litert_detail",
         "//litert/test/generators:sdpa_transposed",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
+    name = "register_swiglu",
+    testonly = True,
+    srcs = ["register_swiglu.cc"],
+    hdrs = ["register_swiglu.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:swiglu",
         "//tflite/types:half",
     ],
 )
@@ -1025,7 +1065,10 @@ cc_library(
         "//litert/cc/internal:litert_rng",
         "//litert/core:filesystem",
         "//litert/test/generators",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1061,6 +1104,7 @@ cc_library(
         ":configure",
         ":executor",
         ":inference_capture",
+        ":register",
         "//litert/c:litert_common",
         "//litert/c/internal:litert_logging",
         "//litert/cc:litert_element_type",
@@ -1090,6 +1134,7 @@ cc_library(
         ":common",
         ":compile_capture",
         ":configure",
+        ":register",
         "//litert/c/internal:litert_logging",
         "//litert/cc/internal:litert_c_types_printing",
         "//litert/compiler/plugin:compiler_plugin",
@@ -1293,3 +1338,105 @@ make_download_model_provider(
     name = "ats_models_provider",
     url = "https://storage.googleapis.com/litert/ats_models.tar.gz",
 )
+
+# copybara:uncomment_begin(google-only)
+# # GUITAR WORKFLOWS #################################################################################
+#
+# PIXEL_9_ATS_GUITAR_TARGETS = [
+#     ":gpu_ats_remote",
+#     ":cpu_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_guitar_pixel_9",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_pixel_9_mh_guitar_test(
+#                 targets = PIXEL_9_ATS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# QUALCOMM_S24_ATS_GUITAR_TARGETS = [
+#     ":gpu_ats_remote",
+#     ":cpu_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_guitar_qualcomm_s24",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_qualcomm_mh_guitar_test(
+#                 targets = QUALCOMM_S24_ATS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# MEDIATEK_MT6989_ATS_GUITAR_TARGETS = [
+#     ":gpu_ats_remote",
+#     ":cpu_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_guitar_mediatek_mt6989",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_mediatek_mh_guitar_test(
+#                 dimension_hardware = "mt6989",
+#                 targets = MEDIATEK_MT6989_ATS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# MACOS_ATS_GUITAR_TARGETS = [
+#     ":metal_macos_ats_remote",
+#     ":webgpu_macos_ats_remote",
+#     ":cpu_macos_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_guitar_macos",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_macos_mh_guitar_test(
+#                 targets = MACOS_ATS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+# copybara:uncomment_end

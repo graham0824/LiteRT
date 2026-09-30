@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/status_macros.h"  // from @com_google_absl
+#include "ml_drift/common/data_type.h"  // from @ml_drift
 #include "ml_drift/common/gpu_info.h"  // from @ml_drift
 #include "ml_drift/common/gpu_model.h"  // from @ml_drift
 #include "ml_drift/common/gpu_model_builder.h"  // from @ml_drift
@@ -117,16 +118,23 @@ void LiteRtOpSelector::ParamTensorToBuffer(
   }
   auto param_tensor = param_tensor_handle_or.value();
   if (param_tensor.tensor_desc.GetStorageType() ==
-      ::ml_drift::TensorStorageType::BUFFER) {
+      ::ml_drift::TensorStorageType::kBuffer) {
     return;
   }
   ::ml_drift::TensorDescriptor new_desc = param_tensor.tensor_desc;
-  new_desc.SetStorageType(::ml_drift::TensorStorageType::BUFFER);
+  new_desc.SetStorageType(::ml_drift::TensorStorageType::kBuffer);
   auto new_param_tensor = model_builder->AddTensor(new_desc);
-  if (!model_builder->UpdateOutputTensor(param_tensor, new_param_tensor.id)
-           .ok()) {
-    return;
-  }
+  // Emit an explicit copy instead of re-pointing the producer of `param_id` at
+  // `new_param_tensor`. The param tensor can be read by other consumers that
+  // expect the original (non-BUFFER) storage type, e.g. the channel slices that
+  // the ring-buffer SDPA path applies to it. Re-pointing the producer would
+  // leave `param_id` without any producer, so those consumers would read
+  // uninitialized memory.
+  //
+  // When the param tensor has no other consumer, `LinkNodes()` merges this copy
+  // back into the producer, which yields exactly the same graph as re-pointing
+  // the producer would have.
+  model_builder->Copy(param_tensor, new_param_tensor);
   replaced_tensors_[param_id] = std::make_unique<::ml_drift::Value>(
       ::ml_drift::Value{new_param_tensor.id, inputs[param_index]->tensor,
                         inputs[param_index]->quant_params});
@@ -178,8 +186,14 @@ absl::Status LiteRtOpSelector::GPUOperationFromNode(
   }
   if (node.operation.type == kSdpaTransposedType) {
     std::vector<::ml_drift::Value*> sdpa_inputs = inputs;
-    if (inputs.size() > 4) {
-      int param_index = 4;
+    int param_index = -1;
+    if (inputs.size() == 4 &&
+        inputs[3]->tensor.type == ::ml_drift::DataType::kInt32) {
+      param_index = 3;
+    } else if (inputs.size() > 4) {
+      param_index = 4;
+    }
+    if (param_index >= 0) {
       // Ensure param tensor is a buffer tensor as kernel programs expect so.
       ParamTensorToBuffer(param_index, inputs, model_builder);
       if (replaced_tensors_.contains(inputs[param_index]->id)) {
@@ -203,7 +217,7 @@ absl::Status LiteRtOpSelector::GPUOperationFromNode(
   if (node.operation.type == kShortConvStepType) {
     return CreateShortConvStepFromNode(inputs, outputs, node, model_builder);
   }
-  if (node.operation.type == ToString(::ml_drift::OperationType::ROPE)) {
+  if (node.operation.type == ToString(::ml_drift::OperationType::kRope)) {
     return CreateRoPEFromNode(inputs, outputs, node, model_builder);
   }
   return ::ml_drift::GPUOperationFromNode(gpu_info_, op_def, create_info_,

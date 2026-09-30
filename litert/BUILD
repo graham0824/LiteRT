@@ -306,6 +306,7 @@ package_group(
     ],
     packages = [
         "//litert/kotlin/...",
+        "//litert/objc/...",
         "//litert/rust/...",
         "//litert/swift/...",
         "//litert/vendors/...",
@@ -399,6 +400,16 @@ config_setting(
 # Configuration to keep symbols even in optimized builds, useful for profiling
 config_setting(
     name = "litert_keep_symbols",
-    values = {"define": "litert_keep_symbols=true"},
+    define_values = {"litert_keep_symbols": "true"},
+    visibility = ["//visibility:public"],
+)
+
+# Configuration for Microdroid guest VM builds.
+config_setting(
+    name = "microdroid",
+    constraint_values = ["@platforms//os:android"],
+    values = {
+        "define": "microdroid=1",
+    },
     visibility = ["//visibility:public"],
 )

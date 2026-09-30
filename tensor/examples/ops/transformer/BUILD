@@ -33,6 +33,8 @@ cc_library(
         "//tensor/internal:graph",
         "//tensor/utils:macros",
         "//tensor/utils:source_location",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -125,7 +127,7 @@ cc_library(
 #     name = "transformer_ops_numerical_test",
 #     srcs = ["transformer_ops_numerical_test.cc"],
 #     tags = [
-#         "requires-gpu-nvidia",
+#         "requires-gpu-sm90",  # OpenCL/MIG-compatible
 #     ],
 #     deps = [
 #         ":transformer_ops",
@@ -174,9 +176,12 @@ cc_library(
 #     deps = [
 #         ":transformer_ops",
 #         "@com_google_googletest//:gtest_main",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:status_matchers",
 #         "//tensor",
 #         "//tensor:datatypes",
 #         "//tensor/backends/xnnpack:arithmetic",
+#         "//tensor/internal:graph",
 #         "//tensor/runners/xnnpack:runner",
 #         "//tensor/utils:matchers",
 #     ],

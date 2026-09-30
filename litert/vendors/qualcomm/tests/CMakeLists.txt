@@ -15,8 +15,6 @@ target_sources(litert_test_common
 target_include_directories(litert_test_common PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../test
     ${CMAKE_CURRENT_SOURCE_DIR}/../../
-    ${TENSORFLOW_SOURCE_DIR}
-    ${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl
 )
 
 target_link_libraries(litert_test_common PUBLIC
@@ -118,6 +116,7 @@ target_sources(builder_test
         ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/fully_connected_int2_test.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/pack_test.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/pad_test.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/quantize_test.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/relu_test.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/spatial_transform_test.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../qnn_backend_test/builder_test/spatial_transform_nd_test.cc

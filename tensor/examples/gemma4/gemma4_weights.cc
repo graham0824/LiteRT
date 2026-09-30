@@ -18,7 +18,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "tensor/examples/utils/tensor_mapping.h"
+#include "tensor/tensor.h"
 
 namespace litert::tensor::examples::gemma4 {
 
@@ -29,6 +33,9 @@ absl::flat_hash_map<std::string, std::string> GetGemma4WeightMapping(
   // Embedding
   mapping["model.language_model.embed_tokens.weight"] =
       "model.embed_tokens.weight";
+
+  // LM head.
+  mapping["lm_head.weight"] = "lm_head.weight";
 
   // Final norm
   mapping["model.language_model.norm.weight"] = "model.norm.weight";
@@ -94,6 +101,14 @@ absl::flat_hash_map<std::string, std::string> GetGemma4WeightMapping(
   }
 
   return mapping;
+}
+
+absl::StatusOr<TensorHandle> Gemma4WeightHooks::OnNotFound(
+    TensorMapping& mapping, absl::string_view model_name) {
+  if (model_name == "lm_head.weight") {
+    return mapping.Get("model.embed_tokens.weight");
+  }
+  return TensorMappingHooks::OnNotFound(mapping, model_name);
 }
 
 }  // namespace litert::tensor::examples::gemma4

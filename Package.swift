@@ -40,6 +40,14 @@ let package = Package(
       name: "LiteRtMetalAccelerator",
       targets: ["LiteRtMetalAccelerator"]
     ),
+    .library(
+      name: "CLiteRT_static",
+      targets: ["CLiteRT_static"]
+    ),
+    .library(
+      name: "TensorFlowLite",
+      targets: ["TensorFlowLite"]
+    ),
   ],
   targets: [
     // The Prebuilt Binary Target
@@ -50,6 +58,11 @@ let package = Package(
     .binaryTarget(
       name: "CLiteRT_mac",
       path: "prebuilt/CLiteRT_mac.xcframework.zip"
+    ),
+    // Static build of the C API for C and Objective-C consumers (iOS only).
+    .binaryTarget(
+      name: "CLiteRT_static",
+      path: "prebuilt/CLiteRT_static.xcframework.zip"
     ),
     // Optional GPU Accelerator Plugin Target
     .binaryTarget(
@@ -77,6 +90,42 @@ let package = Package(
       name: "LiteRTTests",
       dependencies: ["LiteRT"],
       path: "litert/swift/Tests/LiteRT"
+    ),
+    // The Prebuilt TensorFlow Lite C Binary Targets
+    .binaryTarget(
+      name: "TensorFlowLiteC",
+      path: "prebuilt/TensorFlowLiteC.xcframework.zip"
+    ),
+    .binaryTarget(
+      name: "TensorFlowLiteCCoreML",
+      path: "prebuilt/TensorFlowLiteCCoreML.xcframework.zip"
+    ),
+    .binaryTarget(
+      name: "TensorFlowLiteCMetal",
+      path: "prebuilt/TensorFlowLiteCMetal.xcframework.zip"
+    ),
+    // The TensorFlow Lite Swift Wrapper Target
+    .target(
+      name: "TensorFlowLite",
+      dependencies: [
+        .target(name: "TensorFlowLiteC", condition: .when(platforms: [.iOS])),
+        .target(name: "TensorFlowLiteCCoreML", condition: .when(platforms: [.iOS])),
+        .target(name: "TensorFlowLiteCMetal", condition: .when(platforms: [.iOS])),
+      ],
+      path: "litert/swift/Sources/TensorFlowLite",
+      linkerSettings: [
+        .unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "CoreML"]),
+        .unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "Metal"]),
+      ]
+    ),
+    // The TensorFlow Lite Test Target
+    .testTarget(
+      name: "TensorFlowLiteTests",
+      dependencies: ["TensorFlowLite"],
+      path: "litert/swift/Tests/TensorFlowLite",
+      exclude: [
+        "BUILD",
+      ]
     ),
   ]
 )
