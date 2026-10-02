@@ -130,7 +130,13 @@ build --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # build --incompatible_config_setting_private_default_visibility
 
+# Build with the real TensorFlow instead of the `@org_tensorflow` shim. The
+# converter and the tflite/testing tests need it.
+common:with_tensorflow --repo_env=LITERT_WITH_TENSORFLOW=1
+build:with_tensorflow --define=litert_prefixes="external/org_tensorflow/"
+
 # LiteRT Converter build options
+build:litert_converter --config=with_tensorflow
 build:litert_converter --copt=-Wno-macro-redefined --copt=-DMLIR_PYTHON_PACKAGE_PREFIX=litert_converter.mlir.
 
 # Compiler MLIR Builds
@@ -512,10 +518,6 @@ try-import %workspace%/warnings.bazelrc
 build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 build --config=v2
 
-# Options to filter filepath prefixes when generating python api's
-build:litert_prefixes --define=litert_prefixes="external/org_tensorflow/"
-build --config=litert_prefixes
-
 # Disables generating api v2 under the submodule tensorflow/lite/python.
 build --define=disable_tf_lite_py=true
 
@@ -598,13 +600,3 @@ test:bulk_test_cpu --build_tests_only
 # TODO: b/397625618 Enable bzlmod
 common --noenable_bzlmod
 
-# BEGIN-INTERNAL
-# Flags for tensorflow source rules to use local_repository rather than http_archive.
-# NOTE: due to bazel caching, when switching from http_archive to local_repository,
-# do a bazel clean --expunge --async before building or use the
-# flag --override_repository=org_tensorflow=$TF_LOCAL_SOURCE_PATH
-build:use_local_tf --action_env=USE_LOCAL_TF=true
-build:use_local_tf --action_env=TF_LOCAL_SOURCE_PATH
-test:use_local_tf --action_env=USE_LOCAL_TF=true
-test:use_local_tf --action_env=TF_LOCAL_SOURCE_PATH
-# END-INTERNAL

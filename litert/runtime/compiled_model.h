@@ -59,7 +59,19 @@ using TfLiteTensorIdentifier = litert::internal::TfLiteTensorIdentifier;
 using TensorIdentifierHash = litert::internal::TensorIdentifierHash;
 using TensorIdentifierEqual = litert::internal::TensorIdentifierEqual;
 
+class LiteRtAcceleratorDelegationMetricsT {
+ public:
+  const char* accelerator_name = nullptr;
+  LiteRtHwAcceleratorSet hardware_type = kLiteRtHwAcceleratorNone;
+  int delegated_node_count = 0;
+  int partition_count = 0;
+};
 
+class LiteRtDelegationMetricsT {
+ public:
+  int total_node_count = 0;
+  std::vector<LiteRtAcceleratorDelegationMetricsT> accelerators;
+};
 
 // The LiteRtCompiledModelT is internal implementation of CompiledModel C++ API.
 class LiteRtCompiledModelT {
@@ -205,24 +217,15 @@ class LiteRtCompiledModelT {
 
   struct GraphCounts {
     int undelegated_nodes = 0;
-    int npu_partitions = 0;
-    int gpu_partitions = 0;
-    int cpu_partitions = 0;
+    int partitions = 0;
   };
 
   // Counts undelegated nodes and partitions across active subgraphs in a single
   // pass.
   GraphCounts GetGraphCounts() const;
 
-  struct DelegationMetrics {
-    int total_node_count = 0;
-    int npu_delegated_node_count = 0;
-    int npu_partition_count = 0;
-    int gpu_delegated_node_count = 0;
-    int gpu_partition_count = 0;
-    int cpu_delegated_node_count = 0;
-    int cpu_partition_count = 0;
-  };
+  using AcceleratorDelegationMetrics = LiteRtAcceleratorDelegationMetricsT;
+  using DelegationMetrics = LiteRtDelegationMetricsT;
 
   // Returns delegation metrics for the compiled model.
   const DelegationMetrics& GetDelegationMetrics() const {
@@ -397,6 +400,10 @@ class LiteRtCompiledModelT {
   // initial implementation intentionally defines the active set to be exactly
   // this root set and does not add transitively referenced callees.
   litert::Expected<void> InitializeActiveSubgraphs(LiteRtOptions options);
+
+  // Marks signature subgraph input and output tensors as kTfLiteNonCpu to
+  // prevent TFLite's ArenaPlanner from allocating host heap buffers for them.
+  void MarkSignatureIoTensorsNonCpu();
 
   // Returns NotFound when an explicitly unselected signature is used.
   litert::Expected<void> ValidateSignatureIsActive(
@@ -591,7 +598,7 @@ class LiteRtCompiledModelT {
   bool non_cpu_fully_delegated_ = false;
 
   // Delegation metrics for the compiled model.
-  DelegationMetrics delegation_metrics_;
+  DelegationMetrics delegation_metrics_ = {};
 
   // Owns dynamically created TfLiteRegistration objects for TfLiteOperator.
   std::vector<std::unique_ptr<TfLiteRegistration>> owned_tflite_registrations_;

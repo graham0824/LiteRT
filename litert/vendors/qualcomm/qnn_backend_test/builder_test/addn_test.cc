@@ -1,6 +1,7 @@
 // Copyright (c) Qualcomm Innovation Center, Inc. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -14,9 +15,7 @@
 
 namespace litert::qnn {
 namespace {
-#if defined(__ANDROID__)
 using testing::ElementsAre;
-#endif
 
 INSTANTIATE_TEST_SUITE_P(, QnnModelTest, GetDefaultQnnModelParams(),
                          QnnTestPrinter);
@@ -37,8 +36,8 @@ TEST_P(QnnModelTest, AddNThreeInputs) {
                                 {input0_tensor, input1_tensor, input2_tensor},
                                 {output_tensor});
   ASSERT_EQ(ops.size(), 2u);
-  EXPECT_EQ(ops[0].GetOpCode(), ::qnn::QnnOpCode::kElementWiseBinary);
-  EXPECT_EQ(ops[1].GetOpCode(), ::qnn::QnnOpCode::kElementWiseBinary);
+  EXPECT_EQ(ops[0].GetOpCode(), ::qnn::QnnOpCode::kElementWiseAdd);
+  EXPECT_EQ(ops[1].GetOpCode(), ::qnn::QnnOpCode::kElementWiseAdd);
 
   qnn_model_.MoveOpsToGraph(std::move(ops));
 
@@ -80,7 +79,7 @@ TEST_P(QnnModelTest, AddNTwoInputsEmitsSingleAdd) {
   auto ops = ::qnn::BuildAddNOp(tensor_pool_, {input0_tensor, input1_tensor},
                                 {output_tensor});
   ASSERT_EQ(ops.size(), 1u);
-  EXPECT_EQ(ops[0].GetOpCode(), ::qnn::QnnOpCode::kElementWiseBinary);
+  EXPECT_EQ(ops[0].GetOpCode(), ::qnn::QnnOpCode::kElementWiseAdd);
 
   qnn_model_.MoveOpsToGraph(std::move(ops));
 

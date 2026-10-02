@@ -3132,11 +3132,15 @@ class EmbeddingLookupOperationParser : public TFLiteOperationParser {
   void Parse(const TfLiteNode* tflite_node,
              const TfLiteRegistration* registration,
              ::ml_drift::GraphFloat32* graph, ObjectReader* reader) final {
-    reader->AllowSharingInput(kInputWeightsId);
+    const TfLiteTensor weights_tensor = *reader->GetInputTensor(1);
+    if (weights_tensor.type == kTfLiteInt8 ||
+        weights_tensor.type == kTfLiteInt4 ||
+        weights_tensor.type == kTfLiteInt2) {
+      reader->AllowSharingInput(kInputWeightsId);
+    }
     ::ml_drift::Node* node = graph->NewNode();
     node->operation.type =
         ToString(::ml_drift::OperationType::kEmbeddingLookup);
-    const TfLiteTensor weights_tensor = *reader->GetInputTensor(1);
     const ObjectReader::ConstantInputSharingInfo weights_share =
         reader->GetSharingInfoByNodeInputIndex(kInputWeightsId);
     reader->AddInput(node, 0);
@@ -6874,7 +6878,9 @@ bool IsAllAllowedTensors(TfLiteContext* context,
         break;
       }
     }
-    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
+    if ((t->allocation_type == kTfLiteArenaRw ||
+         t->allocation_type == kTfLiteNonCpu) &&
+        !type_supported) {
       *unsupported_details += "Tensor type(" +
                               std::string(TfLiteTypeGetName(t->type)) +
                               ") is not supported. " + std::string(t->name);
