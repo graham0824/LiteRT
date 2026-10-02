@@ -68,6 +68,26 @@ def litert_platform_defines():
     """This is a no-op outside of Google."""
     return []
 
+def litert_jni_linkopts():
+    return select({
+        "//litert:android": [
+            "-Wl,-s",
+            "-latomic",
+            "-Wl,--gc-sections",
+            "-Wl,--as-needed",
+            "-Wl,-z,max-page-size=16384",
+        ],
+        "//conditions:default": [
+            "-Wl,-s",
+        ],
+    })
+
+def litert_linkopts_no_undefined():
+    return select({
+        "//litert:macos": ["-Wl,-undefined,error"],
+        "//conditions:default": ["-Wl,--no-undefined"],
+    })
+
 def litert_metal_opts():
     return select({
         "//litert:ios": ["-ObjC++", "-fobjc-arc"],
@@ -160,5 +180,10 @@ def litert_jni_friends():
 
     Return the package group declaration for internal code locations that use
     "litert/kotlin:litert_api_no_jni" and "litert/kotlin:litert_api_jni" libraries directly."""
+
+    return []
+
+def litert_sdk_friends():
+    """Internal visibility for direct clients of LiteRT SDK files."""
 
     return []

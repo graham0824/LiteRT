@@ -25,12 +25,12 @@ if [ ! -d /root_dir ]; then
   docker build . -t tflite-builder -f tflite-py3.Dockerfile
 
   docker run \
-    -v ${SCRIPT_DIR}/../third_party/tensorflow:/third_party_tensorflow \
     -v ${ROOT_DIR}:/root_dir \
     -v ${SCRIPT_DIR}:/script_dir \
     -e DOCKER_PYTHON_VERSION=${DOCKER_PYTHON_VERSION} \
     -e EXPERIMENTAL_TARGETS_ONLY=${EXPERIMENTAL_TARGETS_ONLY:-false} \
     -e LITERT_TARGETS_ONLY=${LITERT_TARGETS_ONLY:-false} \
+    -e LITERT_WITH_TENSORFLOW=${LITERT_WITH_TENSORFLOW:-0} \
     -e IS_PRESUBMIT_GITHUB=${IS_PRESUBMIT_GITHUB:-false} \
     -e BAZEL_CONFIG_FLAGS=${BAZEL_CONFIG_FLAGS} \
     --entrypoint /script_dir/run_bazel_test_with_docker.sh \
@@ -40,13 +40,9 @@ else
   # Running inside docker container
   if [[ "${IS_PRESUBMIT_GITHUB}" == "true" ]]; then
     cd /root_dir
-    # Add safe directory to avoid git submodule update error.
+    # Add safe directory to avoid git error.
     # Main repo
     git config --global --add safe.directory /root_dir
-    # Submodule
-    git config --global --add safe.directory /root_dir/third_party/tensorflow
-    git submodule update --init --recursive
-    git submodule update --remote
   fi
 
   cd /root_dir
@@ -69,7 +65,6 @@ else
   # LINT.ThenChange(../workflows/tflite_bazel_cmake.yml:configure_tflite_build_flags)
 
   export HERMETIC_PYTHON_VERSION=${DOCKER_PYTHON_VERSION}
-  export TF_LOCAL_SOURCE_PATH="/root_dir/third_party/tensorflow"
 
   cd /root_dir
   bash /script_dir/run_bazel_test.sh

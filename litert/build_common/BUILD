@@ -57,15 +57,68 @@ config_setting(
     },
 )
 
-config_setting(
-    name = "litert_disable_cpu",
-    # Relies on the same definition with TFLite to disable CPU backend on TFLite Interpreter.
-    define_values = {"tflite_with_xnnpack": "false"},
+# Selects the kernels used by the CPU backend.
+#   xnnpack: XNNPACK accelerator, with TFLite builtin kernels as fallback.
+#   builtin: TFLite builtin kernels only. XNNPACK is not linked.
+# Usage: --//litert/build_common:cpu_backend=builtin
+string_flag(
+    name = "cpu_backend",
+    build_setting_default = "xnnpack",
+    values = [
+        "xnnpack",
+        "builtin",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "litert_enable_ynnpack",
+    name = "cpu_backend_builtin",
+    flag_values = {":cpu_backend": "builtin"},
+)
+
+# Legacy way to leave out XNNPACK. Relies on the same definition with TFLite to
+# disable the XNNPACK CPU backend on the TFLite Interpreter.
+config_setting(
+    name = "tflite_without_xnnpack",
+    define_values = {"tflite_with_xnnpack": "false"},
+)
+
+# Leaves out the XNNPACK CPU accelerator (defines LITERT_DISABLE_CPU). CPU
+# execution still works through the TFLite builtin kernels.
+selects.config_setting_group(
+    name = "litert_disable_cpu",
+    match_any = [
+        ":cpu_backend_builtin",
+        ":tflite_without_xnnpack",
+    ],
+)
+
+# Enables YNNPACK. Equivalent to `--define=litert_enable_ynnpack=true`, but can also be set from a
+# Starlark transition (transitions on `--define` are not supported).
+bool_flag(
+    name = "enable_ynnpack",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "litert_enable_ynnpack_define",
     define_values = {"litert_enable_ynnpack": "true"},
+)
+
+config_setting(
+    name = "litert_enable_ynnpack_flag",
+    flag_values = {":enable_ynnpack": "true"},
+)
+
+# Matches if YNNPACK is enabled with either `--define=litert_enable_ynnpack=true` or
+# `--//litert/build_common:enable_ynnpack`.
+selects.config_setting_group(
+    name = "litert_enable_ynnpack",
+    match_any = [
+        ":litert_enable_ynnpack_define",
+        ":litert_enable_ynnpack_flag",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -204,3 +257,15 @@ cc_library(
     strip_include_prefix = "",
     visibility = ["//visibility:public"],
 )
+
+# Files that make up the LiteRT C++ SDK.
+#
+# lint IfChange(litert_cc_sdk_files)
+filegroup(
+    name = "litert_cc_sdk_files",
+    srcs = [
+        "build_config.h.in",
+    ],
+    visibility = ["//litert/cc_sdk:__pkg__"],
+)
+# lint ThenChange(litert/cc_sdk/litert_cc_sdk_hdrs.txt, litert/cc_sdk/litert_cc_sdk_srcs.txt)

@@ -5,12 +5,6 @@ on:
     - cron: '0 20 * * *'
       timezone: 'America/Los_Angeles'
   workflow_dispatch:
-    inputs:
-      build_converter:
-        description: 'When true, build the converter into the wheels.'
-        required: true
-        default: false
-        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-nightly
@@ -121,10 +115,8 @@ jobs:
         env:
           DOCKER_PYTHON_VERSION: ${{ matrix.python-version }}
           CUSTOM_BAZEL_FLAGS: "--config=release_cpu_linux"
-          USE_LOCAL_TF: "false"
           TEST_MANYLINUX_COMPLIANCE: "true"
           BAZEL_CONFIG_FLAGS: ${{ env.BAZEL_CONFIG_FLAGS }}
-          BUILD_CONVERTER: ${{ inputs.build_converter }}
         run: |
           export NIGHTLY_RELEASE_DATE=$(TZ='America/Los_Angeles' date +%Y%m%d)
           export CI_BUILD_PYTHON="python${DOCKER_PYTHON_VERSION}"
