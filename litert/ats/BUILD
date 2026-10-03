@@ -67,7 +67,6 @@ XNNPACK_DONT_REGISTER = [
 
 YNNPACK_DONT_REGISTER = [
     "Binary.*i32",  # YNNPACK does not support int32 binary arithmetic
-    "NoOp.*i32",  # YNNPACK does not support int32 NoOp (add)
     "OneHot",  # YNNPACK does not support OneHot
     "SelectV2",  # YNNPACK does not support SelectV2
     "tfl\\.floor_div",  # YNNPACK does not support FloorDiv
@@ -92,6 +91,16 @@ YNNPACK_DONT_REGISTER = [
     "yolo11n",
 ]
 
+BUILTIN_DONT_REGISTER = [
+    "_f16",  # TFLite built-in kernels do not support FLOAT16 tensors
+    "wf=SHUFFLED4x16INT8",  # Built-in FC needs a 2nd workspace output for this format
+]
+
+BUILTIN_EXTRA_FLAGS = [
+    "--cpu_kernel_mode=builtin",
+    "--data_seed=42",
+]
+
 litert_define_ats(
     name = "cpu_ats",
     backend = "cpu",
@@ -108,6 +117,17 @@ litert_define_ats(
     extra_flags = [
         "--enable_ynnpack=true",
     ],
+    jit_suffix = "",
+)
+
+# Runs the TFLite built-in CPU kernels (no delegate) against the generator
+# references. Used to guard refactoring of the built-in kernels.
+litert_define_ats(
+    name = "builtin_cpu_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    dont_register = BUILTIN_DONT_REGISTER,
+    extra_flags = BUILTIN_EXTRA_FLAGS,
     jit_suffix = "",
 )
 
@@ -151,7 +171,6 @@ litert_define_ats(
         "7d",  # Qualcomm QNN HTP only supports up to 4D/6D tensor layouts
         "8d",  # Qualcomm QNN HTP only supports up to 4D/6D tensor layouts
         "Binary.*i32",  # Qualcomm QNN does not support int32 binary arithmetic
-        "NoOp.*i32",  # Qualcomm QNN does not support int32 NoOp (add)
         "OneHot",  # Qualcomm QNN compiler does not support dynamic depth/axis OneHot
         "tfl[.]zeros_like",  # Qualcomm QNN compiler does not support ZerosLike
         "tfl[.]reduce_prod",  # Qualcomm QNN reduce_prod exhibits numerical accumulation divergence
@@ -258,7 +277,6 @@ litert_define_ats(
     ],
     dont_register = [
         "Binary.*i32",  # OpenCL delegate does not support int32 binary arithmetic
-        "NoOp.*i32",  # OpenCL delegate does not support int32 NoOp (add)
         "OneHot",  # OpenCL delegate does not support OneHot
         "LogSoftmax",  # OpenCL delegate does not support LogSoftmax
         "tfl[.]prelu",  # OpenCL delegate requires PRelu alpha to be statically allocated
@@ -403,7 +421,6 @@ litert_define_ats(
     compile_only_suffix = None,
     dont_register = [
         "Binary.*i32",
-        "NoOp.*i32",
         "OneHot",
         "LogSoftmax",
         "Transpose.*[(]1d_",
@@ -441,7 +458,6 @@ litert_define_ats(
     compile_only_suffix = None,
     dont_register = [
         "Binary.*i32",
-        "NoOp.*i32",
         "OneHot",
         "LogSoftmax",
         "Transpose.*[(]1d_",
@@ -547,30 +563,37 @@ litert_test(
     ],
 )
 
-cc_library(
-    name = "register_core_ops",
-    testonly = True,
-    srcs = ["register_core_ops.cc"],
-    hdrs = ["register_core_ops.h"],
+# Like `ats` above, `builtin_ats` is executed directly on the host machine, but
+# with the TFLite built-in CPU kernels instead of XNNPACK. `builtin_cpu_ats`
+# above wraps `ats` for on-device execution.
+litert_test(
+    name = "builtin_ats",
+    srcs = ["ats.cc"],
+    args = BUILTIN_EXTRA_FLAGS + ["--dont_register=" + p for p in BUILTIN_DONT_REGISTER],
     copts = commandline_flag_copts(),
+    linkstatic = True,
+    no_main = True,
+    target_compatible_with = select({
+        "//litert:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    ungrte = if_oss(True, False),
+    use_sys_malloc = True,
     deps = [
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
-        ":register_batch_matmul",
-        ":register_binary_broadcast",
-        ":register_binary_no_bcast",
-        ":register_concatenation",
-        ":register_conv_2d",
-        ":register_depthwise_conv_2d",
-        ":register_fully_connected",
-        ":register_mean",
-        ":register_reduction",
-        ":register_select_v2",
-        ":register_slice",
-        ":register_softmax",
-        ":register_transpose",
-        ":register_unary",
+        ":register",
+        ":register_composite_ops",
+        ":register_single_ops",
+        ":register_transformer_layer",
+        "//litert/c/internal:litert_logging",
+        "//litert/cc/internal:litert_detail",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -584,12 +607,24 @@ cc_library(
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
-        ":register_core_ops",
-        ":register_no_op",
+        ":register_batch_matmul",
+        ":register_binary_broadcast",
+        ":register_binary_no_bcast",
+        ":register_concatenation",
+        ":register_conv_2d",
+        ":register_depthwise_conv_2d",
+        ":register_fully_connected",
+        ":register_mean",
         ":register_one_hot",
         ":register_pad",
         ":register_pooling",
+        ":register_reduction",
         ":register_reshape",
+        ":register_select_v2",
+        ":register_slice",
+        ":register_softmax",
+        ":register_transpose",
+        ":register_unary",
     ],
 )
 
@@ -763,23 +798,6 @@ cc_library(
         "//litert/test/generators:common",
         "//litert/test/generators:mean",
         "//tflite/types:half",
-    ],
-)
-
-cc_library(
-    name = "register_no_op",
-    testonly = True,
-    srcs = ["register_no_op.cc"],
-    hdrs = ["register_no_op.h"],
-    copts = commandline_flag_copts(),
-    deps = [
-        ":compile_fixture",
-        ":configure",
-        ":inference_fixture",
-        ":register",
-        "//litert/cc/internal:litert_detail",
-        "//litert/test/generators:common",
-        "//litert/test/generators:no_op",
     ],
 )
 
@@ -969,7 +987,6 @@ cc_library(
         ":configure",
         ":inference_fixture",
         ":register",
-        "//litert/c:litert_op_code",
         "//litert/cc/internal:litert_detail",
         "//litert/test/generators:common",
         "//litert/test/generators:select_v2",
@@ -1066,6 +1083,7 @@ cc_library(
         ":common",
         "//litert/c:litert_common",
         "//litert/c/internal:litert_logging",
+        "//litert/c/options:litert_cpu_options",
         "//litert/cc:litert_common",
         "//litert/cc:litert_environment",
         "//litert/cc:litert_environment_options",
@@ -1259,7 +1277,6 @@ cc_test(
         ":register",
         "//litert/c:litert_common",
         "//litert/c:litert_op_code",
-        "//litert/cc:litert_environment",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
         "//litert/cc/internal:litert_detail",
@@ -1270,7 +1287,6 @@ cc_test(
         "//litert/test:simple_buffer",
         "//litert/test/generators",
         "//litert/test/generators:common",
-        "//litert/test/generators:one_hot",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/flags:reflection",
@@ -1306,6 +1322,7 @@ cc_library(
     testonly = True,
     hdrs = ["common.h"],
     deps = [
+        "//litert/c:litert_op_code",
         "//litert/core/model",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -1364,11 +1381,14 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":common",
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
         ":register_composite_ops",
-        ":register_core_ops",
+        ":register_single_ops",
+        "//litert/c:litert_op_code",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
