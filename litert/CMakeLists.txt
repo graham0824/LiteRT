@@ -218,11 +218,13 @@ endif()
 
 # Add SafeInt headers include directory
 include(OverridableFetchContent)
+set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 OverridableFetchContent_Declare(
   safeint
-  GIT_REPOSITORY https://github.com/dcleblanc/SafeInt
-  GIT_TAG 72f0745e26091af6d1186fd91426377f16688ba7
-  GIT_PROGRESS TRUE
+  URL ${LITERT_TOOLS_DEP}/safeint
+  # GIT_REPOSITORY https://github.com/dcleblanc/SafeInt
+  # GIT_TAG 72f0745e26091af6d1186fd91426377f16688ba7
+  # GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/safeint"
 )
@@ -358,4 +360,3 @@ if(LITERT_BUILD_SUPPORT)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../support"
                    "${CMAKE_CURRENT_BINARY_DIR}/support")
 endif()
-

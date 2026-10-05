@@ -21,8 +21,8 @@ INCLUDE(ExternalProject)
 
 set(LITERT_TOOLS_DEP $ENV{LITERT_TOOLS_DEP})
 ExternalProject_Add(pthreadpool
-  # URL https://github.com/google/pthreadpool/archive/02460584c6092e527c8b89f7df4de143d70e801f.zip
-  URL ${LITERT_TOOLS_DEP}/pthreadpool/pthreadpool-02460584c6092e527c8b89f7df4de143d70e801f
+  # URL https://github.com/google/pthreadpool/archive/15a6644ba1c45f1acc16ac1e883efc3e56c6bed2.zip
+  URL ${LITERT_TOOLS_DEP}/pthreadpool/pthreadpool-15a6644ba1c45f1acc16ac1e883efc3e56c6bed2
   # URL_HASH SHA256=bb468cf1c14951f48c802de905631993fd9bcf395f997187e1e0165ffb88668d
   SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source"
   BINARY_DIR "${CMAKE_BINARY_DIR}/pthreadpool"
