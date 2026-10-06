@@ -126,6 +126,10 @@ LiteRtStatus Initialize(const LiteRtRuntimeContext* runtime_context,
   // TODO(Alen): initialize qnn_options from LiteRtOptions
   ::qnn::Options qnn_options;
   if (qnn_opts) {
+    LITERT_LOG(LITERT_INFO, "InitQnnOptions via dispatch_api.cc");
+    LITERT_LOG(LITERT_INFO, "InitQnnOptions - SetLogLevel(kOff)");
+              qnn_opts.Value().SetLogLevel(
+                  litert::qualcomm::QualcommOptions::LogLevel::kOff);
     InitQnnOptions(qnn_options, qnn_opts.Value());
   } else {
     LITERT_LOG(LITERT_ERROR,

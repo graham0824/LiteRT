@@ -309,6 +309,16 @@ class LiteRtCompilerPluginT {
                     options_data, &options_handle) == kLiteRtStatusOk) {
               qualcomm_options_ =
                   litert::qualcomm::QualcommOptions(options_handle);
+              LITERT_LOG(LITERT_INFO,
+                         "InitQnnOptions via qnn_compiler_plugin.cc");
+              LITERT_LOG(LITERT_INFO,
+                         "InitQnnOptions - SetEnableJustInTime(true)");
+              qualcomm_options_.Value().SetEnableJustInTime(true);
+              LITERT_LOG(LITERT_INFO, "InitQnnOptions - SetUseFoldReLU(false)");
+              qualcomm_options_.Value().SetUseFoldReLU(false);
+              LITERT_LOG(LITERT_INFO, "InitQnnOptions - SetLogLevel(kOff)");
+              qualcomm_options_.Value().SetLogLevel(
+                  litert::qualcomm::QualcommOptions::LogLevel::kOff);
               InitQnnOptions(qnn_options_, qualcomm_options_.Value());
             }
           }
