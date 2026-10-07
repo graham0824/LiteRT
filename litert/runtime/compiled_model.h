@@ -51,7 +51,6 @@
 #include "litert/runtime/tfl_utils.h"
 #include "tflite/converter/allocation.h"
 #include "tflite/core/api/error_reporter.h"
-#include "tflite/delegates/utils/simple_opaque_delegate.h"
 #include "tflite/interpreter.h"
 #include "tflite/model_builder.h"
 
@@ -400,10 +399,6 @@ class LiteRtCompiledModelT {
   // initial implementation intentionally defines the active set to be exactly
   // this root set and does not add transitively referenced callees.
   litert::Expected<void> InitializeActiveSubgraphs(LiteRtOptions options);
-
-  // Marks signature subgraph input and output tensors as kTfLiteNonCpu to
-  // prevent TFLite's ArenaPlanner from allocating host heap buffers for them.
-  void MarkSignatureIoTensorsNonCpu();
 
   // Returns NotFound when an explicitly unselected signature is used.
   litert::Expected<void> ValidateSignatureIsActive(
