@@ -350,6 +350,7 @@ cc_library(
         "//litert/cc:litert_expected",
         "//litert/cc/internal:litert_tensor_buffer_utils",
         "//litert/core/util:to_string",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -489,6 +490,12 @@ cc_library(
     name = "tfl_utils",
     srcs = ["tfl_utils.cc"],
     hdrs = ["tfl_utils.h"],
+    copts = select({
+        "//litert:without_builtin_ops": [
+            "-DLITERT_NO_BUILTIN_OPS",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":tensor_identifier",
         "//litert/c:litert_common",
@@ -498,11 +505,18 @@ cc_library(
         "//litert/cc:litert_expected",
         "//litert/core:options",
         "//tflite:framework_stable",
-        "//tflite/c:c_api_opaque",
+        "//tflite:mutable_op_resolver",
         "//tflite/c:c_api_types",
         "//tflite/c:common",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + select({
+        "//litert:without_builtin_ops": [
+            "//tflite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+        ],
+        "//conditions:default": [
+            "//tflite/c:c_api_opaque",
+        ],
+    }),
 )
 
 cc_library(
@@ -528,12 +542,19 @@ cc_library(
         "//litert/c/internal:litert_scheduling_info",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
-        "//tflite/c:c_api",
-        "//tflite/c:c_api_opaque",
         "//tflite/c:c_api_types",
         "//tflite/c:common",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + select({
+        "//litert:without_builtin_ops": [
+            "//tflite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tflite/c:c_api_without_op_resolver_without_alwayslink",
+        ],
+        "//conditions:default": [
+            "//tflite/c:c_api",
+            "//tflite/c:c_api_opaque",
+        ],
+    }),
 )
 
 cc_library(
@@ -650,11 +671,16 @@ cc_library(
     ],
     copts = litert_metal_opts() + select({
         "//litert:without_builtin_ops": [
-            # No builtin ops. Xnnpack is used for CPU backend.
+            # Omit default TFLite builtin/reference kernels. Operations must be
+            # handled by an accelerator (e.g. XNNPACK) or a selective op
+            # resolver provided by the application.
             "-DLITERT_NO_BUILTIN_OPS",
         ],
+        "//conditions:default": [],
+    }) + select({
         "//litert/build_common:litert_disable_cpu": [
-            # No support for CPU backend. Builtin ops are still needed for GPU.
+            # Omit the XNNPACK CPU accelerator. CPU execution uses TFLite
+            # builtin kernels (or selected ops) instead.
             "-DLITERT_DISABLE_CPU",
         ],
         "//conditions:default": [],
@@ -708,7 +734,6 @@ cc_library(
         "//tflite:builtin_ops",
         "//tflite:framework",
         "//tflite:model_builder",
-        "//tflite/c:c_api",
         "//tflite/converter:allocation",
         "//weight_loader:external_weight_loader",
         "@com_google_absl//absl/cleanup",
@@ -723,12 +748,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ] + [
         "//tflite:mutable_op_resolver",
-        "//tflite/c:c_api_opaque",
         "//tflite/c:c_api_types_opaque_delegate",
         "//tflite/c:common",
         "//tflite/core:private_cc_api_stable",
         "//tflite/core/api",
-        "//tflite/delegates/utils:simple_opaque_delegate",
         "//tflite/schema:schema_fbs",
     ] + select({
         "//litert/build_common:build_include_npu_enabled": [
@@ -738,19 +761,26 @@ cc_library(
         ],
         "//conditions:default": [],
     }) + select({
-        "//litert:without_builtin_ops": [
-            # No builtin ops. Xnnpack is used for CPU backend.
-            ":litert_cpu_options",
-            "//litert/runtime/accelerators/xnnpack:xnnpack_accelerator",  # buildcleaner: keep
-        ],
         "//litert/build_common:litert_disable_cpu": [
-            # No support for CPU backend. Builtin ops are still needed for GPU.
-            "//tflite/kernels:builtin_ops",
-            "//tflite/kernels:reference_ops",
+            # Omit the XNNPACK CPU accelerator (e.g. cpu_backend=builtin or
+            # cpu_backend=selective). Builtin ops are still available for CPU
+            # and GPU fallback unless without_builtin_ops is also set.
         ],
         "//conditions:default": [
             ":litert_cpu_options",
             "//litert/runtime/accelerators/xnnpack:xnnpack_accelerator",  # buildcleaner: keep
+        ],
+    }) + select({
+        "//litert:without_builtin_ops": [
+            # Omit default TFLite builtin/reference kernels (e.g.
+            # litert_builtin_ops=false or cpu_backend=selective). XNNPACK or a
+            # selective op resolver is used instead.
+            "//tflite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tflite/c:c_api_without_op_resolver_without_alwayslink",
+        ],
+        "//conditions:default": [
+            "//tflite/c:c_api",
+            "//tflite/c:c_api_opaque",
             "//tflite/kernels:builtin_ops",
             "//tflite/kernels:reference_ops",
         ],
@@ -917,13 +947,20 @@ cc_library(
         "//litert/cc:litert_macros",
         "//litert/core:options",
         "//tflite:builtin_ops",
-        "//tflite/c:c_api",
-        "//tflite/c:c_api_opaque",
         "//tflite/c:c_api_types",
         "//tflite/c:common",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + select({
+        "//litert:without_builtin_ops": [
+            "//tflite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tflite/c:c_api_without_op_resolver_without_alwayslink",
+        ],
+        "//conditions:default": [
+            "//tflite/c:c_api",
+            "//tflite/c:c_api_opaque",
+        ],
+    }),
 )
 
 cc_library(

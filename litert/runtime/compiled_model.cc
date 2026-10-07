@@ -283,7 +283,7 @@ Expected<void> LiteRtCompiledModelT::InitializeRuntime(
   LITERT_PERFETTO_TRACE_EVENT("CompiledModel Runtime Initialization");
   int num_threads = 1;
   [[maybe_unused]] bool use_builtin_or_reference_cpu_backend = false;
-  bool use_reference_cpu_kernels = false;
+  [[maybe_unused]] bool use_reference_cpu_kernels = false;
 #if !defined(LITERT_DISABLE_CPU)
   LiteRtCpuOptionsT cpu_options;
   if (jit_compilation_options &&
@@ -329,31 +329,49 @@ Expected<void> LiteRtCompiledModelT::InitializeRuntime(
   }
 #endif  // !defined(LITERT_DISABLE_CPU)
 
-#ifdef LITERT_NO_BUILTIN_OPS
-  if ((hardware_accelerators & kLiteRtHwAcceleratorCpu) &&
-      use_builtin_or_reference_cpu_backend) {
-    return Unexpected(kLiteRtStatusErrorInvalidArgument,
-                      "Builtin and reference CPU kernel modes require builtin "
-                      "kernels.");
-  }
-  // Use StubOpResolver which provides minimal stub implementations for all
-  // builtin ops. These stubs allow the model to pass validation, but the
-  // actual operations will be handled by LiteRT's accelerator system
-  // (NPU > GPU > CPU) through their respective delegates.
-  litert::internal::StubOpResolver resolver_storage;
-  tflite::MutableOpResolver* resolver = &resolver_storage;
-#else
+  const bool has_user_op_resolver =
+      jit_compilation_options &&
+      jit_compilation_options->op_resolver != nullptr;
   std::unique_ptr<tflite::MutableOpResolver> resolver_storage;
-  if ((hardware_accelerators & kLiteRtHwAcceleratorCpu) &&
-      use_reference_cpu_kernels) {
-    resolver_storage =
-        std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
-  } else {
-    resolver_storage = std::make_unique<
-        tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
-  }
-  tflite::MutableOpResolver* resolver = resolver_storage.get();
+  tflite::MutableOpResolver* resolver = nullptr;
+  if (has_user_op_resolver) {
+#ifdef LITERT_NO_BUILTIN_OPS
+    if ((hardware_accelerators & kLiteRtHwAcceleratorCpu) &&
+        use_reference_cpu_kernels) {
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Reference CPU kernel mode requires reference "
+                        "kernels.");
+    }
 #endif  // LITERT_NO_BUILTIN_OPS
+    resolver_storage = std::make_unique<tflite::MutableOpResolver>(
+        *jit_compilation_options->op_resolver);
+    resolver = resolver_storage.get();
+  } else {
+#ifdef LITERT_NO_BUILTIN_OPS
+    if ((hardware_accelerators & kLiteRtHwAcceleratorCpu) &&
+        use_builtin_or_reference_cpu_backend) {
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Builtin and reference CPU kernel modes require "
+                        "builtin kernels.");
+    }
+    // Use StubOpResolver which provides minimal stub implementations for all
+    // builtin ops. These stubs allow the model to pass validation, but the
+    // actual operations will be handled by LiteRT's accelerator system
+    // (NPU > GPU > CPU) through their respective delegates.
+    resolver_storage = std::make_unique<litert::internal::StubOpResolver>();
+    resolver = resolver_storage.get();
+#else
+    if ((hardware_accelerators & kLiteRtHwAcceleratorCpu) &&
+        use_reference_cpu_kernels) {
+      resolver_storage =
+          std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+    } else {
+      resolver_storage = std::make_unique<
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+    }
+    resolver = resolver_storage.get();
+#endif  // LITERT_NO_BUILTIN_OPS
+  }
 
   // Apply custom ops.
   if (jit_compilation_options) {
@@ -505,7 +523,6 @@ Expected<void> LiteRtCompiledModelT::InitializeRuntime(
     signature_keys_.push_back(default_signature_key);
   }
   LITERT_RETURN_IF_ERROR(InitializeActiveSubgraphs(jit_compilation_options));
-  MarkSignatureIoTensorsNonCpu();
 
   signature_needs_allocation_.clear();
 
@@ -1213,46 +1230,6 @@ Expected<void> LiteRtCompiledModelT::ValidateSignatureIsActive(
       absl::StrFormat("Signature '%s' was not selected when the compiled model "
                       "was created.",
                       signature_key));
-}
-
-void LiteRtCompiledModelT::MarkSignatureIoTensorsNonCpu() {
-  auto mark_tensor_non_cpu = [](TfLiteTensor* tensor) {
-    if (tensor == nullptr) return;
-    if ((tensor->allocation_type == kTfLiteArenaRw ||
-         tensor->allocation_type == kTfLiteArenaRwPersistent) &&
-        tensor->type != kTfLiteString) {
-      tensor->allocation_type = kTfLiteNonCpu;
-      tensor->data.data = nullptr;
-    }
-  };
-
-  for (const std::string* signature_key : signature_keys_) {
-    tflite::Subgraph* subgraph = nullptr;
-    if (*signature_key == litert::kDefaultSignatureKey) {
-      subgraph = interp_->subgraph(0);
-    } else {
-      int subgraph_index =
-          interp_->GetSubgraphIndexFromSignature(signature_key->c_str());
-      if (subgraph_index >= 0 && subgraph_index < interp_->subgraphs_size()) {
-        subgraph = interp_->subgraph(subgraph_index);
-      }
-    }
-    if (subgraph == nullptr) continue;
-    for (int tensor_idx : subgraph->inputs()) {
-      if (tensor_idx == kTfLiteOptionalTensor || tensor_idx < 0 ||
-          tensor_idx >= subgraph->tensors_size()) {
-        continue;
-      }
-      mark_tensor_non_cpu(subgraph->tensor(tensor_idx));
-    }
-    for (int tensor_idx : subgraph->outputs()) {
-      if (tensor_idx == kTfLiteOptionalTensor || tensor_idx < 0 ||
-          tensor_idx >= subgraph->tensors_size()) {
-        continue;
-      }
-      mark_tensor_non_cpu(subgraph->tensor(tensor_idx));
-    }
-  }
 }
 
 bool LiteRtCompiledModelT::HasNpuOps() const {
@@ -1974,8 +1951,9 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
               LiteRtLockTensorBuffer(buffer, &host_mem_addr, lock_mode);
           status != kLiteRtStatusOk) {
         return Unexpected(
-            status, absl::StrFormat("Failed to lock the tensor buffer: %s",
-                                    tensor->name ? tensor->name : "<unnamed>"));
+            status,
+            absl::StrFormat("Failed to lock the tensor buffer: %s",
+                            tensor->name ? tensor->name : "<unnamed>"));
       }
       locked_buffers[buffer] = host_mem_addr;
     }
@@ -2484,9 +2462,9 @@ Expected<bool> LiteRtCompiledModelT::InputTensorNeedsResize(
                                   " (current: ", signature_shape[i],
                                   ", new: ", new_shape[i], ")")));
     } else {
-      // Dynamic dim ⇒ new value must be positive.
+      // A dynamic dimension may be zero for an empty tensor.
       LITERT_RETURN_IF_ERROR(
-          new_shape[i] > 0,
+          new_shape[i] >= 0,
           Unexpected(kLiteRtStatusErrorInvalidArgument,
                      absl::StrCat("Cannot auto-resize tensor ",
                                   tensor->name ? tensor->name : "<unnamed>",
@@ -2547,9 +2525,9 @@ Expected<void> LiteRtCompiledModelT::ResizeInputTensorImpl(
                       "New shape must not be empty.");
   }
   for (int dim : dims) {
-    if (dim <= 0) {
+    if (dim < 0) {
       return Unexpected(kLiteRtStatusErrorInvalidArgument,
-                        "Dimensions must be positive.");
+                        "Dimensions must be nonnegative.");
     }
   }
 
