@@ -37,7 +37,6 @@ jobs:
           git remote add upstream https://github.com/google-ai-edge/LiteRT.git || \
             git remote set-url upstream https://github.com/google-ai-edge/LiteRT.git
           git fetch upstream
-          git lfs fetch upstream
 
       - name: Check for new upstream commits
         id: check
@@ -59,6 +58,7 @@ jobs:
           BRANCH="auto-uplevel/upstream-$(date -u +%Y%m%d)"
           git checkout -B "$BRANCH" origin/main
           git merge --no-edit upstream/main
+          git lfs fetch upstream
           git lfs checkout
           git lfs push --all origin
           git push origin "$BRANCH" --force
