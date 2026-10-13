@@ -25,6 +25,7 @@
 
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/str_format.h"  // from @com_google_absl
 #include "absl/strings/str_replace.h"  // from @com_google_absl
@@ -41,7 +42,6 @@
 #include "ml_drift/common/task/tensor_desc.h"  // from @ml_drift
 #include "ml_drift/common/task/tuning_type.h"  // from @ml_drift
 #include "ml_drift/common/task/weights_layout.h"  // from @ml_drift
-#include "ml_drift/common/tensor.h"  // from @ml_drift
 #include "ml_drift/common/types.h"  // from @ml_drift
 #include "ml_drift_delegate/delegate/composite/sdpa_transposed_parser.h"
 
@@ -69,6 +69,11 @@ struct FlashDecodeTuning {
   // every split keeps at least `min_split_keys` keys.
   int target_work_groups = 40;
   int min_split_keys = 256;
+  // Local memory budget in bytes of the work-group reduction kernel. Apple GPUs
+  // reject compute pipelines that use more than 32 KB of threadgroup memory,
+  // and most OpenCL devices report at least 32 KB of local memory. WebGPU
+  // devices report their limit (see `GetFlashDecodeTuning`).
+  int local_memory_bytes = 32 * 1024;
 };
 
 // Returns the Flash-Decode tuning for `gpu_info`.
@@ -92,7 +97,42 @@ FlashDecodeTuning GetFlashDecodeTuning(const ::ml_drift::GpuInfo& gpu_info) {
       tuning.num_simd_groups /= 2;
     }
   }
+  if (gpu_info.IsApiWebGpu() &&
+      gpu_info.webgpu_info.max_compute_workgroup_storage_size > 0) {
+    // WebGPU validates the workgroup storage of a pipeline against the limit
+    // of the device: 16 KB by default, or the adapter limit when requested.
+    tuning.local_memory_bytes =
+        gpu_info.webgpu_info.max_compute_workgroup_storage_size;
+  }
+  // TODO(b/553029558): Use the local memory size of OpenCL
+  // (`CL_DEVICE_LOCAL_MEM_SIZE`), Metal (`maxThreadgroupMemoryLength`) and
+  // Vulkan (`maxComputeSharedMemorySize`) devices once `GpuInfo` reports it.
   return tuning;
+}
+
+// Keys scored by each work item per chunk of the work-group Flash-Decode
+// kernel: at most as many as keep the probabilities of a chunk within 8 KB of
+// local memory.
+int MaxFlashDecodeKeysPerThread(int heads, int threads) {
+  return std::clamp(2048 / (heads * threads), 1, 4);
+}
+
+// Upper bound of the local memory in bytes used by the work-group Flash-Decode
+// kernel for `heads` query heads per work group and `slices` channel slices
+// (head_dim / 4), assuming the largest chunk of probabilities: the float4 query
+// slices, the probabilities of a chunk, the two reduction stages and the float4
+// output accumulators (see `GenerateWorkGroupFlashDecodeCode`).
+int FlashDecodeLocalMemoryBytes(const FlashDecodeTuning& tuning, int heads,
+                                int slices) {
+  constexpr int kFloatBytes = static_cast<int>(sizeof(float));
+  const int threads = tuning.threads;
+  const int chunk = threads * MaxFlashDecodeKeysPerThread(heads, threads);
+  const int q_local = heads * slices * 4 * kFloatBytes;
+  const int p_local = heads * chunk * kFloatBytes;
+  const int red_local = heads * threads * kFloatBytes;
+  const int red2_local = heads * tuning.reduce_threads * kFloatBytes;
+  const int acc_local = threads * 4 * kFloatBytes;
+  return q_local + p_local + red_local + red2_local + acc_local;
 }
 
 // Resolves `#pragma OPENCL EXTENSION ucl_wave_simd: enable` and the wave-SIMD
@@ -209,10 +249,19 @@ FlashDecodeConfig GetFlashDecodeConfig(const ::ml_drift::GpuInfo& gpu_info,
   if (k_shape.h <= 0 || q_shape.h % k_shape.h != 0) {
     return config;
   }
+  // Process as many query heads of the GQA group per work group as divide the
+  // group and keep the kernel within the local memory budget of the device.
+  // With head dim 512 (128 slices), 8 heads need 37,888 B but 4 heads only
+  // 25,088 B. If not even one head fits, `heads` stays 1 and
+  // `IsSupportedFlashDecode` rejects the config, so the op falls back to the
+  // decomposed graph.
   const int group_size = q_shape.h / k_shape.h;
+  const int slices = q_shape.c / 4;
   for (int h = std::min(group_size, config.tuning.max_heads_per_work_group);
        h >= 1; --h) {
-    if (group_size % h == 0) {
+    if (group_size % h == 0 &&
+        FlashDecodeLocalMemoryBytes(config.tuning, h, slices) <=
+            config.tuning.local_memory_bytes) {
       config.heads = h;
       break;
     }
@@ -259,7 +308,9 @@ bool IsSupportedFlashDecode(const ::ml_drift::GpuInfo& gpu_info,
   }
   const int slices = q_shape.c / 4;
   const int threads = config.tuning.threads;
-  return slices <= threads && threads % slices == 0;
+  return slices <= threads && threads % slices == 0 &&
+         FlashDecodeLocalMemoryBytes(config.tuning, config.heads, slices) <=
+             config.tuning.local_memory_bytes;
 }
 
 // TODO(b/552147487): Benchmark the kernel on Nvidia GPUs.
@@ -768,9 +819,9 @@ std::string GenerateWorkGroupFlashDecodeCode(
   const int splits = config.splits;
   const int key_groups = threads / slices;
   // Keys scored by each work item per chunk: enough for the keys of a split,
-  // but at most as many as keep the probabilities of a chunk within 8 KB of
-  // local memory.
-  const int max_keys_per_thread = std::clamp(2048 / (heads * threads), 1, 4);
+  // but at most `MaxFlashDecodeKeysPerThread`, which the local memory budget
+  // in `FlashDecodeLocalMemoryBytes` assumes.
+  const int max_keys_per_thread = MaxFlashDecodeKeysPerThread(heads, threads);
   const int split_keys = (cache_size + splits - 1) / splits;
   const int keys_per_thread =
       std::clamp((split_keys + threads - 1) / threads, 1, max_keys_per_thread);
@@ -1061,17 +1112,35 @@ std::string GenerateWorkGroupFlashDecodeCode(
   return c;
 }
 
-std::unique_ptr<::ml_drift::GPUOperation> CreateFusedFlashDecodeSdpa(
-    const ::ml_drift::GpuInfo& gpu_info,
-    const ::ml_drift::TensorDescriptor& q_desc,
-    const ::ml_drift::TensorDescriptor& k_desc,
-    const ::ml_drift::TensorDescriptor& v_desc,
-    const ::ml_drift::TensorDescriptor* mask_desc,
-    const ::ml_drift::TensorDescriptor* param_desc,
-    const ::ml_drift::TensorDescriptor& dst_desc,
-    const SdpaTransposedAttributes& attr, bool is_flattened_dst,
-    const FlashDecodeConfig& config) {
+// Creates the fused Flash-Decode kernel for a config that
+// `IsSupportedFlashDecode` accepts. Returns an error, instead of a kernel the
+// device would reject, if the work-group kernel exceeds the local memory
+// budget.
+absl::StatusOr<std::unique_ptr<::ml_drift::GPUOperation>>
+CreateFusedFlashDecodeSdpa(const ::ml_drift::GpuInfo& gpu_info,
+                           const ::ml_drift::TensorDescriptor& q_desc,
+                           const ::ml_drift::TensorDescriptor& k_desc,
+                           const ::ml_drift::TensorDescriptor& v_desc,
+                           const ::ml_drift::TensorDescriptor* mask_desc,
+                           const ::ml_drift::TensorDescriptor* param_desc,
+                           const ::ml_drift::TensorDescriptor& dst_desc,
+                           const SdpaTransposedAttributes& attr,
+                           bool is_flattened_dst,
+                           const FlashDecodeConfig& config) {
   const int slices = q_desc.GetBHWCShape().c / 4;
+  if (!config.use_wave_simd) {
+    const int local_memory_bytes =
+        FlashDecodeLocalMemoryBytes(config.tuning, config.heads, slices);
+    if (local_memory_bytes > config.tuning.local_memory_bytes) {
+      return absl::InternalError(absl::StrCat(
+          "The work-group Flash-Decode SDPA kernel needs ", local_memory_bytes,
+          " bytes of local memory for ", config.heads,
+          " query head(s) of head dim ", slices * 4,
+          " per work group, more than the ", config.tuning.local_memory_bytes,
+          " bytes the device allows. IsSupportedFlashDecode should have "
+          "rejected this config."));
+    }
+  }
   const int q_heads = q_desc.GetBHWCShape().h;
   const int kv_heads = k_desc.GetBHWCShape().h;
   const int group_size =
@@ -1741,6 +1810,43 @@ MAIN_FUNCTION($0) {
   return std::make_unique<FusedFlashAttentionPrefillOp>(std::move(custom_op));
 }
 
+// Applies a BOOL attention mask to `logits`: `dst = mask ? logits : -10000`.
+//
+// This is an elementwise (linkable) operation, so `MergeNodes` fuses it into
+// the epilogue of the operation producing `logits` (the QK^T GEMM) instead of
+// running a separate pass over the logits like `GpuModelBuilder::SelectV2`.
+// The mask is read with the standard elementwise broadcast rules, so a
+// [1, 1, T, keys] mask applies to GQA-folded logits [b, kv_heads, gqa * T,
+// keys] directly: folded row `w` reads mask row `w % T`, its query token.
+::ml_drift::GpuModelBuilder::TensorHandle SelectBoolMask(
+    ::ml_drift::GpuModelBuilder* model_builder,
+    const ::ml_drift::GpuModelBuilder::TensorHandle& logits,
+    const ::ml_drift::GpuModelBuilder::TensorHandle& mask) {
+  ::ml_drift::ElementwiseDescriptor op_desc;
+  // Use a large negative value to simulate -inf. std::limit<float>::min()
+  // causes regression.
+  op_desc.args.AddFloat("mask_value", -10000.0f,
+                        logits.tensor_desc.GetDataType());
+  op_desc.code = R"(
+  out_value.x = in2_value.x ? in_value.x : args.mask_value;
+  out_value.y = in2_value.y ? in_value.y : args.mask_value;
+  out_value.z = in2_value.z ? in_value.z : args.mask_value;
+  out_value.w = in2_value.w ? in_value.w : args.mask_value;
+)";
+  auto dst = model_builder->AddTensor(logits.tensor_desc);
+  ::ml_drift::OperationDef definition;
+  definition.src_tensors.push_back(logits.tensor_desc);
+  definition.src_tensors.push_back(mask.tensor_desc);
+  definition.dst_tensors.push_back(dst.tensor_desc);
+  auto op = std::make_unique<::ml_drift::GPUOperation>(
+      ::ml_drift::CreateGpuOperation(definition, std::move(op_desc),
+                                     mask.tensor_desc.GetBHWCShape(),
+                                     dst.tensor_desc.GetBHWCShape()));
+  model_builder->AddGpuOperation({logits, mask}, {dst}, std::move(op),
+                                 "sdpa_select_mask");
+  return dst;
+}
+
 }  // namespace
 
 bool SupportsFusedSdpaKernels(const ::ml_drift::GpuInfo& gpu_info) {
@@ -1843,10 +1949,11 @@ absl::Status BuildSdpaTransposedGpuGraph(
           ::ml_drift::BHWC(1, q_shape.h, q_shape.w * decode_config.splits,
                            (slices + 1) * 4),
           ::ml_drift::DataType::kFloat32);
-      auto op = CreateFusedFlashDecodeSdpa(
-          model_builder->gpu_info(), q.tensor_desc, k.tensor_desc,
-          v.tensor_desc, mask_desc, param_desc, part.tensor_desc, attr,
-          is_flattened_dst, decode_config);
+      ABSL_ASSIGN_OR_RETURN(
+          auto op, CreateFusedFlashDecodeSdpa(
+                       model_builder->gpu_info(), q.tensor_desc, k.tensor_desc,
+                       v.tensor_desc, mask_desc, param_desc, part.tensor_desc,
+                       attr, is_flattened_dst, decode_config));
       model_builder->AddGpuOperation(src_tensors, {part}, std::move(op),
                                      "flash_decode_sdpa_split");
       auto combine = CreateFusedFlashDecodeCombine(
@@ -1856,10 +1963,11 @@ absl::Status BuildSdpaTransposedGpuGraph(
                                      "flash_decode_sdpa_combine");
       return model_builder->UpdateOutputTensor(dst, output_id);
     }
-    auto op = CreateFusedFlashDecodeSdpa(
-        model_builder->gpu_info(), q.tensor_desc, k.tensor_desc, v.tensor_desc,
-        mask_desc, param_desc, dst.tensor_desc, attr, is_flattened_dst,
-        decode_config);
+    ABSL_ASSIGN_OR_RETURN(
+        auto op, CreateFusedFlashDecodeSdpa(
+                     model_builder->gpu_info(), q.tensor_desc, k.tensor_desc,
+                     v.tensor_desc, mask_desc, param_desc, dst.tensor_desc,
+                     attr, is_flattened_dst, decode_config));
     model_builder->AddGpuOperation(src_tensors, {dst}, std::move(op),
                                    "flash_decode_sdpa");
     return model_builder->UpdateOutputTensor(dst, output_id);
@@ -1924,23 +2032,23 @@ absl::Status BuildSdpaTransposedGpuGraph(
 
   if (mask_desc != nullptr) {
     const auto mask_shape = mask.tensor_desc.GetBHWCShape();
+    // With GQA the logits are folded to [b, kv_heads, gqa_ratio * T, keys]. A
+    // [*, 1, T, keys] (or [*, 1, 1, keys]) mask applies to them directly: the
+    // elementwise width broadcast reads mask row `w % T`, the query token of
+    // folded row `w`. Other layouts (e.g. a mask per query head) need the
+    // logits unfolded to [b, heads, T, keys].
+    const bool mask_applies_to_folded_logits =
+        mask_shape.h == 1 && (mask_shape.w == 1 || mask_shape.w == q_shape.w);
     const bool reshape_logits_for_mask =
-        gqa_ratio > 1 && (mask_shape.h != 1 || mask_shape.w != 1);
+        gqa_ratio > 1 && !mask_applies_to_folded_logits;
     if (reshape_logits_for_mask) {
       logits = model_builder->Reshape(
           logits, ::ml_drift::BHWC(q_shape.b, q_shape.h, q_shape.w, k_shape.w));
     }
+    // Both ops are elementwise, so they get fused into the epilogue of the
+    // operation producing `logits`.
     if (mask.tensor_desc.GetDataType() == ::ml_drift::DataType::kBool) {
-      ::ml_drift::Tensor<::ml_drift::StrongShape<::ml_drift::Layout::kBHWC>,
-                         ::ml_drift::DataType::kFloat32>
-          fill_tensor;
-      fill_tensor.shape = ::ml_drift::BHWC(1, 1, 1, 1);
-      // Use a large negative value to simulate -inf. std::limit<float>::min()
-      // causes regression.
-      fill_tensor.data = {-10000.0f};
-      auto neg_val = model_builder->AddConstantTensor(
-          fill_tensor, logits.tensor_desc.GetDataType());
-      logits = model_builder->SelectV2(mask, logits, neg_val);
+      logits = SelectBoolMask(model_builder, logits, mask);
     } else {
       logits = model_builder->Add(logits, mask);
     }

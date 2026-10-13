@@ -160,7 +160,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@flatbuffers",
         "@ml_drift//ml_drift/common:ir_model",
     ],
 )
@@ -172,10 +171,10 @@ cc_library(
     deps = [
         "//ml_drift_delegate/tflite:custom_ir_operation_parser",
         "//ml_drift_delegate/tflite:ir_model_builder_helper",
+        "//ml_drift_delegate/tflite/support:support_rotary_positional_embedding",
         "//tflite/c:common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "@ml_drift//ml_drift/common:ir_model",
         "@ml_drift//ml_drift/common:operations",
@@ -310,6 +309,7 @@ cc_test(
         ":sdpa_transposed_parser",
         "//ml_drift_delegate/delegate/composite:sdpa_transposed_parser",
         "//ml_drift_delegate/tflite:custom_ir_operation_parser",
+        "//ml_drift_delegate/tflite:ir_model_builder_helper",
         "//ml_drift_delegate/tflite/convert:convert_testing_utils",
         "//ml_drift_delegate/tflite/convert:stub_delegate",
         "//tflite:builtin_ops",
@@ -319,6 +319,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "@ml_drift//ml_drift/common:data_type",
+        "@ml_drift//ml_drift/common:gpu_info",
         "@ml_drift//ml_drift/common:ir_model",
     ],
 )

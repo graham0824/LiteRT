@@ -331,6 +331,18 @@ TEST(LiteRtQualcommOptionsTest, VtcmSize) {
   LrtDestroyQualcommOptions(qualcomm_options);
 }
 
+TEST(LiteRtQualcommOptionsTest, HtpDeviceId) {
+  LrtQualcommOptions qualcomm_options;
+  LITERT_ASSERT_OK(LrtCreateQualcommOptions(&qualcomm_options));
+
+  LITERT_ASSERT_OK(LrtQualcommOptionsSetHtpDeviceId(qualcomm_options, 1));
+
+  auto parsed = SerializeAndParse(qualcomm_options);
+  EXPECT_EQ(parsed.GetHtpDeviceId(), 1);
+
+  LrtDestroyQualcommOptions(qualcomm_options);
+}
+
 TEST(LiteRtQualcommOptionsTest, NumHvxThreads) {
   LrtQualcommOptions qualcomm_options;
   LITERT_ASSERT_OK(LrtCreateQualcommOptions(&qualcomm_options));
@@ -400,17 +412,12 @@ TEST(LiteRtQualcommOptionsTest, GraphIOTensorMemType) {
   LrtQualcommOptions qualcomm_options;
   LITERT_ASSERT_OK(LrtCreateQualcommOptions(&qualcomm_options));
 
-  LrtQualcommOptionsGraphIOTensorMemType default_mem_type;
-  LITERT_ASSERT_OK(LrtQualcommOptionsGetGraphIOTensorMemType(
-      qualcomm_options, &default_mem_type));
-  EXPECT_EQ(default_mem_type, kLiteRtQualcommGraphIOTensorMemTypeRaw);
-
   LITERT_ASSERT_OK(LrtQualcommOptionsSetGraphIOTensorMemType(
-      qualcomm_options, kLiteRtQualcommGraphIOTensorMemTypeMemHandle));
+      qualcomm_options, kLiteRtQualcommGraphIOTensorMemTypeRaw));
 
   auto parsed = SerializeAndParse(qualcomm_options);
   EXPECT_EQ(parsed.GetGraphIOTensorMemType(),
-            QualcommOptions::GraphIOTensorMemType::kMemHandle);
+            QualcommOptions::GraphIOTensorMemType::kRaw);
 
   LrtDestroyQualcommOptions(qualcomm_options);
 }
@@ -563,6 +570,10 @@ TEST(QualcommOptionsTest, CppWrapper) {
   options->SetVtcmSize(4);
   EXPECT_EQ(options->GetVtcmSize(), 4);
 
+  EXPECT_EQ(options->GetHtpDeviceId(), 0);
+  options->SetHtpDeviceId(1);
+  EXPECT_EQ(options->GetHtpDeviceId(), 1);
+
   EXPECT_EQ(options->GetNumHvxThreads(), 0);
   options->SetNumHvxThreads(4);
   EXPECT_EQ(options->GetNumHvxThreads(), 4);
@@ -600,14 +611,14 @@ TEST(QualcommOptionsTest, CppWrapper) {
   EXPECT_EQ(options->GetSchematicDir(), "tmp");
 
   EXPECT_EQ(options->GetGraphIOTensorMemType(),
+            QualcommOptions::GraphIOTensorMemType::kMemHandle);
+  options->SetGraphIOTensorMemType(QualcommOptions::GraphIOTensorMemType::kRaw);
+  EXPECT_EQ(options->GetGraphIOTensorMemType(),
             QualcommOptions::GraphIOTensorMemType::kRaw);
   options->SetGraphIOTensorMemType(
       QualcommOptions::GraphIOTensorMemType::kMemHandle);
   EXPECT_EQ(options->GetGraphIOTensorMemType(),
             QualcommOptions::GraphIOTensorMemType::kMemHandle);
-  options->SetGraphIOTensorMemType(QualcommOptions::GraphIOTensorMemType::kRaw);
-  EXPECT_EQ(options->GetGraphIOTensorMemType(),
-            QualcommOptions::GraphIOTensorMemType::kRaw);
 
   QualcommOptions::CustomOpPackage pkg;
   pkg.name = "pkg";

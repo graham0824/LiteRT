@@ -16,10 +16,11 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//litert/ats:ats.bzl", "litert_define_ats")
+
+# copybara:uncomment load("//litert/ats:models.bzl", "CLASSICAL_ALL_MODELS")
 load("//litert/build_common:litert_build_defs.bzl", "commandline_flag_copts", "if_oss", "litert_test")
 load("//litert/integration_test:litert_device.bzl", "litert_device_test")
-load("//litert/integration_test:litert_device_script.bzl", "make_download_model_provider")
-# copybara:uncomment load("//litert/integration_test/google:litert_device_guitar.bzl", "litert_macos_mh_guitar_test", "litert_mediatek_mh_guitar_test", "litert_pixel_9_mh_guitar_test", "litert_qualcomm_mh_guitar_test")
+# copybara:uncomment load("//litert/integration_test/google:litert_device_guitar.bzl", "litert_macos_mh_guitar_test", "litert_mediatek_mh_guitar_test", "litert_npu_aot_guitar_test", "litert_pixel_9_mh_guitar_test", "litert_qualcomm_mh_guitar_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["@org_tensorflow//tensorflow:license"],
@@ -33,12 +34,78 @@ package(
 # Note: The `litert_define_ats` targets below define test suites that execute tests on-device
 # using the underlying base `ats` binary compiled further down in this file.
 
+XNNPACK_MODELS_DONT_REGISTER = [
+    "simple_add_dynamic_shape",
+    "depth_anything_v2",
+    "hf_all_minilm_l6_v2",
+    "hf_deberta_large_mnli",
+    "hf_detr_resnet50_dc5",
+    "hf_distil_whisper_small_no_cache",
+    "hf_distil_whisper_small_with_cache_init",
+    "hf_distilbert",
+    "hf_dpt_large",
+    "hf_emotion_english_distilroberta_base",
+    "hf_mbart_large_50",
+    "hf_mobilebert",
+    "hf_mobilevit_small_e2e",
+    "hf_pyannote_segmentation_3_0",
+    "hf_segformer_512",
+    "hf_splade_v2_distil",
+    "hf_tinyclip_vit_8m_16_text_3m_yfcc15m",
+    "hf_tinyroberta_squad2",
+    "hf_tinyroberta_squad2_dynamic_batch",
+    "hf_wav2vec2_base_960h",
+    "hf_wav2vec2_base_960h_dynamic",
+    "hf_yolos_tiny",
+    "qai_hub_hf_wavlm_base_plus",
+    "qai_hub_hf_whisper_base_decoder",
+    "qai_hub_hf_whisper_base_encoder",
+    "qai_hub_inception_v3",
+    "qai_hub_openai_clip",
+    "qai_hub_real_esrgan_x4plus",
+    "qai_hub_resnet101",
+    "qai_hub_xlsr",
+    "snapml_StyleTransferNet",
+    "timm_efficientformerv2_s0",
+    "timm_pvt_v2_b1",
+    "timm_pvt_v2_b3",
+    "timm_resnest14d",
+    "torchaudio_conformer",
+    "torchaudio_deepspeech",
+    "torchaudio_wav2vec2_base",
+    "torchvision_convnext_tiny",
+    "torchvision_deeplabv3_resnet101",
+    "torchvision_deeplabv3_resnet50",
+    "torchvision_densenet121",
+    "torchvision_fcn_resnet50",
+    "torchvision_inception_v3",
+    "torchvision_resnet152",
+    "torchvision_resnet18",
+    "torchvision_resnet50",
+    "torchvision_shufflenet_v2",
+    "torchvision_swin_tiny",
+    "torchvision_video_resnet2plus1d_18",
+    "torchvision_video_resnet3d_18",
+    "torchvision_video_resnetmc3_18",
+    "torchvision_video_swin3d_tiny",
+    "torchvision_wide_resnet101_2",
+    "torchvision_wide_resnet50_2",
+    "u2net_full",
+    "u2net_lite",
+    "whisper_tiny_decoder",
+    "yolo11n",
+    "yolox_tiny",
+]
+
 XNNPACK_DONT_REGISTER = [
     "(_i32<[^>]+>(?!_cst)|->[(][^)]*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
+    "Comparison",  # XNNPACK does not support Comparison ops
     "OneHot",  # XNNPACK does not support OneHot
     "Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
+    "GroupNorm",  # XNNPACK does not support GroupNorm composite op
     "SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
     "QkvNormRope",  # XNNPACK does not support QkvNormRope composite op
+    "RmsNorm",  # XNNPACK does not support RmsNorm composite op
     "Swiglu",  # XNNPACK does not support SwiGLU op
     "SelectV2",  # XNNPACK does not support SelectV2
     "tfl\\.floor_div",  # XNNPACK does not support FloorDiv
@@ -57,16 +124,64 @@ XNNPACK_DONT_REGISTER = [
     "FullyConnected.*,2d_f32<[^>]+>(?!_cst)",
     "FullyConnected.*,1d_f32<[^>]+>(?!_cst)",
     "Transpose.*([(][78]d|[(][1-8]d_(i1|i4|i16|u16|i32|u32|i64|u64)<)",  # XNNPACK Transpose supports FP32, FP16, INT8, and UINT8 types up to rank 6
-    # Explicit ExtraModel exclusions (unsupported by XNNPACK):
+]
+
+YNNPACK_MODELS_DONT_REGISTER = [
     "simple_add_dynamic_shape",
+    "depth_anything_v2",
     "hf_all_minilm_l6_v2",
+    "hf_deberta_large_mnli",
+    "hf_detr_resnet50_dc5",
+    "hf_distil_whisper_small_no_cache",
+    "hf_distil_whisper_small_with_cache_init",
+    "hf_distilbert",
+    "hf_dpt_large",
+    "hf_emotion_english_distilroberta_base",
+    "hf_mbart_large_50",
+    "hf_mobilebert",
+    "hf_mobilevit_small",
+    "hf_pyannote_segmentation_3_0",
+    "hf_segformer_512",
+    "hf_splade_v2_distil",
+    "hf_tinyclip_vit_8m_16_text_3m_yfcc15m",
+    "hf_tinyroberta_squad2",
+    "hf_tinyroberta_squad2_dynamic_batch",
+    "hf_yolos_tiny",
+    "isnet",
+    "qai_hub_hf_wavlm_base_plus",
+    "qai_hub_hf_whisper_base_decoder",
+    "qai_hub_hf_whisper_base_encoder",
+    "qai_hub_midas",
+    "qai_hub_openai_clip",
+    "qai_hub_real_esrgan_x4plus",
+    "snapml_StyleTransferNet",
+    "timm_efficientformerv2_s0",
+    "torchaudio_conformer",
+    "torchaudio_deepspeech",
+    "torchaudio_wav2letter",
+    "torchvision_deeplabv3_mobilenet_v3_large",
+    "torchvision_deeplabv3_resnet101",
+    "torchvision_deeplabv3_resnet50",
+    "torchvision_fcn_resnet50",
+    "torchvision_lraspp_mobilenet_v3_large",
+    "torchvision_resnet18",
+    "torchvision_swin_tiny",
+    "torchvision_video_resnet2plus1d_18",
+    "torchvision_video_resnet3d_18",
+    "torchvision_video_resnetmc3_18",
+    "torchvision_video_swin3d_tiny",
+    "u2net_full",
     "u2net_lite",
     "whisper_tiny_decoder",
+    "whisper_tiny_encoder",
+    "yamnet",
     "yolo11n",
+    "yolox_tiny",
 ]
 
 YNNPACK_DONT_REGISTER = [
     "Binary.*i32",  # YNNPACK does not support int32 binary arithmetic
+    "Comparison",  # YNNPACK does not support Comparison ops
     "OneHot",  # YNNPACK does not support OneHot
     "SelectV2",  # YNNPACK does not support SelectV2
     "tfl\\.floor_div",  # YNNPACK does not support FloorDiv
@@ -74,21 +189,93 @@ YNNPACK_DONT_REGISTER = [
     "tfl\\.reduce_prod",  # YNNPACK does not support ReduceProd
     "tfl\\.tile",  # YNNPACK does not support Tile (used in MQA TransformerLayer)
     "Pad.*<([0-9]+x)*1(x[0-9]+)*>",  # YNNPACK does not support padding on extent-1 dimensions
-    "Sdpa.*f16",  # YNNPACK does not support mixed fp32_fp16_fp32 dot in f16 SDPA
     "SdpaTransposed",  # SdpaTransposed generator does not yet set logit_cap attribute for YNNPACK
     "FullyConnected.*(i4|u8)",  # YNNPACK delegate requires even output dims for INT4 weights and does not support UINT8 FullyConnected
     "Transpose.*[(][1-8]d_(i1|i16|u16|u32|i64|u64)<",  # YNNPACK Transpose supports FP32, FP16, INT4, INT8, UINT8, and INT32 types
-    # Explicit ExtraModel exclusions (unsupported by YNNPACK):
+]
+
+BUILTIN_MODELS_DONT_REGISTER = [
     "simple_add_dynamic_shape",
     "hf_all_minilm_l6_v2",
-    "hf_mobilevit_small",
-    "qai_hub_midas",
-    "qai_hub_real_esrgan_x4plus",
-    "torchvision_resnet18",
-    "u2net_lite",
+    "hf_deberta_large_mnli",
+    "hf_distil_whisper_small_no_cache",
+    "hf_distil_whisper_small_with_cache_init",
+    "hf_distilbert",
+    "hf_emotion_english_distilroberta_base",
+    "hf_mbart_large_50",
+    "hf_mobilebert",
+    "hf_splade_v2_distil",
+    "hf_tinyclip_vit_8m_16_text_3m_yfcc15m",
+    "hf_tinyroberta_squad2",
+    "hf_tinyroberta_squad2_dynamic_batch",
+    "qai_hub_hf_whisper_base_decoder",
+    "torchaudio_conformer",
     "whisper_tiny_decoder",
-    "yamnet",
-    "yolo11n",
+]
+
+GPU_MODELS_DONT_REGISTER = [
+    "simple_add_dynamic_shape",
+    "depth_anything_v2",
+    "hf_all_minilm_l6_v2",
+    "hf_deberta_large_mnli",
+    "hf_detr_resnet50_dc5",
+    "hf_distil_whisper_small_no_cache",
+    "hf_distil_whisper_small_with_cache_init",
+    "hf_distilbert",
+    "hf_dpt_large",
+    "hf_emotion_english_distilroberta_base",
+    "hf_mbart_large_50",
+    "hf_mobilebert",
+    "hf_splade_v2_distil",
+    "hf_tinyclip_vit_8m_16_text_3m_yfcc15m",
+    "hf_tinyroberta_squad2",
+    "hf_tinyroberta_squad2_dynamic_batch",
+    "hf_wav2vec2_base_960h",
+    "hf_wav2vec2_base_960h_dynamic",
+    "hf_yolos_tiny",
+    "qai_hub_hf_wavlm_base_plus",
+    "qai_hub_hf_whisper_base_decoder",
+    "qai_hub_openai_clip",
+    "qai_hub_real_esrgan_x4plus",
+    "qai_hub_resnet101",
+    "qai_hub_xlsr",
+    "snapml_StyleTransferNet",
+    "timm_pvt_v2_b1",
+    "timm_pvt_v2_b3",
+    "timm_resnest14d",
+    "timm_vit_small_path16_224",
+    "torchaudio_conformer",
+    "torchaudio_wav2vec2_base",
+    "torchvision_convnext_tiny",
+    "torchvision_deeplabv3_resnet101",
+    "torchvision_deeplabv3_resnet50",
+    "torchvision_densenet121",
+    "torchvision_fcn_resnet50",
+    "torchvision_maxvit_t",
+    "torchvision_resnet152",
+    "torchvision_resnet18",
+    "torchvision_resnet50",
+    "torchvision_shufflenet_v2",
+    "torchvision_swin_tiny",
+    "torchvision_video_resnet2plus1d_18",
+    "torchvision_video_resnet3d_18",
+    "torchvision_video_resnetmc3_18",
+    "torchvision_video_swin3d_tiny",
+    "torchvision_vit_base_patch16",
+    "torchvision_wide_resnet101_2",
+    "torchvision_wide_resnet50_2",
+    "whisper_tiny_decoder",
+    "yolox_tiny",
+    # FP16 precision overflow (NaN) on OpenCL GPU:
+    "hf_hubert_large_ls960_ft",
+    "timm_efficientnet",
+    "torchvision_efficientnet_b0",
+    "torchvision_efficientnet_b1",
+    "torchvision_efficientnet_b3",
+    "torchvision_efficientnet_b4",
+    "torchvision_efficientnet_b5",
+    "torchvision_efficientnet_b6",
+    "torchvision_efficientnet_b7",
 ]
 
 BUILTIN_DONT_REGISTER = [
@@ -132,38 +319,84 @@ litert_define_ats(
 )
 
 litert_define_ats(
+    name = "cpu_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = XNNPACK_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+)
+
+litert_define_ats(
+    name = "ynnpack_cpu_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = YNNPACK_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--enable_ynnpack=true",
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+)
+
+litert_define_ats(
+    name = "builtin_cpu_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = BUILTIN_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--cpu_kernel_mode=builtin",
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+)
+
+litert_define_ats(
+    name = "gpu_models_ats",
+    backend = "gpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = GPU_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+)
+
+litert_define_ats(
     name = "example_ats",
     backend = "example",
     compile_only_suffix = "_aot",
     do_register = [
-        "sub.*f32",
-        "mul.*f32",
+        "tfl[.]sub.*f32",
+        "tfl[.]mul.*f32",
     ],
     dont_register = [
-        "ExtraModel",
     ],
     jit_suffix = "",
 )
 
 litert_define_ats(
     name = "qualcomm_ats",
+    aot_shard_count = 32,
+    aot_tags = [
+        "manual",
+        "notap",
+    ],
     backend = "qualcomm",
     compile_only_suffix = "_aot",
-    do_register = [
-        "SingleOp",
-        "hf_all_minilm_l6_v2",
-        "hf_mobilevit_small",
-        "qai_hub_midas",
-        "qai_hub_real_esrgan_x4plus",
-        "torchvision_mobilenet_v2",
-        "u2net_lite",
-        "torchvision_resnet18",
-        "torchvision_squeezenet1_1",
-        "whisper_tiny_encoder",
-        "yamnet",
-        "yolo11n",
-    ],
     dont_register = [
+        "CompositeOp",
+        "Transformer",
         "hf_all_minilm_l6_v2",
         "whisper_tiny_decoder",
         "5d",  # Qualcomm QNN HTP only supports up to 4D/6D tensor layouts
@@ -200,27 +433,29 @@ litert_define_ats(
 # copybara:uncomment_begin(google-only)
 # litert_define_ats(
 #     name = "google_tensor_ats",
+#     aot_shard_count = 50,
 #     backend = "google_tensor",
 #     compile_only_suffix = "_aot",
-#     do_register = [
-#         "SingleOp",
-#         "hf_all_minilm_l6_v2",
-#         "hf_mobilevit_small",
-#         "qai_hub_midas",
-#         "qai_hub_real_esrgan_x4plus",
-#         "torchvision_mobilenet_v2",
-#         "u2net_lite",
-#         "torchvision_resnet18",
-#         "torchvision_squeezenet1_1",
-#         "whisper_tiny_encoder",
-#         "yamnet",
-#         "yolo11n",
-#     ],
 #     dont_register = [
+#         "CompositeOp",
+#         "Transformer",
 #         "hf_all_minilm_l6_v2",
 #         "whisper_tiny_decoder",
 #         "5d",
 #         "6d",
+#         "7d",
+#         "8d",
+#         "OneHot",  # Google Tensor compiler does not support OneHot
+#         "tfl[.]prelu",  # Google Tensor compiler requires PRelu alpha to be statically allocated
+#         "tfl[.]reduce_prod",  # Google Tensor compiler does not support ReduceProd
+#         "Conv2d.*f16",  # Google Tensor compiler does not support FP16 Conv2d/DepthwiseConv2d
+#         "FullyConnected.*(f16|i4|u8|SHUFFLED)",  # Google Tensor compiler does not support FP16, INT4, UINT8, or SHUFFLED FullyConnected
+#         "FullyConnected.*,2d_f32<[^>]+>(?!_cst)",  # Google Tensor compiler does not support dynamic weights for FP32 FullyConnected
+#         "FullyConnected.*,1d_f32<[^>]+>(?!_cst)",  # Google Tensor compiler does not support dynamic bias for FP32 FullyConnected
+#         "LogSoftmax.*f16",  # Google Tensor compiler does not support FP16 LogSoftmax
+#         "Pad.*f16",  # Google Tensor compiler does not support FP16 Pad
+#         "average_pool_2d.*fa=RELU",  # Google Tensor compiler does not support fused RELU on AveragePool2d
+#         "Transpose.*[(][1-8]d_(i1|i4|i64|u64)<",  # Google Tensor Transpose does not support i1, i4, i64, or u64 types
 #     ],
 #     extra_flags = ["--soc_model=Tensor_G5"],
 #     jit_suffix = "",
@@ -229,22 +464,40 @@ litert_define_ats(
 
 litert_define_ats(
     name = "mediatek_ats",
+    aot_shard_count = 32,
+    aot_tags = [
+        "manual",
+        "notap",
+    ],
     backend = "mediatek",
     compile_only_suffix = "_aot",
-    do_register = [
-        "SingleOp",
-        "hf_mobilevit_small",
-        "qai_hub_midas",
-        "torchvision_mobilenet_v2",
-        "u2net_lite",
-        "torchvision_resnet18",
-        "torchvision_squeezenet1_1",
-        "yamnet",
-        "yolo11n",
-    ],
     dont_register = [
+        "CompositeOp",
+        "Transformer",
         "5d",
         "6d",
+        "7d",
+        "8d",
+        "Binary.*i32",  # MediaTek NeuroPilot does not support int32 binary arithmetic
+        "BinaryBroadcast.*[234]d_",  # MediaTek NeuroPilot rejects ATS bidirectional/rank-mismatched broadcasts
+        "BatchMatmul.*[34]d",  # MediaTek NeuroPilot rejects ATS 1xB batch broadcasts on 3D/4D BatchMatmul
+        "Comparison",  # MediaTek NeuroPilot does not support Comparison ops
+        "OneHot",  # MediaTek NeuroPilot does not support OneHot
+        "SelectV2",  # MediaTek NeuroPilot does not support SelectV2
+        "LogSoftmax",  # MediaTek NeuroPilot does not support LogSoftmax
+        "tfl[.]floor_div",  # MediaTek NeuroPilot does not support FloorDiv
+        "tfl[.]pow",  # MediaTek NeuroPilot does not support Pow
+        "tfl[.]prelu",  # MediaTek NeuroPilot requires static PRelu alpha
+        "tfl[.]reduce_min",  # MediaTek NeuroPilot does not support ReduceMin
+        "tfl[.]reduce_prod",  # MediaTek NeuroPilot does not support ReduceProd
+        "tfl[.](cos|sin|ceil|elu|exp|floor|log|neg|relu6|relu_0_to_1|relu_n1_to_1|round|sign|square|zeros_like)[{]",  # Unsupported Unary ops in MediaTek plugin
+        "FullyConnected.*,1d_f32(?:<[^>]+>)?(?!_cst)",  # MediaTek NeuroPilot does not support dynamic bias for FP32 FullyConnected
+        "FullyConnected.*f32(?:<[^>]+>)?,2d_i[48]",  # MediaTek NeuroPilot does not support hybrid FP32 activation with INT4/INT8 weights
+        "FullyConnected.*2d_f16(?:<[^>]+>)?_cst[)]",  # MediaTek NeuroPilot requires bias tensor for FP16 FullyConnected
+        "Slice.*4d_i32",  # MediaTek NeuroPilot does not support 4D INT32 Slice
+        "Transpose.*[(][1-8]d_(i1|i4|i32|u32|i64|u64)",  # MediaTek NeuroPilot Transpose does not support i1, i4, 32-bit, or 64-bit integer tensors
+        "Pooling.*(filter_width=(10|14)|filter_height=(12|14)|stride_h=3,filter_width=2)",  # MediaTek NeuroPilot pooling kernel size/stride hardware limits
+        "average_pool_2d.*(filter_width=12|fa=RELU,padding=SAME,stride_w=3,stride_h=2)",  # MediaTek NeuroPilot AveragePool2d kernel size/fused activation limits
         "whisper_tiny_decoder",
         "whisper_tiny_encoder",
         "hf_all_minilm_l6_v2",
@@ -252,7 +505,7 @@ litert_define_ats(
     ],
     extra_flags = [
         "--data_seed=42",
-        "--mediatek_enable_gemma_compiler_optimizations=true",
+        "--soc_model=mt6989",
         "--mediatek_performance_mode_type=turbo_boost",
         "--mediatek_optimization_hint=low_latency",
         "--mediatek_enable_l1_cache_optimizations=true",
@@ -263,20 +516,12 @@ litert_define_ats(
 litert_define_ats(
     name = "gpu_ats",
     backend = "gpu",
-    compile_only_suffix = "_aot",
-    do_register = [
-        "SingleOp",
-        "SdpaTransposed",
-        "hf_mobilevit_small",
-        "qai_hub_midas",
-        "torchvision_mobilenet_v2",
-        "u2net_lite",
-        "torchvision_squeezenet1_1",
-        "yamnet",
-        "yolo11n",
-    ],
+    compile_only_suffix = None,
     dont_register = [
+        "Transformer",
+        "scaled_dot_product_attention",
         "Binary.*i32",  # OpenCL delegate does not support int32 binary arithmetic
+        "Comparison.*f32",  # OpenCL executes f32 graphs in FP16 precision, rounding close f32 inputs to equal under kExact
         "OneHot",  # OpenCL delegate does not support OneHot
         "LogSoftmax",  # OpenCL delegate does not support LogSoftmax
         "tfl[.]prelu",  # OpenCL delegate requires PRelu alpha to be statically allocated
@@ -302,6 +547,12 @@ litert_define_ats(
         "QkvNormRope.*4d_f(16|32)<(?!1x)",  # GPU accelerator does not support QkvNormRope with batch > 1
         "SelectV2",  # OpenCL SelectV2 rejects multidimensional if/else broadcasting and uses kExact on FP16-rounded f32
         "Slice",  # OpenCL Slice uses kExact byte comparison on FP16-rounded f32 buffers
+        "simple_add_dynamic_shape",
+        "hf_all_minilm_l6_v2",
+        "whisper_tiny_decoder",
+        "torchvision_resnet18",
+        "whisper_tiny_encoder",
+        "qai_hub_real_esrgan_x4plus",
     ],
     extra_flags = [
         "--data_seed=42",
@@ -313,20 +564,9 @@ litert_define_ats(
     name = "intel_openvino_ats",
     backend = "intel_openvino",
     compile_only_suffix = None,
-    do_register = [
-        "SingleOp",
-        "hf_mobilevit_small",
-        "qai_hub_midas",
-        "qai_hub_real_esrgan_x4plus",
-        "torchvision_mobilenet_v2",
-        "u2net_lite",
-        "torchvision_resnet18",
-        "torchvision_squeezenet1_1",
-        "whisper_tiny_encoder",
-        "yamnet",
-        "yolo11n",
-    ],
     dont_register = [
+        "CompositeOp",
+        "Transformer",
         "6d",
         "hf_all_minilm_l6_v2",
         "whisper_tiny_decoder",
@@ -337,6 +577,11 @@ litert_define_ats(
 
 litert_define_ats(
     name = "samsung_ats",
+    aot_shard_count = 32,
+    aot_tags = [
+        "manual",
+        "notap",
+    ],
     backend = "samsung",
     compile_only_suffix = "_aot",
     do_register = [
@@ -365,10 +610,13 @@ litert_define_ats(
     compile_only_suffix = None,
     dont_register = [
         "(_i32<[^>]+>(?!_cst)|->[(][^)]*_i32)",  # XNNPACK does not support dynamic int32 math (allows int32 static constants)
+        "Comparison",  # XNNPACK does not support Comparison ops
         "OneHot",  # XNNPACK does not support OneHot
         "Transformer",  # XNNPACK does not support TransformerLayer flex/custom ops
+        "GroupNorm",  # XNNPACK does not support GroupNorm composite op
         "SdpaTransposed",  # XNNPACK does not support SdpaTransposed composite op
         "QkvNormRope",  # XNNPACK does not support QkvNormRope composite op
+        "RmsNorm",  # XNNPACK does not support RmsNorm composite op
         "Swiglu",  # XNNPACK does not support SwiGLU op
         "SelectV2",  # XNNPACK does not support SelectV2
         "tfl\\.floor_div",  # XNNPACK does not support FloorDiv
@@ -421,6 +669,7 @@ litert_define_ats(
     compile_only_suffix = None,
     dont_register = [
         "Binary.*i32",
+        "Comparison.*f32",  # Metal executes f32 graphs in FP16 precision, rounding close f32 inputs to equal under kExact
         "OneHot",
         "LogSoftmax",
         "Transpose.*[(]1d_",
@@ -458,6 +707,7 @@ litert_define_ats(
     compile_only_suffix = None,
     dont_register = [
         "Binary.*i32",
+        "Comparison.*f32",  # WebGPU executes f32 graphs in FP16 precision, rounding close f32 inputs to equal under kExact
         "OneHot",
         "LogSoftmax",
         "Transpose.*[(]1d_",
@@ -485,6 +735,78 @@ litert_define_ats(
     extra_flags = [
         "--data_seed=42",
     ],
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "cpu_macos_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = XNNPACK_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "ynnpack_cpu_macos_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = YNNPACK_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--enable_ynnpack=true",
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "builtin_cpu_macos_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = BUILTIN_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--cpu_kernel_mode=builtin",
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "metal_macos_models_ats",
+    backend = "metal",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = GPU_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "webgpu_macos_models_ats",
+    backend = "webgpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = GPU_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
     platform = "macos",
 )
@@ -610,6 +932,7 @@ cc_library(
         ":register_batch_matmul",
         ":register_binary_broadcast",
         ":register_binary_no_bcast",
+        ":register_comparison",
         ":register_concatenation",
         ":register_conv_2d",
         ":register_depthwise_conv_2d",
@@ -638,7 +961,9 @@ cc_library(
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
+        ":register_group_norm",
         ":register_qkv_norm_rope",
+        ":register_rms_norm",
         ":register_sdpa",
         ":register_sdpa_transposed",
         ":register_swiglu",
@@ -698,6 +1023,25 @@ cc_library(
         "//litert/test/generators:binary_no_bcast",
         "//litert/test/generators:common",
         "//tflite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "register_comparison",
+    testonly = True,
+    srcs = ["register_comparison.cc"],
+    hdrs = ["register_comparison.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/c:litert_op_code",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:common",
+        "//litert/test/generators:comparison",
+        "//tflite/types:half",
     ],
 )
 
@@ -891,6 +1235,23 @@ cc_library(
 )
 
 cc_library(
+    name = "register_group_norm",
+    testonly = True,
+    srcs = ["register_group_norm.cc"],
+    hdrs = ["register_group_norm.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:group_norm",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
     name = "register_qkv_norm_rope",
     testonly = True,
     srcs = ["register_qkv_norm_rope.cc"],
@@ -903,6 +1264,23 @@ cc_library(
         ":register",
         "//litert/cc/internal:litert_detail",
         "//litert/test/generators:qkv_norm_rope",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
+    name = "register_rms_norm",
+    testonly = True,
+    srcs = ["register_rms_norm.cc"],
+    hdrs = ["register_rms_norm.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:rms_norm",
         "//tflite/types:half",
     ],
 )
@@ -1412,11 +1790,6 @@ cc_library(
     ],
 )
 
-make_download_model_provider(
-    name = "ats_models_provider",
-    url = "https://storage.googleapis.com/litert/ats_models.tar.gz",
-)
-
 # copybara:uncomment_begin(google-only)
 # # GUITAR WORKFLOWS #################################################################################
 #
@@ -1514,6 +1887,136 @@ make_download_model_provider(
 #         tests = [
 #             litert_macos_mh_guitar_test(
 #                 targets = MACOS_ATS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# PIXEL_9_ATS_MODELS_GUITAR_TARGETS = [
+#     ":gpu_models_ats_remote",
+#     ":cpu_models_ats_remote",
+#     ":ynnpack_cpu_models_ats_remote",
+#     ":builtin_cpu_models_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_models_guitar_pixel_9",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_pixel_9_mh_guitar_test(
+#                 targets = PIXEL_9_ATS_MODELS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# QUALCOMM_S24_ATS_MODELS_GUITAR_TARGETS = [
+#     ":gpu_models_ats_remote",
+#     ":cpu_models_ats_remote",
+#     ":ynnpack_cpu_models_ats_remote",
+#     ":builtin_cpu_models_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_models_guitar_qualcomm_s24",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_qualcomm_mh_guitar_test(
+#                 targets = QUALCOMM_S24_ATS_MODELS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# MEDIATEK_MT6989_ATS_MODELS_GUITAR_TARGETS = [
+#     ":gpu_models_ats_remote",
+#     ":cpu_models_ats_remote",
+#     ":ynnpack_cpu_models_ats_remote",
+#     ":builtin_cpu_models_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_models_guitar_mediatek_mt6989",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_mediatek_mh_guitar_test(
+#                 dimension_hardware = "mt6989",
+#                 targets = MEDIATEK_MT6989_ATS_MODELS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# MACOS_ATS_MODELS_GUITAR_TARGETS = [
+#     ":metal_macos_models_ats_remote",
+#     ":webgpu_macos_models_ats_remote",
+#     ":cpu_macos_models_ats_remote",
+#     ":ynnpack_cpu_macos_models_ats_remote",
+#     ":builtin_cpu_macos_models_ats_remote",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_models_guitar_macos",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_macos_mh_guitar_test(
+#                 targets = MACOS_ATS_MODELS_GUITAR_TARGETS,
+#             ),
+#         ],
+#     ),
+#     tags = [
+#         "external",
+#         "guitar",
+#         "manual",
+#         "notap",
+#     ],
+# )
+#
+# NPU_AOT_ATS_GUITAR_TARGETS = [
+#     ":google_tensor_ats_aot",
+#     ":example_ats_aot",
+# ]
+#
+# guitar_workflow_test(
+#     name = "litert_ats_guitar_npu_aot",
+#     # This flag is required by guitar::update_culprit_finding_config and shard_count.
+#     extract_deps = True,
+#     integration_test = guitar.IntegrationTest(
+#         tests = [
+#             litert_npu_aot_guitar_test(
+#                 targets = NPU_AOT_ATS_GUITAR_TARGETS,
 #             ),
 #         ],
 #     ),

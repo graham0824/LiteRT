@@ -68,6 +68,44 @@ def litert_platform_defines():
     """This is a no-op outside of Google."""
     return []
 
+def litert_linkopts_unstripped():
+    """Defines linker flags to reduce size of LiteRT binary without stripping symbols."""
+    return select({
+        "//litert:android": [
+            "-latomic",
+            "-Wl,--gc-sections",
+            "-Wl,--as-needed",
+            "-Wl,-z,max-page-size=16384",
+        ],
+        "//litert:macos": [],
+        "//litert:ios": [],
+        "//litert:windows": [],
+        "//conditions:default": [
+            "-Wl,--gc-sections",
+            "-Wl,--as-needed",
+        ],
+    })
+
+def litert_linkopts():
+    """Defines linker flags to reduce size of LiteRT binary."""
+    return select({
+        "//litert:android": [
+            "-Wl,-s",
+            "-latomic",
+            "-Wl,--gc-sections",
+            "-Wl,--as-needed",
+            "-Wl,-z,max-page-size=16384",
+        ],
+        "//litert:macos": [],
+        "//litert:ios": [],
+        "//litert:windows": [],
+        "//conditions:default": [
+            "-Wl,-s",
+            "-Wl,--gc-sections",
+            "-Wl,--as-needed",
+        ],
+    })
+
 def litert_jni_linkopts():
     return select({
         "//litert:android": [
@@ -115,7 +153,12 @@ def litert_metal_deps():
 
 # Dependencies for GPU accelerators for each platform.
 def litert_gpu_accelerator_deps():
-    return []
+    return select({
+        "//litert/build_common:android_gpu_enabled": [
+            "//litert/runtime/accelerators/gpu:ml_drift_cl_gl_accelerator",
+        ],
+        "//conditions:default": [],
+    })
 
 # Prebuilt dependencies for GPU accelerators for each platform.
 def litert_gpu_accelerator_prebuilts():
