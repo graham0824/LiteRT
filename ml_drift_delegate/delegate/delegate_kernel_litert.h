@@ -119,7 +119,7 @@ class DelegateKernelLiteRt : public DelegateKernel {
     }
     for (const auto& pattern :
          delegate_data_->options->litert_external_tensor_patterns) {
-      if (strncmp(tensor_name, pattern.c_str(), pattern.size()) == 0) {
+      if (strstr(tensor_name, pattern.c_str()) != nullptr) {
         return true;
       }
     }
@@ -159,9 +159,12 @@ class DelegateKernelLiteRt : public DelegateKernel {
   // BUFFER storage type is returned. Otherwise, the default storage type is
   // returned.
   ::ml_drift::TensorStorageType GetStorageType(const char* tensor_name) const {
+    if (tensor_name == nullptr) {
+      return DelegateKernel::GetStorageType();
+    }
     for (const auto& pattern :
          delegate_data_->options->litert_buffer_storage_tensor_patterns) {
-      if (strncmp(tensor_name, pattern.c_str(), pattern.size()) == 0) {
+      if (strstr(tensor_name, pattern.c_str()) != nullptr) {
         return ::ml_drift::TensorStorageType::kBuffer;
       }
     }
@@ -230,6 +233,9 @@ class DelegateKernelLiteRt : public DelegateKernel {
                                      GpuTensorBufferPtr& tensor_buffer,
                                      GpuMemoryHandle gpu_memory);
 
+  // Returns true if the tensor buffer is an AHardwareBuffer.
+  bool IsAhwbTensorBuffer(const GpuTensorBufferPtr& tensor_buffer) const;
+
   // Tensor descriptors for I/O tensors.
   // The size and order of these vectors should be the same as input_indices_
   // and output_indices_ of the base class.
@@ -252,6 +258,11 @@ class DelegateKernelLiteRt : public DelegateKernel {
   // Set of tensors that need to be flushed from the cache and buffer context
   // during `FlushBufferCacheIfNeeded`.
   absl::flat_hash_map<TfLiteTensor*, GpuMemoryHandle> tensors_to_flush_;
+
+  // Whether any input or output tensor of the current Invoke() is bound to an
+  // AHardwareBuffer. Updated by BindExternalTensorBuffers() and used by
+  // HandleOutputEvents().
+  bool has_ahwb_tensor_buffers_ = false;
 };
 
 }  // namespace litert::ml_drift

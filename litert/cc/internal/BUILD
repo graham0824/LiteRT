@@ -92,7 +92,6 @@ cc_library(
         ":litert_handle",
         "//litert/c:litert_common",
         "//litert/c:litert_custom_tensor_buffer",
-        "//litert/c:litert_event",
         "//litert/c:litert_gl_types",
         "//litert/c:litert_model_types",
         "//litert/c:litert_opencl_types",
@@ -742,6 +741,37 @@ cc_library(
             "//litert/c/internal:litert_runtime_builtin_static",
         ],
     }),
+)
+
+cc_library(
+    name = "litert_dispatch_delegate_vendor_options",
+    hdrs = ["litert_dispatch_delegate_vendor_options.h"],
+    deps = [
+        "//litert/c:litert_common",
+        "//litert/c:litert_opaque_options",
+        "//litert/cc:litert_expected",
+        "//litert/cc:litert_macros",
+        "//litert/cc:litert_opaque_options",
+        "//litert/cc/options:litert_concrete_options_base",
+        "//litert/core:litert_toml_parser",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "litert_dispatch_delegate_vendor_options_test",
+    srcs = ["litert_dispatch_delegate_vendor_options_test.cc"],
+    deps = [
+        ":litert_dispatch_delegate_vendor_options",
+        "//litert/c:litert_opaque_options",
+        "//litert/cc:litert_opaque_options",
+        "//litert/test:matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 # Files that make up the LiteRT C++ SDK.

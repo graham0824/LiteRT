@@ -180,6 +180,7 @@ cc_library(
     srcs = ["rope_parser.cc"],
     hdrs = ["rope_parser.h"],
     deps = [
+        "//ml_drift_delegate/tflite:model_builder_helper",
         "//ml_drift_delegate/tflite:object_reader",
         "//ml_drift_delegate/tflite:operation_parser",
         "//tflite/c:c_api_types",
@@ -190,6 +191,7 @@ cc_library(
         "@flatbuffers",
         "@ml_drift//ml_drift/common:model",
         "@ml_drift//ml_drift/common:operations",
+        "@ml_drift//ml_drift/common:shape",
     ],
 )
 
@@ -208,6 +210,7 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@flatbuffers",
         "@ml_drift//ml_drift/common:data_type",
+        "@ml_drift//ml_drift/common:gpu_info",
         "@ml_drift//ml_drift/common:model",
         "@ml_drift//ml_drift/common:operations",
         "@ml_drift//ml_drift/common:shape",
@@ -224,6 +227,7 @@ cc_library(
         ":sdpa_transposed_parser",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@ml_drift//ml_drift/common:data_type",
@@ -234,7 +238,6 @@ cc_library(
         "@ml_drift//ml_drift/common:model",
         "@ml_drift//ml_drift/common:operations",
         "@ml_drift//ml_drift/common:shape",
-        "@ml_drift//ml_drift/common:tensor",
         "@ml_drift//ml_drift/common:types",
         "@ml_drift//ml_drift/common/task:gpu_operation",
         "@ml_drift//ml_drift/common/task:tensor_desc",
@@ -387,6 +390,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
+        "@ml_drift//ml_drift/common:data_type",
         "@ml_drift//ml_drift/common:gpu_model_builder",
         "@ml_drift//ml_drift/common:ir_model",
         "@ml_drift//ml_drift/common:model",
@@ -694,6 +698,7 @@ cc_library(
         "//ml_drift_delegate/tflite:unimplemented_operation_parser",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
+        "@ml_drift//ml_drift/common:gpu_info",
     ],
 )
 
@@ -728,14 +733,12 @@ mld_kernel_test(
     ],
     deps = [
         ":short_conv_step_kernel",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@ml_drift//ml_drift/common:data_type",
         "@ml_drift//ml_drift/common:precision",
         "@ml_drift//ml_drift/common:shape",
-        "@ml_drift//ml_drift/common/task:gpu_operation",
         "@ml_drift//ml_drift/common/task:tensor_desc",
         "@ml_drift//ml_drift/common/task:testing_util",
     ],
@@ -763,7 +766,6 @@ objc_library(
     deps = [
         ":short_conv_step_kernel",
         "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
@@ -771,7 +773,6 @@ objc_library(
         "@ml_drift//ml_drift/common:data_type",
         "@ml_drift//ml_drift/common:precision",
         "@ml_drift//ml_drift/common:shape",
-        "@ml_drift//ml_drift/common/task:gpu_operation",
         "@ml_drift//ml_drift/common/task:tensor_desc",
         "@ml_drift//ml_drift/common/task:testing_util",
         "@ml_drift//ml_drift/metal/testing:test_util",

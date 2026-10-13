@@ -36,7 +36,9 @@
 #include "litert/cc/litert_buffer_ref.h"
 #include "litert/cc/litert_expected.h"
 #include "litert/cc/litert_macros.h"
+#if !defined(LITERT_DISABLE_EXTERNAL_WEIGHTS)
 #include "weight_loader/external_weight_loader_litert.h"
+#endif  // !defined(LITERT_DISABLE_EXTERNAL_WEIGHTS)
 #if !defined(LITERT_DISABLE_NPU)
 #include "litert/core/cache/compilation_cache.h"
 #endif  // !defined(LITERT_DISABLE_NPU)
@@ -400,6 +402,21 @@ class LiteRtCompiledModelT {
   // this root set and does not add transitively referenced callees.
   litert::Expected<void> InitializeActiveSubgraphs(LiteRtOptions options);
 
+  // Marks signature subgraph input and output tensors as kTfLiteNonCpu to
+  // prevent TFLite's ArenaPlanner from allocating host heap buffers for them.
+  void MarkSignatureIoTensorsNonCpu();
+
+  // Returns the buffer to bind to an input tensor for which the caller passed
+  // nullptr in Run(). Since signature I/O tensors are not allocated by TFLite's
+  // ArenaPlanner (see MarkSignatureIoTensorsNonCpu), such tensors would
+  // otherwise have no backing memory if consumed by CPU ops, so the runtime
+  // binds a zero-filled host buffer it owns, exactly as if the caller had
+  // provided one. Returns nullptr if the tensor is not consumed by CPU ops
+  // (accelerator nodes manage their own buffers) or already has backing memory
+  // (e.g. an external tensor binding) and must be left untouched.
+  litert::Expected<LiteRtTensorBuffer> GetBufferForUnboundInput(
+      TfLiteTensor* tensor);
+
   // Returns NotFound when an explicitly unselected signature is used.
   litert::Expected<void> ValidateSignatureIsActive(
       absl::string_view signature_key) const;
@@ -461,10 +478,12 @@ class LiteRtCompiledModelT {
   litert::Expected<bool> SignatureNeedsAllocation(
       const tflite::SignatureRunner* runner) const;
 
+#if !defined(LITERT_DISABLE_EXTERNAL_WEIGHTS)
   // Restores external weights into tensor for CPU execution.
   // This is called before delegates are applied so that XNNPack and other
   // CPU delegates can see the weight data in the tensors.
   litert::Expected<void> RestoreExternalWeightsForCpu();
+#endif  // !defined(LITERT_DISABLE_EXTERNAL_WEIGHTS)
 
 #if !defined(LITERT_DISABLE_NPU)
   // Applies the plugins to the model and caches the compiled model if
@@ -517,11 +536,13 @@ class LiteRtCompiledModelT {
 #endif  // !defined(LITERT_DISABLE_NPU)
 
   std::vector<Delegate> delegates_;
+#if !defined(LITERT_DISABLE_EXTERNAL_WEIGHTS)
   // The loader that manages external weight metadata and bindings.
   std::unique_ptr<weight_loader::WeightLoader> weight_loader_owned_;
   // It may point to weight_loader_owned_ or the weight loader owned by the
   // client. If there are no external weights to use, this will be nullptr.
   weight_loader::WeightLoader* weight_loader_ = nullptr;
+#endif  // !defined(LITERT_DISABLE_EXTERNAL_WEIGHTS)
 
   std::vector<std::unique_ptr<litert::internal::CustomOpDispatcher>>
       custom_op_dispatchers_;
@@ -531,6 +552,13 @@ class LiteRtCompiledModelT {
   // Note: The ExternalLiteRtBufferContext must be destroyed after the
   // Interpreter.
   std::unique_ptr<LiteRtExternalLiteRtBufferContextT> buffer_context_;
+
+  // Zero-filled host buffers the runtime binds to input tensors for which the
+  // caller passed nullptr in Run(). See GetBufferForUnboundInput().
+  // Note: These buffers must be destroyed after the Interpreter.
+  absl::flat_hash_map<TfLiteTensorIdentifier, LiteRtTensorBufferPtr,
+                      TensorIdentifierHash, TensorIdentifierEqual>
+      unbound_input_buffers_;
 
   // The TFL interpreter.
   std::unique_ptr<::tflite::Interpreter> interp_;

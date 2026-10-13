@@ -69,6 +69,32 @@ static constexpr size_t kFlatbufferPlaceholderValue = 0xfafafafafafafafa;
 
 static constexpr size_t kFlatbufferAppendedDataAlignment = 64;
 
+absl::Status ValidateShapeSignature(const graph::Tensor& tensor,
+                                    const Shape& signature) {
+  LRT_TENSOR_ASSIGN_OR_RETURN(const graph::TensorInformation& info,
+                              GetInfo(tensor));
+  if (signature.size() != info.shape.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Shape signature rank differs from concrete shape for ", info.name));
+  }
+  LRT_TENSOR_ASSIGN_OR_RETURN(auto producer, GetProducer(tensor));
+  for (size_t axis = 0; axis < signature.size(); ++axis) {
+    if (info.shape[axis] < 0 || signature[axis] < -1 ||
+        (signature[axis] != -1 && signature[axis] != info.shape[axis])) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid shape signature for ", info.name, " at axis ", axis,
+          ": expected -1 or concrete extent ", info.shape[axis], ", got ",
+          signature[axis]));
+    }
+    if (signature[axis] == -1 && producer == nullptr && info.buffer) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Constant tensor cannot have a dynamic shape signature: ",
+          info.name));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<Type> FromTfLite(const TfLiteType type) {
@@ -282,6 +308,12 @@ absl::Status ModelFactory::Build() {
     }
     tflite::TensorT& t = *subgraph.tensors.back();
     t.shape = tensor_info.shape;
+    if (const auto signature = shape_signatures_.find(tensor);
+        signature != shape_signatures_.end()) {
+      LRT_TENSOR_RETURN_IF_ERROR(
+          ValidateShapeSignature(tensor, signature->second));
+      t.shape_signature = signature->second;
+    }
     t.name = tensor_info.name;
     // If the producer isn't null, it means that the buffer was set by and eager
     // execution and we ignore it.
@@ -646,6 +678,15 @@ absl::Status ModelFactory::AddSignature(std::vector<TensorHandle> inputs,
   return AddSignatureDef(std::move(name), subgraph_index);
 }
 
+absl::Status ModelFactory::SetShapeSignature(const TensorHandle& tensor,
+                                             Shape shape_signature) {
+  LRT_TENSOR_RETURN_IF_ERROR(
+      ValidateShapeSignature(tensor.GetRaw(), shape_signature));
+  shape_signatures_.insert_or_assign(tensor.GetRaw(),
+                                     std::move(shape_signature));
+  return absl::OkStatus();
+}
+
 absl::Status ModelFactory::AddSignatureDef(std::string name,
                                            int subgraph_index) {
   auto signature_def = std::make_unique<tflite::SignatureDefT>();
@@ -831,12 +872,13 @@ using TfLiteOps = std::tuple<
     graph::TransposeConvOperation, graph::TransposeConv2DOperation,
     graph::LstmOperation, graph::ArgMaxOperation, graph::LogisticOperation,
     graph::DynamicUpdateSliceOperation, graph::TanhOperation,
-    graph::LessOperation, graph::GreaterOperation, graph::GreaterEqualOperation,
-    graph::NotEqualOperation, graph::EqualOperation, graph::MinimumOperation,
-    graph::MaximumOperation, graph::LogicalAndOperation,
-    graph::LogicalOrOperation, graph::LogicalNotOperation,
-    graph::BitwiseXorOperation, graph::RightShiftOperation, graph::CosOperation,
-    graph::SinOperation, graph::ReshapeOperation, graph::SqueezeOperation,
+    graph::LessOperation, graph::LessEqualOperation, graph::GreaterOperation,
+    graph::GreaterEqualOperation, graph::NotEqualOperation,
+    graph::EqualOperation, graph::MinimumOperation, graph::MaximumOperation,
+    graph::LogicalAndOperation, graph::LogicalOrOperation,
+    graph::LogicalNotOperation, graph::BitwiseXorOperation,
+    graph::RightShiftOperation, graph::CosOperation, graph::SinOperation,
+    graph::ReshapeOperation, graph::SqueezeOperation,
     graph::ExpandDimsOperation, graph::QuantizeOperation,
     graph::ReduceMaxOperation, graph::MeanOperation, graph::ProbeOperation,
     graph::ResizeBilinearOperation, graph::ResizeNearestNeighborOperation,

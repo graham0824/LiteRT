@@ -306,6 +306,15 @@ TEST(QnnOptionTest, SetVtcmSize) {
   EXPECT_EQ(options.GetVtcmSize(), 0);
 }
 
+TEST(QnnOptionTest, SetHtpDeviceId) {
+  Options options;
+  EXPECT_EQ(options.GetHtpDeviceId(), 0);
+  options.SetHtpDeviceId(1);
+  EXPECT_EQ(options.GetHtpDeviceId(), 1);
+  options.SetHtpDeviceId(0);
+  EXPECT_EQ(options.GetHtpDeviceId(), 0);
+}
+
 TEST(QnnOptionTest, SetHvxThread) {
   Options options;
   options.SetNumHvxThreads(4);
@@ -375,14 +384,15 @@ TEST(QnnOptionTest, SetGpuPerformanceMode) {
 
 TEST(QnnOptionTest, SetGraphIOTensorMemType) {
   Options options;
-  EXPECT_EQ(options.GetGraphIOTensorMemType(), GraphIOTensorMemType::kRaw);
-
-  options.SetGraphIOTensorMemType(GraphIOTensorMemType::kMemHandle);
   EXPECT_EQ(options.GetGraphIOTensorMemType(),
             GraphIOTensorMemType::kMemHandle);
 
   options.SetGraphIOTensorMemType(GraphIOTensorMemType::kRaw);
   EXPECT_EQ(options.GetGraphIOTensorMemType(), GraphIOTensorMemType::kRaw);
+
+  options.SetGraphIOTensorMemType(GraphIOTensorMemType::kMemHandle);
+  EXPECT_EQ(options.GetGraphIOTensorMemType(),
+            GraphIOTensorMemType::kMemHandle);
 }
 
 TEST(QnnOptionTest, Default) {
@@ -408,11 +418,13 @@ TEST(QnnOptionTest, Default) {
   EXPECT_TRUE(options.GetDlcDir().empty());
   EXPECT_TRUE(options.GetGraphTransform().empty());
   EXPECT_EQ(options.GetVtcmSize(), 0);
+  EXPECT_EQ(options.GetHtpDeviceId(), 0);
   EXPECT_EQ(options.GetNumHvxThreads(), 0);
   EXPECT_EQ(options.GetOptimizationLevel(),
             OptimizationLevel::kHtpOptimizeForInferenceO3);
   EXPECT_EQ(options.GetGraphPriority(), GraphPriority::kDefault);
-  EXPECT_EQ(options.GetGraphIOTensorMemType(), GraphIOTensorMemType::kRaw);
+  EXPECT_EQ(options.GetGraphIOTensorMemType(),
+            GraphIOTensorMemType::kMemHandle);
   const CustomOpPackage& custom_op_package = options.GetCustomOpPackage();
   EXPECT_TRUE(custom_op_package.name.empty());
   EXPECT_TRUE(custom_op_package.interface_provider.empty());

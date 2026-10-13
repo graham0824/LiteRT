@@ -469,6 +469,15 @@ class QualcommOptions : public ConcreteOptionsBase {
     return val;
   }
 
+  void SetHtpDeviceId(std::uint32_t htp_device_id) {
+    LrtQualcommOptionsSetHtpDeviceId(options_, htp_device_id);
+  }
+  std::uint32_t GetHtpDeviceId() {
+    std::uint32_t val;
+    LrtQualcommOptionsGetHtpDeviceId(options_, &val);
+    return val;
+  }
+
   void SetNumHvxThreads(std::uint32_t num_hvx_threads) {
     LrtQualcommOptionsSetNumHvxThreads(options_, num_hvx_threads);
   }
@@ -583,7 +592,7 @@ class QualcommOptions : public ConcreteOptionsBase {
     LrtQualcommOptionsGraphIOTensorMemType val;
     auto status = LrtQualcommOptionsGetGraphIOTensorMemType(options_, &val);
     if (status != kLiteRtStatusOk) {
-      return GraphIOTensorMemType::kRaw;
+      return GraphIOTensorMemType::kMemHandle;
     }
     return static_cast<GraphIOTensorMemType>(val);
   }

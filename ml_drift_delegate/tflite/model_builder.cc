@@ -1155,6 +1155,9 @@ class ClampOperationsParser : public TFLiteOperationParser {
 
 class ConcatenationOperationParser : public TFLiteOperationParser {
  public:
+  explicit ConcatenationOperationParser(const ModelBuilderOptions& options)
+      : options_(options) {}
+
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
@@ -1190,13 +1193,31 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
              const TfLiteRegistration* registration,
              ::ml_drift::GraphFloat32* graph, ObjectReader* reader) final {
     ::ml_drift::ConcatAttributes attr;
+    // CONCATENATION requires all inputs to share the output's data type. The
+    // partitioner (FP16GraphPartitionHelper::RemapFp16InputTensors) rewires a
+    // float16 constant straight into this node, removing the DEQUANTIZE the
+    // graph declared in front of it; for a float32 concat that leaves a
+    // float16 operand beside float32 ones. Read such a constant as float32 to
+    // restore what the graph declared. Only at float32 precision. Otherwise
+    // every float32 tensor is lowered to float16.
+    const bool requires_float32_constants =
+        !options_.enable_reduced_precision &&
+        reader->GetOutputTensor(0)->type == kTfLiteFloat32;
     // Read inputs first to make sure const node is added to a graph before
     // concat node to ensure topological order.
     std::vector<const ::ml_drift::Value*> inputs;
     for (uint32_t idx = 0; idx < tflite_node->inputs->size; ++idx) {
-      ::ml_drift::Value* input = reader->IsConstantTensor(idx)
-                                     ? reader->AddConstInput(idx, /*layout=*/{})
-                                     : reader->ReadValue(idx);
+      ::ml_drift::Value* input;
+      if (reader->IsConstantTensor(idx)) {
+        const bool read_float16_constants_as_float32 =
+            requires_float32_constants &&
+            reader->GetInputTensor(idx)->type == kTfLiteFloat16;
+        input = read_float16_constants_as_float32
+                    ? reader->AddFloat16ConstAsFloat32Input(idx, /*layout=*/{})
+                    : reader->AddConstInput(idx, /*layout=*/{});
+      } else {
+        input = reader->ReadValue(idx);
+      }
       inputs.push_back(input);
     }
 
@@ -1293,6 +1314,9 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     }
     return axis;
   }
+
+ private:
+  ModelBuilderOptions options_;
 };
 
 class Conv2DOperationParser : public TFLiteOperationParser {
@@ -4509,7 +4533,10 @@ class QuantizeOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    ABSL_RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    // BuiltinOperator_QUANTIZE versions 1-2 support 8-bit quantization, while
+    // versions 3-4 add support for sub-byte (Int4, UInt4, Int2) and block-wise
+    // quantization.
+    ABSL_RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     ABSL_RETURN_IF_ERROR(tflite::CheckGpuDelegateCompatibility(
         context, tflite_node, registration));
     ABSL_RETURN_IF_ERROR(PreCheckReadValue(context, tflite_node, 0));
@@ -6330,9 +6357,31 @@ class RoPEParser : public TFLiteOperationParser {
     ABSL_RETURN_IF_ERROR(
         PreGetInputTensor(context, tflite_node, pos_tensor_idx, &pos));
     const ::ml_drift::BHWC pos_sh = ExtractTensorShape(pos);
-    if (src_sh.w != pos_sh.w) {
+    if (src_sh.b != pos_sh.b) {
       return absl::InvalidArgumentError(
-          "src and pos must have the same width for PositionalEmbedding.");
+          "src and pos must have the same batch size for PositionalEmbedding.");
+    }
+    int pos_seq_len = 0;
+    switch (pos->dims->size) {
+      case 2:
+        // 2D pos: [B, T] -> BHWC(B, 1, 1, T)
+        pos_seq_len = pos_sh.c;
+        break;
+      case 3:
+      case 4:
+        // 3D pos: [B, T, 1] -> BHWC(B, 1, T, 1)
+        // 4D pos: [B, 1, T, 1] -> BHWC(B, 1, T, 1)
+        pos_seq_len = pos_sh.w;
+        break;
+      default:
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Unsupported pos tensor rank for PositionalEmbedding: ",
+            pos->dims->size, ". Expected rank 2, 3, or 4."));
+    }
+    if (src_sh.w != pos_seq_len) {
+      return absl::InvalidArgumentError(
+          "src and pos must have the same sequence length for "
+          "PositionalEmbedding.");
     }
     ABSL_RETURN_IF_ERROR(
         PreCheckRuntimeOrConstantInput(context, tflite_node, 0));
@@ -6878,7 +6927,9 @@ bool IsAllAllowedTensors(TfLiteContext* context,
         break;
       }
     }
-    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
+    if ((t->allocation_type == kTfLiteArenaRw ||
+         t->allocation_type == kTfLiteNonCpu) &&
+        !type_supported) {
       *unsupported_details += "Tensor type(" +
                               std::string(TfLiteTypeGetName(t->type)) +
                               ") is not supported. " + std::string(t->name);
@@ -6934,7 +6985,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ElementwiseOperationParser>(
           ::ml_drift::OperationType::kCeil);
     case kTfLiteBuiltinConcatenation:
-      return std::make_unique<ConcatenationOperationParser>();
+      return std::make_unique<ConcatenationOperationParser>(options);
     case kTfLiteBuiltinConv2d:
       return std::make_unique<Conv2DOperationParser>(options);
     case kTfLiteBuiltinCos:
@@ -7306,6 +7357,8 @@ TfLiteIntArray* GetOpsToReplaceWithOptions(
       allowed_in_types.push_back(kTfLiteInt4);
       allowed_in_types.push_back(kTfLiteInt8);
       allowed_in_types.push_back(kTfLiteUInt8);
+      allowed_out_types.push_back(kTfLiteInt2);
+      allowed_out_types.push_back(kTfLiteInt4);
       allowed_out_types.push_back(kTfLiteInt8);
       allowed_out_types.push_back(kTfLiteUInt8);
     }
