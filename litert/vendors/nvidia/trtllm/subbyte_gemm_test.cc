@@ -18,6 +18,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -67,6 +69,35 @@ float Bf16BitsToFloat(uint16_t value) {
   float result = 0.0f;
   std::memcpy(&result, &bits, sizeof(result));
   return result;
+}
+
+// Round-to-nearest-even FP32 -> FP16 for normal values.
+uint16_t FloatToHalfBits(float value) {
+  uint32_t bits = 0;
+  std::memcpy(&bits, &value, sizeof(bits));
+  const uint32_t sign = (bits >> 16) & 0x8000u;
+  const int32_t exponent = static_cast<int32_t>((bits >> 23) & 0xff) - 112;
+  const uint32_t mantissa = bits & 0x7fffffu;
+  if (exponent <= 0 || exponent >= 31) {
+    ADD_FAILURE() << "FP16 test value out of the normal range: " << value;
+    return static_cast<uint16_t>(sign);
+  }
+  uint32_t half = (static_cast<uint32_t>(exponent) << 10) | (mantissa >> 13);
+  const uint32_t remainder = mantissa & 0x1fffu;
+  if (remainder > 0x1000u || (remainder == 0x1000u && (half & 1u))) {
+    ++half;
+  }
+  return static_cast<uint16_t>(sign | half);
+}
+
+float HalfBitsToFloat(uint16_t value) {
+  const uint32_t exponent = (value >> 10) & 0x1fu;
+  const uint32_t mantissa = value & 0x3ffu;
+  const uint32_t bits = (static_cast<uint32_t>(value & 0x8000u) << 16) |
+                        ((exponent + 112) << 23) | (mantissa << 13);
+  float result = 0.0f;
+  std::memcpy(&result, &bits, sizeof(result));
+  return exponent == 0 ? 0.0f : result;
 }
 
 double Gelu(double x, int gate) {
@@ -124,9 +155,13 @@ void RunCase(const Case& test_case) {
     state = state * 1664525u + 1013904223u;
     byte = static_cast<uint8_t>(state >> 24);
   }
-  std::vector<uint16_t> scales(channels);
+  // Per-channel BF16 scales, or FP16 scales per block of 32 input dims.
+  const bool blockwise = shape.scale_block == 32;
+  const int blocks = blockwise ? input / 32 : 1;
+  std::vector<uint16_t> scales(static_cast<size_t>(channels) * blocks);
   for (auto& scale : scales) {
-    scale = FloatToBf16Bits(0.002f + 0.004f * std::fabs(next()));
+    const float value = 0.002f + 0.004f * std::fabs(next());
+    scale = blockwise ? FloatToHalfBits(value) : FloatToBf16Bits(value);
   }
 
   ASSERT_EQ(LiteRtNvidiaSubbyteGemmWeightBytes(&shape), weights.size());
@@ -166,13 +201,20 @@ void RunCase(const Case& test_case) {
       const uint8_t* packed =
           weights.data() + static_cast<size_t>(channel) * input / 2;
       double sum = 0.0;
+      double block_sum = 0.0;
       for (int k = 0; k < input; ++k) {
         const int nibble = (packed[k / 2] >> ((k & 1) * 4)) & 15;
-        sum += static_cast<double>(Bf16BitsToFloat(
-                   activation[static_cast<size_t>(row) * input + k])) *
-               ((nibble ^ 8) - 8);
+        block_sum += static_cast<double>(Bf16BitsToFloat(
+                         activation[static_cast<size_t>(row) * input + k])) *
+                     ((nibble ^ 8) - 8);
+        if (blockwise && (k + 1) % 32 == 0) {
+          sum += block_sum *
+                 HalfBitsToFloat(
+                     scales[static_cast<size_t>(channel) * blocks + k / 32]);
+          block_sum = 0.0;
+        }
       }
-      return sum * Bf16BitsToFloat(scales[channel]);
+      return blockwise ? sum : block_sum * Bf16BitsToFloat(scales[channel]);
     };
     // The error of a row against the rounding error BF16 results have anyway:
     // the FP16 sums over 128 input dims add less than that.
@@ -216,6 +258,12 @@ TEST(SubbyteGemmTest, SupportsRowsAndInputsInMultiplesOf128) {
   EXPECT_FALSE(supports({128, 3840, 15361, kLiteRtNvidiaGemmGateNone}));
   EXPECT_FALSE(supports({128, 3840, 0, kLiteRtNvidiaGemmGateNone}));
   EXPECT_FALSE(supports({128, 3840, 15360, 3}));
+  // Gemma 4 26B-A4B: input sizes of an odd number of 64-dim chunks, and
+  // scales per block of 32.
+  EXPECT_TRUE(supports({128, 704, 2816, kLiteRtNvidiaGemmGateNone}));
+  EXPECT_TRUE(supports({128, 2112, 2816, kLiteRtNvidiaGemmGateNone, 32}));
+  EXPECT_TRUE(supports({1024, 2816, 704, kLiteRtNvidiaGemmGateGeluTanh, 32}));
+  EXPECT_FALSE(supports({128, 2816, 704, kLiteRtNvidiaGemmGateNone, 16}));
   EXPECT_FALSE(LiteRtNvidiaSubbyteGemmSupports(nullptr));
   LiteRtNvidiaGemmShape unsupported = {100, 3840, 15360, 0};
   EXPECT_EQ(LiteRtNvidiaSubbyteGemmWorkspaceBytes(&unsupported), 0u);
@@ -315,6 +363,208 @@ TEST(SubbyteGemmTest, ScalesRowsOfAnyMagnitude) {
   RunCase(
       {{128, 1024, 256, kLiteRtNvidiaGemmGateNone}, Rows::kUniform, 1.0e-9f});
   RunCase({{256, 1024, 256, kLiteRtNvidiaGemmGateNone}, Rows::kSparse, 2.0f});
+}
+
+// The RMS norm fused into the activation pre-pass: the normed launch over
+// raw rows equals the plain launch over rows normalized on the host.
+TEST(SubbyteGemmTest, FusedNormMatchesPlainLaunchOnNormalizedRows) {
+  if (!LiteRtNvidiaSubbyteGemmAvailable()) {
+    GTEST_SKIP() << "Requires compute capability 8.0 or newer.";
+  }
+  const LiteRtNvidiaGemmShape shape = {128, 2816, 704,
+                                       kLiteRtNvidiaGemmGateGeluTanh, 32};
+  const int channels = 2 * shape.output_size;
+  const int input = shape.input_size;
+  std::vector<uint16_t> raw(static_cast<size_t>(shape.rows) * input);
+  std::vector<uint16_t> normed(raw.size());
+  std::vector<float> norm_scale(input);
+  for (int i = 0; i < input; ++i) norm_scale[i] = 0.9f + 0.002f * (i % 40);
+  const float eps = 1e-6f;
+  const float multiplier = 1.7f;
+  for (int r = 0; r < shape.rows; ++r) {
+    double squares = 0.0;
+    for (int i = 0; i < input; ++i) {
+      const float x = static_cast<float>((i * 13 + r * 7) % 101 - 50) / 23.0f;
+      raw[static_cast<size_t>(r) * input + i] = FloatToBf16Bits(x);
+      const float rounded =
+          Bf16BitsToFloat(raw[static_cast<size_t>(r) * input + i]);
+      squares += static_cast<double>(rounded) * rounded;
+    }
+    const float factor =
+        static_cast<float>(1.0 / std::sqrt(squares / input + eps) * multiplier);
+    for (int i = 0; i < input; ++i) {
+      normed[static_cast<size_t>(r) * input + i] = FloatToBf16Bits(
+          Bf16BitsToFloat(raw[static_cast<size_t>(r) * input + i]) * factor *
+          norm_scale[i]);
+    }
+  }
+  std::vector<uint8_t> weights(static_cast<size_t>(channels) * input / 2);
+  uint32_t state = 12345u;
+  for (auto& byte : weights) {
+    state = state * 1664525u + 1013904223u;
+    byte = static_cast<uint8_t>(state >> 24);
+  }
+  std::vector<uint16_t> scales(static_cast<size_t>(channels) * (input / 32),
+                               FloatToHalfBits(0.01f));
+  auto raw_device = Upload(raw);
+  auto normed_device = Upload(normed);
+  auto weights_device = Upload(weights);
+  auto scales_device = Upload(scales);
+  auto norm_scale_device = Upload(norm_scale);
+  const size_t output_bytes =
+      static_cast<size_t>(shape.rows) * shape.output_size * 2;
+  auto out_normed = AllocateCuda(output_bytes);
+  auto out_plain = AllocateCuda(output_bytes);
+  auto workspace = AllocateCuda(LiteRtNvidiaSubbyteGemmWorkspaceBytes(&shape));
+  ASSERT_EQ(
+      LiteRtNvidiaLaunchBf16Int4GemmNormed(
+          &shape, raw_device.get(),
+          static_cast<const float*>(norm_scale_device.get()), eps, multiplier,
+          static_cast<const uint8_t*>(weights_device.get()),
+          scales_device.get(), out_normed.get(), workspace.get(), nullptr),
+      cudaSuccess);
+  ASSERT_EQ(LiteRtNvidiaLaunchBf16Int4Gemm(
+                &shape, normed_device.get(),
+                static_cast<const uint8_t*>(weights_device.get()),
+                scales_device.get(), out_plain.get(), workspace.get(), nullptr),
+            cudaSuccess);
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+  std::vector<uint16_t> a(output_bytes / 2), b(output_bytes / 2);
+  ASSERT_EQ(cudaMemcpy(a.data(), out_normed.get(), output_bytes,
+                       cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(b.data(), out_plain.get(), output_bytes,
+                       cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  double error = 0.0, norm = 0.0;
+  for (size_t i = 0; i < a.size(); ++i) {
+    const double x = Bf16BitsToFloat(a[i]);
+    const double y = Bf16BitsToFloat(b[i]);
+    error += (x - y) * (x - y);
+    norm += y * y;
+  }
+  // The host rounds the normalized rows to BF16 before the GEMM; the fused
+  // pass keeps them in FP32 until the FP16 tiles.
+  EXPECT_LE(std::sqrt(error), 1e-2 * std::sqrt(norm) + 1e-6)
+      << "relative " << std::sqrt(error / norm);
+}
+
+TEST(SubbyteGemmTest, OddChunkCountsMatchReference) {
+  if (!LiteRtNvidiaSubbyteGemmAvailable()) {
+    GTEST_SKIP() << "Requires compute capability 8.0 or newer and 81 KB of "
+                    "shared memory per block.";
+  }
+  // 704 and 2112 input dims are 11 and 33 chunks of 64: the last buffer of
+  // the pair holds no chunk.
+  RunCase({{128, 704, 256, kLiteRtNvidiaGemmGateNone}, Rows::kUniform, 1.0f});
+  RunCase(
+      {{256, 2112, 2816, kLiteRtNvidiaGemmGateNone}, Rows::kOutliers, 1.0f});
+  RunCase(
+      {{128, 192, 64, kLiteRtNvidiaGemmGateGeluTanh}, Rows::kUniform, 1.0f});
+}
+
+TEST(SubbyteGemmTest, BlockwiseScalesMatchReference) {
+  if (!LiteRtNvidiaSubbyteGemmAvailable()) {
+    GTEST_SKIP() << "Requires compute capability 8.0 or newer and 81 KB of "
+                    "shared memory per block.";
+  }
+  // Gemma 4 26B-A4B's dense and expert projections with FP16 scales per
+  // block of 32 input dims.
+  RunCase(
+      {{128, 2816, 704, kLiteRtNvidiaGemmGateNone, 32}, Rows::kUniform, 1.0f});
+  RunCase(
+      {{256, 704, 2816, kLiteRtNvidiaGemmGateNone, 32}, Rows::kOutliers, 1.0f});
+  RunCase(
+      {{128, 2112, 2816, kLiteRtNvidiaGemmGateNone, 32}, Rows::kSparse, 2.0f});
+  RunCase({{1024, 2816, 8192, kLiteRtNvidiaGemmGateNone, 32},
+           Rows::kOutliers,
+           1.0f});
+  RunCase({{128, 2816, 704, kLiteRtNvidiaGemmGateGeluTanh, 32},
+           Rows::kUniform,
+           1.0f});
+  RunCase({{256, 2816, 2112, kLiteRtNvidiaGemmGateGeluErf, 32},
+           Rows::kOutliers,
+           1.0f});
+}
+
+// Times the GEMM at Gemma 4 26B-A4B's prefill shapes (not a correctness
+// test): SUBBYTE_GEMM_TIMING=1 prints microseconds per launch.
+TEST(SubbyteGemmTest, TimesModelShapes) {
+  if (std::getenv("SUBBYTE_GEMM_TIMING") == nullptr ||
+      !LiteRtNvidiaSubbyteGemmAvailable()) {
+    GTEST_SKIP() << "Set SUBBYTE_GEMM_TIMING=1 on a capable GPU.";
+  }
+  struct Shape {
+    const char* name;
+    LiteRtNvidiaGemmShape shape;
+  };
+  const Shape shapes[] = {
+      {"qkv blockwise", {1024, 2816, 8192, kLiteRtNvidiaGemmGateNone, 32}},
+      {"gate+up blockwise",
+       {1024, 2816, 2112, kLiteRtNvidiaGemmGateGeluTanh, 32}},
+      {"down blockwise K=2112",
+       {1024, 2112, 2816, kLiteRtNvidiaGemmGateNone, 32}},
+      {"down per-channel K=2112",
+       {1024, 2112, 2816, kLiteRtNvidiaGemmGateNone, 0}},
+      {"o blockwise K=4096", {1024, 4096, 2816, kLiteRtNvidiaGemmGateNone, 32}},
+      {"K=2176 blockwise (even chunks)",
+       {1024, 2176, 2816, kLiteRtNvidiaGemmGateNone, 32}},
+      {"qkv per-channel", {1024, 2816, 8192, kLiteRtNvidiaGemmGateNone, 0}},
+  };
+  for (const auto& [name, shape] : shapes) {
+    ASSERT_TRUE(LiteRtNvidiaSubbyteGemmSupports(&shape)) << name;
+    const int channels =
+        shape.gate != 0 ? 2 * shape.output_size : shape.output_size;
+    const size_t weight_bytes = LiteRtNvidiaSubbyteGemmWeightBytes(&shape);
+    const size_t scale_count =
+        static_cast<size_t>(channels) *
+        (shape.scale_block != 0 ? shape.input_size / shape.scale_block : 1);
+    std::vector<uint16_t> activation(static_cast<size_t>(shape.rows) *
+                                     shape.input_size);
+    for (size_t i = 0; i < activation.size(); ++i) {
+      activation[i] =
+          FloatToBf16Bits(static_cast<float>((i * 7) % 13) / 13.0f - 0.5f);
+    }
+    std::vector<uint8_t> weights(weight_bytes);
+    for (size_t i = 0; i < weights.size(); ++i)
+      weights[i] = static_cast<uint8_t>(i * 31 + 7);
+    std::vector<uint16_t> scales(scale_count);
+    for (size_t i = 0; i < scales.size(); ++i) {
+      scales[i] = shape.scale_block != 0 ? FloatToHalfBits(0.01f)
+                                         : FloatToBf16Bits(0.01f);
+    }
+    auto activation_device = Upload(activation);
+    auto weights_device = Upload(weights);
+    auto scales_device = Upload(scales);
+    auto output_device =
+        AllocateCuda(static_cast<size_t>(shape.rows) * shape.output_size * 2);
+    auto workspace =
+        AllocateCuda(LiteRtNvidiaSubbyteGemmWorkspaceBytes(&shape));
+    const auto launch = [&]() {
+      return LiteRtNvidiaLaunchBf16Int4Gemm(
+          &shape, activation_device.get(),
+          static_cast<const uint8_t*>(weights_device.get()),
+          scales_device.get(), output_device.get(), workspace.get(), nullptr);
+    };
+    ASSERT_EQ(launch(), cudaSuccess);
+    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    constexpr int kIterations = 20;
+    cudaEventRecord(start);
+    for (int i = 0; i < kIterations; ++i) ASSERT_EQ(launch(), cudaSuccess);
+    cudaEventRecord(stop);
+    ASSERT_EQ(cudaEventSynchronize(stop), cudaSuccess);
+    float ms = 0.0f;
+    cudaEventElapsedTime(&ms, start, stop);
+    const double flops = 2.0 * shape.rows * shape.input_size * channels;
+    std::printf("%-34s %8.1f us  %6.1f TFLOPS\n", name,
+                ms * 1000.0f / kIterations,
+                flops / (ms / kIterations * 1e-3) / 1e12);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+  }
 }
 
 TEST(SubbyteGemmTest, GatedProjectionsMatchReference) {

@@ -196,21 +196,7 @@ YNNPACK_DONT_REGISTER = [
 
 BUILTIN_MODELS_DONT_REGISTER = [
     "simple_add_dynamic_shape",
-    "hf_all_minilm_l6_v2",
-    "hf_deberta_large_mnli",
-    "hf_distil_whisper_small_no_cache",
-    "hf_distil_whisper_small_with_cache_init",
-    "hf_distilbert",
-    "hf_emotion_english_distilroberta_base",
-    "hf_mbart_large_50",
-    "hf_mobilebert",
-    "hf_splade_v2_distil",
-    "hf_tinyclip_vit_8m_16_text_3m_yfcc15m",
-    "hf_tinyroberta_squad2",
-    "hf_tinyroberta_squad2_dynamic_batch",
-    "qai_hub_hf_whisper_base_decoder",
     "torchaudio_conformer",
-    "whisper_tiny_decoder",
 ]
 
 GPU_MODELS_DONT_REGISTER = [
@@ -324,9 +310,6 @@ litert_define_ats(
     compile_only_suffix = None,
     do_register = ["ExtraModel"],
     dont_register = XNNPACK_MODELS_DONT_REGISTER,
-    extra_flags = [
-        "--iters_per_test=1",
-    ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
 )
@@ -339,7 +322,20 @@ litert_define_ats(
     dont_register = YNNPACK_MODELS_DONT_REGISTER,
     extra_flags = [
         "--enable_ynnpack=true",
-        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+)
+
+litert_define_ats(
+    name = "ynnpack_fallback_cpu_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = BUILTIN_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--enable_ynnpack=true",
+        "--cpu_hint_fully_delegated=false",
     ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
@@ -353,7 +349,6 @@ litert_define_ats(
     dont_register = BUILTIN_MODELS_DONT_REGISTER,
     extra_flags = [
         "--cpu_kernel_mode=builtin",
-        "--iters_per_test=1",
     ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
@@ -365,9 +360,6 @@ litert_define_ats(
     compile_only_suffix = None,
     do_register = ["ExtraModel"],
     dont_register = GPU_MODELS_DONT_REGISTER,
-    extra_flags = [
-        "--iters_per_test=1",
-    ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
 )
@@ -547,6 +539,7 @@ litert_define_ats(
         "QkvNormRope.*4d_f(16|32)<(?!1x)",  # GPU accelerator does not support QkvNormRope with batch > 1
         "SelectV2",  # OpenCL SelectV2 rejects multidimensional if/else broadcasting and uses kExact on FP16-rounded f32
         "Slice",  # OpenCL Slice uses kExact byte comparison on FP16-rounded f32 buffers
+        "CacheUpdateSdpaTransposed",  # Requires intermediate odml.cache_update output buffer storage promotion
         "simple_add_dynamic_shape",
         "hf_all_minilm_l6_v2",
         "whisper_tiny_decoder",
@@ -745,9 +738,6 @@ litert_define_ats(
     compile_only_suffix = None,
     do_register = ["ExtraModel"],
     dont_register = XNNPACK_MODELS_DONT_REGISTER,
-    extra_flags = [
-        "--iters_per_test=1",
-    ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
     platform = "macos",
@@ -761,7 +751,21 @@ litert_define_ats(
     dont_register = YNNPACK_MODELS_DONT_REGISTER,
     extra_flags = [
         "--enable_ynnpack=true",
-        "--iters_per_test=1",
+    ],
+    extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
+    jit_suffix = "",
+    platform = "macos",
+)
+
+litert_define_ats(
+    name = "ynnpack_fallback_cpu_macos_models_ats",
+    backend = "cpu",
+    compile_only_suffix = None,
+    do_register = ["ExtraModel"],
+    dont_register = BUILTIN_MODELS_DONT_REGISTER,
+    extra_flags = [
+        "--enable_ynnpack=true",
+        "--cpu_hint_fully_delegated=false",
     ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
@@ -776,7 +780,6 @@ litert_define_ats(
     dont_register = BUILTIN_MODELS_DONT_REGISTER,
     extra_flags = [
         "--cpu_kernel_mode=builtin",
-        "--iters_per_test=1",
     ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
@@ -789,9 +792,6 @@ litert_define_ats(
     compile_only_suffix = None,
     do_register = ["ExtraModel"],
     dont_register = GPU_MODELS_DONT_REGISTER,
-    extra_flags = [
-        "--iters_per_test=1",
-    ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
     platform = "macos",
@@ -803,9 +803,6 @@ litert_define_ats(
     compile_only_suffix = None,
     do_register = ["ExtraModel"],
     dont_register = GPU_MODELS_DONT_REGISTER,
-    extra_flags = [
-        "--iters_per_test=1",
-    ],
     extra_models = ["https://storage.googleapis.com/litert/ats_models.tar.gz"],  # copybara:comment_replace extra_models = CLASSICAL_ALL_MODELS,
     jit_suffix = "",
     platform = "macos",
@@ -961,6 +958,7 @@ cc_library(
         ":compile_fixture",
         ":configure",
         ":inference_fixture",
+        ":register_cache_update_sdpa_transposed",
         ":register_group_norm",
         ":register_qkv_norm_rope",
         ":register_rms_norm",
@@ -1320,6 +1318,23 @@ cc_library(
 )
 
 cc_library(
+    name = "register_cache_update_sdpa_transposed",
+    testonly = True,
+    srcs = ["register_cache_update_sdpa_transposed.cc"],
+    hdrs = ["register_cache_update_sdpa_transposed.h"],
+    copts = commandline_flag_copts(),
+    deps = [
+        ":compile_fixture",
+        ":configure",
+        ":inference_fixture",
+        ":register",
+        "//litert/cc/internal:litert_detail",
+        "//litert/test/generators:cache_update_sdpa_transposed",
+        "//tflite/types:half",
+    ],
+)
+
+cc_library(
     name = "register_swiglu",
     testonly = True,
     srcs = ["register_swiglu.cc"],
@@ -1654,17 +1669,21 @@ cc_test(
         ":inference_fixture",
         ":register",
         "//litert/c:litert_common",
+        "//litert/c:litert_model_types",
         "//litert/c:litert_op_code",
         "//litert/cc:litert_expected",
         "//litert/cc:litert_macros",
         "//litert/cc/internal:litert_detail",
+        "//litert/cc/internal:litert_rng",
         "//litert/core:filesystem",
         "//litert/core/model",
         "//litert/core/model:model_load",
+        "//litert/core/util:flatbuffer_tools",
         "//litert/test:common",
         "//litert/test:simple_buffer",
         "//litert/test/generators",
         "//litert/test/generators:common",
+        "//tflite/schema:schema_fbs",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/flags:reflection",
@@ -1902,6 +1921,7 @@ cc_library(
 #     ":gpu_models_ats_remote",
 #     ":cpu_models_ats_remote",
 #     ":ynnpack_cpu_models_ats_remote",
+#     ":ynnpack_fallback_cpu_models_ats_remote",
 #     ":builtin_cpu_models_ats_remote",
 # ]
 #
@@ -1928,6 +1948,7 @@ cc_library(
 #     ":gpu_models_ats_remote",
 #     ":cpu_models_ats_remote",
 #     ":ynnpack_cpu_models_ats_remote",
+#     ":ynnpack_fallback_cpu_models_ats_remote",
 #     ":builtin_cpu_models_ats_remote",
 # ]
 #
@@ -1954,6 +1975,7 @@ cc_library(
 #     ":gpu_models_ats_remote",
 #     ":cpu_models_ats_remote",
 #     ":ynnpack_cpu_models_ats_remote",
+#     ":ynnpack_fallback_cpu_models_ats_remote",
 #     ":builtin_cpu_models_ats_remote",
 # ]
 #
@@ -1982,6 +2004,7 @@ cc_library(
 #     ":webgpu_macos_models_ats_remote",
 #     ":cpu_macos_models_ats_remote",
 #     ":ynnpack_cpu_macos_models_ats_remote",
+#     ":ynnpack_fallback_cpu_macos_models_ats_remote",
 #     ":builtin_cpu_macos_models_ats_remote",
 # ]
 #

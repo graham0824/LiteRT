@@ -491,11 +491,6 @@ bool Options::GetUseInt64BiasAsInt32() const {
 
 void Options::SetEnableWeightSharing(bool enable_weight_sharing) {
   enable_weight_sharing_ = enable_weight_sharing;
-  // Mutually exclusive with DLBC weights (QAIRT 2.36+); weight sharing wins.
-  // Enforced here too so the outcome is order-independent.
-  if (enable_weight_sharing_) {
-    htp_dlbc_weights_ = false;
-  }
 }
 
 bool Options::GetEnableWeightSharing() const { return enable_weight_sharing_; }
@@ -522,13 +517,22 @@ void Options::SetHtpPPoint(std::int32_t htp_p_point) {
 
 std::int32_t Options::GetHtpPPoint() const { return htp_p_point_; }
 
+void Options::SetHtpWeightSharingChannelTileSize(
+    std::int32_t htp_weight_sharing_channel_tile_size) {
+  htp_weight_sharing_channel_tile_size_ =
+      htp_weight_sharing_channel_tile_size;
+}
+
+std::int32_t Options::GetHtpWeightSharingChannelTileSize() const {
+  return htp_weight_sharing_channel_tile_size_;
+}
+
 void Options::SetHtpDlbc(bool htp_dlbc) { htp_dlbc_ = htp_dlbc; }
 
 bool Options::GetHtpDlbc() const { return htp_dlbc_; }
 
 void Options::SetHtpDlbcWeights(bool htp_dlbc_weights) {
-  // DLBC weights is mutually exclusive with weight sharing (QAIRT 2.36+).
-  htp_dlbc_weights_ = htp_dlbc_weights && !enable_weight_sharing_;
+  htp_dlbc_weights_ = htp_dlbc_weights;
 }
 
 bool Options::GetHtpDlbcWeights() const { return htp_dlbc_weights_; }
@@ -789,6 +793,8 @@ std::string Options::Dump() const {
   field(2, "HtpDlbc", htp_dlbc_);
   field(2, "HtpDlbcWeights", htp_dlbc_weights_);
   field(2, "HtpPPoint", htp_p_point_);
+  field(2, "HtpWeightSharingChannelTileSize",
+        htp_weight_sharing_channel_tile_size_);
   field(2, "HtpPerformanceMode", htp_performance_mode_);
   field(2, "HtpPerfCtrlMode", htp_perf_ctrl_mode_);
   field(2, "HtpPdSession", htp_pd_session_);

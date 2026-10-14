@@ -682,10 +682,20 @@ ABSL_FLAG(bool, qualcomm_use_fold_relu, true,
           "optimization is correct when quantization ranges for convolution "
           "are equal to or are subset of the Relu operation.");
 
+ABSL_FLAG(bool, qualcomm_htp_dlbc, false,
+          "Enable HTP DLBC input compression.");
+
+ABSL_FLAG(bool, qualcomm_htp_dlbc_weights, false,
+          "Enable HTP DLBC weight compression.");
+
 ABSL_FLAG(
     std::int32_t, qualcomm_htp_p_point, 0,
     "P points are experimental (HTP backend with O3 only) and map to "
     "predefined compiler configurations affecting latency and DRAM bandwidth.");
+
+ABSL_FLAG(std::int32_t, qualcomm_htp_weight_sharing_channel_tile_size, 0,
+          "Channel tile size used by weight sharing during graph finalization. "
+          "A value of 0 disables this config.");
 
 ABSL_FLAG(litert::qualcomm::QualcommOptions::Backend, qualcomm_backend,
           litert::qualcomm::QualcommOptions::Backend::kHtp,
@@ -1027,8 +1037,19 @@ Expected<void> UpdateQualcommOptionsFromFlags(QualcommOptions& opts) {
   const auto use_fold_relu = absl::GetFlag(FLAGS_qualcomm_use_fold_relu);
   opts.SetUseFoldReLU(use_fold_relu);
 
+  const auto htp_dlbc = absl::GetFlag(FLAGS_qualcomm_htp_dlbc);
+  opts.SetHtpDlbc(htp_dlbc);
+
+  const auto htp_dlbc_weights = absl::GetFlag(FLAGS_qualcomm_htp_dlbc_weights);
+  opts.SetHtpDlbcWeights(htp_dlbc_weights);
+
   const auto htp_p_point = absl::GetFlag(FLAGS_qualcomm_htp_p_point);
   opts.SetHtpPPoint(htp_p_point);
+
+  const auto htp_weight_sharing_channel_tile_size =
+      absl::GetFlag(FLAGS_qualcomm_htp_weight_sharing_channel_tile_size);
+  opts.SetHtpWeightSharingChannelTileSize(
+      htp_weight_sharing_channel_tile_size);
 
   const auto qnn_backend = absl::GetFlag(FLAGS_qualcomm_backend);
   opts.SetBackend(qnn_backend);
