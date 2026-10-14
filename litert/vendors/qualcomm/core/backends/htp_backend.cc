@@ -783,6 +783,23 @@ GraphConfigBuilder HtpBackend::BuildGraphConfigs(
         htp_p_point);
   }
 
+  const std::int32_t htp_weight_sharing_channel_tile_size =
+      options.GetHtpWeightSharingChannelTileSize();
+  if (htp_weight_sharing_channel_tile_size > 0) {
+    QnnHtpGraph_CustomConfig_t tile_size = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+    tile_size.option = QNN_HTP_GRAPH_CONFIG_OPTION_FINALIZE_CONFIG;
+    tile_size.finalizeConfig.key = "weight_sharing_channel_tile_size";
+    tile_size.finalizeConfig.value = {
+        QNN_DATATYPE_INT_32,
+        {.int32Value = htp_weight_sharing_channel_tile_size}};
+    config_builder.AddCustomConfig(tile_size);
+  } else if (htp_weight_sharing_channel_tile_size < 0) {
+    QNN_LOG_WARNING(
+        "Invalid weight sharing channel tile size (%d): negative values not "
+        "supported, skipping weight sharing channel tile size config.",
+        htp_weight_sharing_channel_tile_size);
+  }
+
   // Hvx Thread
   if (const std::uint32_t num_hvx_threads = options.GetNumHvxThreads();
       num_hvx_threads > 0) {
@@ -792,7 +809,7 @@ GraphConfigBuilder HtpBackend::BuildGraphConfigs(
     config_builder.AddCustomConfig(hvx_threads);
   }
 
-  // DLBC (activations / inputs). Offline-prep only.
+  // DLBC input compression.
   if (options.GetHtpDlbc()) {
     QnnHtpGraph_CustomConfig_t dlbc = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
     dlbc.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
@@ -801,7 +818,7 @@ GraphConfigBuilder HtpBackend::BuildGraphConfigs(
     config_builder.AddCustomConfig(dlbc);
   }
 
-  // DLBC weights. Offline-prep only.
+  // DLBC weight compression.
   if (options.GetHtpDlbcWeights()) {
     QnnHtpGraph_CustomConfig_t dlbc_weights = QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
     dlbc_weights.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;

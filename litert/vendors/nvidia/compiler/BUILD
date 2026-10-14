@@ -49,6 +49,82 @@ cc_library(
     ],
 )
 
+cuda_library(
+    name = "int8_cache_write_kernel_cuda",
+    srcs = ["int8_cache_write_kernel.cu"],
+    hdrs = ["int8_cache_write_kernel.h"],
+    # copybara:uncomment linkstatic = 1,
+    tags = ["manual"],
+    deps = ["@local_cuda//:cuda_runtime"],
+)
+
+cc_import(
+    name = "int8_cache_write_kernel_archive",
+    static_library = ":int8_cache_write_kernel_cuda",
+    tags = ["manual"],
+)
+
+cc_library(
+    name = "int8_cache_write_kernel",
+    hdrs = ["int8_cache_write_kernel.h"],
+    tags = ["manual"],
+    deps = [
+        ":int8_cache_write_kernel_archive",
+        "@local_cuda//:cuda_headers",
+        "@local_cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "int8_cache_write_plugin",
+    srcs = ["int8_cache_write_plugin.cc"],
+    hdrs = ["int8_cache_write_plugin.h"],
+    tags = ["manual"],
+    deps = [
+        ":int8_cache_write_kernel",
+        "@local_cuda//:cuda_headers",
+        "@local_cuda//:cuda_runtime",
+        "@local_tensorrt_rtx//:tensorrt_rtx_headers",
+    ],
+)
+
+cc_test(
+    name = "int8_cache_write_plugin_test",
+    srcs = ["int8_cache_write_plugin_test.cc"],
+    tags = [
+        "exclusive",
+        "manual",
+        "requires-gpu",
+    ],
+    deps = [
+        ":int8_cache_write_plugin",
+        "@com_google_googletest//:gtest_main",
+        "@local_tensorrt_rtx//:tensorrt_rtx_headers",
+        "@local_tensorrt_rtx//:tensorrt_rtx_stub",
+    ],
+)
+
+cc_test(
+    name = "int8_cache_write_kernel_gpu_test",
+    srcs = ["int8_cache_write_kernel_gpu_test.cc"],
+    tags = [
+        "exclusive",
+        "manual",
+        "requires-gpu",
+    ],
+    target_compatible_with = select({
+        "//litert:linux_x86_64": [],
+        "//litert:linux_aarch64": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":int8_cache_write_kernel",
+        "@com_google_googletest//:gtest_main",
+        "@local_cuda//:cuda_headers",
+        "@local_cuda//:cuda_runtime",
+    ],
+)
+
 cc_library(
     name = "cache_update_plugin",
     srcs = ["cache_update_plugin.cc"],
@@ -108,6 +184,32 @@ cc_library(
         "subbyte_gemv_plugin.h",
         "tensorrt_rtx_plugin_compat.h",
     ],
+    tags = ["manual"],
+    deps = [
+        "//litert/vendors/nvidia/trtllm:gemma4_head_kernels",
+        "@local_cuda//:cuda_headers",
+        "@local_cuda//:cuda_runtime",
+        "@local_tensorrt_rtx//:tensorrt_rtx_headers",
+    ],
+)
+
+cc_library(
+    name = "qkv_norm_rope_plugin",
+    srcs = ["qkv_norm_rope_plugin.cc"],
+    hdrs = ["qkv_norm_rope_plugin.h"],
+    tags = ["manual"],
+    deps = [
+        "//litert/vendors/nvidia/trtllm:gemma4_head_kernels",
+        "@local_cuda//:cuda_headers",
+        "@local_cuda//:cuda_runtime",
+        "@local_tensorrt_rtx//:tensorrt_rtx_headers",
+    ],
+)
+
+cc_library(
+    name = "moe_plugin",
+    srcs = ["moe_plugin.cc"],
+    hdrs = ["moe_plugin.h"],
     tags = ["manual"],
     deps = [
         "//litert/vendors/nvidia/trtllm:gemma4_head_kernels",
@@ -212,6 +314,9 @@ cc_library(
     deps = [
         ":cache_update_plugin",
         ":decode_attention_plugin",
+        ":int8_cache_write_plugin",
+        ":moe_plugin",
+        ":qkv_norm_rope_plugin",
         ":subbyte_gemv_plugin",
         ":weight_store_builder",
         "//litert/c:litert_common",

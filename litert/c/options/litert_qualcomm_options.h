@@ -138,10 +138,6 @@ LiteRtStatus LrtQualcommOptionsGetUseInt64BiasAsInt32(
 
 // Weight sharing indicates whether different subgraphs may share weight
 // tensors. This is only supported on x86 AOT. Defaults to false.
-//
-// Note: weight sharing is mutually exclusive with HTP DLBC weights (QAIRT
-// 2.36+). When both are requested, weight sharing wins and DLBC weights is
-// forced off.
 
 LiteRtStatus LrtQualcommOptionsSetEnableWeightSharing(
     LrtQualcommOptions options, bool enable_weight_sharing);
@@ -189,6 +185,26 @@ LiteRtStatus LrtQualcommOptionsSetUseFoldReLU(LrtQualcommOptions options,
 LiteRtStatus LrtQualcommOptionsGetUseFoldReLU(LrtQualcommOptions options,
                                               bool* use_fold_relu);
 
+// htp_dlbc
+
+// Enables HTP DLBC input compression. Defaults to false.
+
+LiteRtStatus LrtQualcommOptionsSetHtpDlbc(LrtQualcommOptions options,
+                                          bool htp_dlbc);
+
+LiteRtStatus LrtQualcommOptionsGetHtpDlbc(LrtQualcommOptions options,
+                                          bool* htp_dlbc);
+
+// htp_dlbc_weights
+
+// Enables HTP DLBC weight compression. Defaults to false.
+
+LiteRtStatus LrtQualcommOptionsSetHtpDlbcWeights(LrtQualcommOptions options,
+                                                 bool htp_dlbc_weights);
+
+LiteRtStatus LrtQualcommOptionsGetHtpDlbcWeights(LrtQualcommOptions options,
+                                                 bool* htp_dlbc_weights);
+
 // graph_io_tensor_mem_type
 
 // This controls whether graph inputs and outputs use MemHandle or Raw buffers
@@ -215,6 +231,17 @@ LiteRtStatus LrtQualcommOptionsSetHtpPPoint(LrtQualcommOptions options,
 
 LiteRtStatus LrtQualcommOptionsGetHtpPPoint(LrtQualcommOptions options,
                                             int32_t* htp_p_point);
+// htp_weight_sharing_channel_tile_size
+//
+// Controls the channel tile size used by weight sharing during graph
+// finalization.
+
+LiteRtStatus LrtQualcommOptionsSetHtpWeightSharingChannelTileSize(
+    LrtQualcommOptions options, int32_t htp_weight_sharing_channel_tile_size);
+
+LiteRtStatus LrtQualcommOptionsGetHtpWeightSharingChannelTileSize(
+    LrtQualcommOptions options,
+    int32_t* htp_weight_sharing_channel_tile_size);
 
 // DISPATCH OPTIONS ////////////////////////////////////////////////////////////
 
