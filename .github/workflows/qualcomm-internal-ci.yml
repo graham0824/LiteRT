@@ -8,6 +8,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      upstream_branch:
+        description: 'Branch name to cherry-pick (e.g. dev/user/my-feature)'
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -17,8 +22,96 @@ env:
   ASTROBOT_SHA: dev/hungjuiw/astro-for-ci
 
 jobs:
+  prepare-upstream-pr:
+    name: "Prepare Upstream Branch PR"
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_branch != '' }}
+    runs-on: ["self-hosted", "X64", "Linux"]
+    container:
+      image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
+    outputs:
+      pr_branch: ${{ steps.cherry-pick.outputs.pr_branch }}
+    steps:
+      - name: Install gh CLI
+        run: |
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+          apt-get update -qq && apt-get install -y gh
+
+      - name: Checkout internal main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_ENTERPRISE_TOKEN }}
+
+      - name: Mark workspace as safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Add upstream remote and fetch branch
+        run: |
+          git remote add upstream https://github.com/graham0824/LiteRT.git || \
+            git remote set-url upstream https://github.com/graham0824/LiteRT.git
+          git fetch upstream main
+          git fetch upstream "${{ inputs.upstream_branch }}"
+
+      - name: Cherry-pick upstream branch commits
+        id: cherry-pick
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          UPSTREAM_BRANCH="${{ inputs.upstream_branch }}"
+          SAFE_NAME="${UPSTREAM_BRANCH//\//-}"
+          PR_BRANCH="ci/${SAFE_NAME}"
+
+          git checkout -B "$PR_BRANCH" origin/main
+
+          git cherry-pick --abort 2>/dev/null || true
+
+          COMMITS=$(git log --reverse --format="%H" upstream/main..upstream/"$UPSTREAM_BRANCH")
+          if [ -z "$COMMITS" ]; then
+            echo "No commits found on upstream/$UPSTREAM_BRANCH beyond upstream/main"
+            exit 1
+          fi
+
+          echo "$COMMITS" | xargs git cherry-pick
+
+          git push origin "$PR_BRANCH" --force
+          echo "pr_branch=$PR_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update pull request
+        env:
+          GH_ENTERPRISE_TOKEN: ${{ secrets.GH_ENTERPRISE_TOKEN }}
+          GH_HOST: github.qualcomm.com
+        run: |
+          PR_BRANCH="${{ steps.cherry-pick.outputs.pr_branch }}"
+          UPSTREAM_BRANCH="${{ inputs.upstream_branch }}"
+          PR_TITLE="[CI] Test upstream branch: ${UPSTREAM_BRANCH}"
+          PR_BODY="Cherry-picked commits from [\`${UPSTREAM_BRANCH}\`](https://github.com/graham0824/LiteRT/tree/${UPSTREAM_BRANCH}) in graham0824/LiteRT onto internal \`main\`.
+
+          Triggered by workflow_dispatch to validate upstream changes via internal CI."
+
+          if ! OUTPUT=$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$PR_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" 2>&1); then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "PR already exists for $PR_BRANCH, skipping creation"
+            else
+              echo "$OUTPUT" >&2
+              exit 1
+            fi
+          else
+            echo "$OUTPUT"
+          fi
+
   x86-unit-test:
     name: "Qualcomm-X86-Unit-Test"
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ["self-hosted", "X64", "Linux"]
     container:
       image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
@@ -46,6 +139,7 @@ jobs:
 
   device-unit-test:
     name: "Qualcomm-Device-Unit-Test"
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ["self-hosted", "X64", "Linux"]
     container:
       image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
@@ -80,6 +174,7 @@ jobs:
 
   device-e2e-test:
     name: "Qualcomm-Device-E2E-Test"
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ["self-hosted", "X64", "Linux"]
     container:
       image: artifactory-edge-qdc.qualcomm.com/aisw-mlg-docker-virtual/public/mlg-develop/jammy:latest
