@@ -23,29 +23,27 @@
 #include "litert/cc/litert_environment.h"
 #include "litert/cc/litert_expected.h"
 #include "litert/cc/litert_model.h"
+#include "litert/cc/litert_ranked_tensor_type.h"
 #import "third_party/odml/litert/litert/objc/apis/LRTError.h"
-#import "third_party/odml/litert/litert/objc/sources/LRTError+Internal.h"
 #import "third_party/odml/litert/litert/objc/sources/LRTEnvironment+Internal.h"
+#import "third_party/odml/litert/litert/objc/sources/LRTError+Internal.h"
 #import "third_party/odml/litert/litert/objc/sources/LRTModel+Internal.h"
+#import "third_party/odml/litert/litert/objc/sources/LRTTensorType+Internal.h"
 
+namespace {
 
-/**
- * Converts C++ string views, which need not be NUL-terminated, into an array of NSStrings.
- *
- * Callers index the result by tensor or signature index, so a name that is not valid UTF-8
- * becomes an empty string rather than being dropped, which would shift every later index.
+/** Converts a C++ `litert::Expected<litert::RankedTensorType>` to an Objective-C `LRTTensorType`.
  */
-static NSArray<NSString *> *ConvertStringViewsToObjCArray(
-    const std::vector<litert::StringView> &stringViews) {
-  NSMutableArray<NSString *> *array = [NSMutableArray arrayWithCapacity:stringViews.size()];
-  for (const auto &stringView : stringViews) {
-    NSString *string = [[NSString alloc] initWithBytes:stringView.data()
-                                                length:stringView.size()
-                                              encoding:NSUTF8StringEncoding];
-    [array addObject:string ?: @""];
+LRTTensorType *CreateObjCTensorTypeFromCPPResult(
+    const litert::Expected<litert::RankedTensorType> &tensorTypeResult, NSError **error) {
+  if (!tensorTypeResult.HasValue()) {
+    LRTSetErrorFromCPPError(error, tensorTypeResult.Error());
+    return nil;
   }
-  return array;
+  return [LRTTensorType tensorTypeWithCPPTensorType:tensorTypeResult.Value()];
 }
+
+}  // namespace
 
 @implementation LRTModel {
   std::unique_ptr<litert::Model> _cppModel;
@@ -68,15 +66,15 @@ static NSArray<NSString *> *ConvertStringViewsToObjCArray(
   }
 
   litert::Expected<litert::Model> createResult =
-      litert::Model::CreateFromFile(*cppEnvironment, std::string(modelFilePath.UTF8String));
+      litert::Model::CreateFromFile(*cppEnvironment, LRTCPPStringFromNSString(modelFilePath));
 
   if (!createResult.HasValue()) {
-    LRTSetErrorFromCppError(error, createResult.Error());
+    LRTSetErrorFromCPPError(error, createResult.Error());
     return nil;
   }
 
   auto cppModel = std::make_unique<litert::Model>(std::move(createResult.Value()));
-  return [[LRTModel alloc] initInternalWithCppModel:std::move(cppModel)
+  return [[LRTModel alloc] initInternalWithCPPModel:std::move(cppModel)
                                         environment:environment
                                           modelData:nil];
 }
@@ -104,17 +102,17 @@ static NSArray<NSString *> *ConvertStringViewsToObjCArray(
   auto createResult = litert::Model::CreateFromBuffer(*cppEnvironment, bufferRef);
 
   if (!createResult.HasValue()) {
-    LRTSetErrorFromCppError(error, createResult.Error());
+    LRTSetErrorFromCPPError(error, createResult.Error());
     return nil;
   }
 
   auto cppModel = std::make_unique<litert::Model>(std::move(createResult.Value()));
-  return [[LRTModel alloc] initInternalWithCppModel:std::move(cppModel)
+  return [[LRTModel alloc] initInternalWithCPPModel:std::move(cppModel)
                                         environment:environment
                                           modelData:ownedModelData];
 }
 
-- (instancetype)initInternalWithCppModel:(std::unique_ptr<litert::Model>)cppModel
+- (instancetype)initInternalWithCPPModel:(std::unique_ptr<litert::Model>)cppModel
                              environment:(LRTEnvironment *)environment
                                modelData:(NSData *)modelData {
   self = [super init];
@@ -124,6 +122,11 @@ static NSArray<NSString *> *ConvertStringViewsToObjCArray(
     _modelData = [modelData copy];
   }
   return self;
+}
+
+- (NSString *)description {
+  return [NSString stringWithFormat:@"<%@: %p, signatureKeys=%@>", NSStringFromClass([self class]),
+                                    self, self.signatureKeys];
 }
 
 #pragma mark - Properties
@@ -136,97 +139,137 @@ static NSArray<NSString *> *ConvertStringViewsToObjCArray(
   if (!keysResult.HasValue()) {
     return @[];
   }
-  return ConvertStringViewsToObjCArray(keysResult.Value());
+  return LRTStringArrayFromCPPStringViews(keysResult.Value());
 }
 
 #pragma mark - Public
 
 - (NSArray<NSString *> *)inputNamesForSignatureIndex:(NSUInteger)signatureIndex
                                                error:(NSError **)error {
-  if (!_cppModel) {
-    LRTSetError(error, LRTErrorCodeRuntimeFailure, @"Model is not initialized");
-    return nil;
-  }
-
-  if (signatureIndex >= _cppModel->GetNumSignatures()) {
-    LRTSetError(error, LRTErrorCodeInvalidArgument, @"Signature index out of bounds");
+  if (![self validateSignatureIndex:signatureIndex error:error]) {
     return nil;
   }
 
   litert::Expected<std::vector<litert::StringView>> namesResult =
       _cppModel->GetSignatureInputNames(signatureIndex);
   if (!namesResult.HasValue()) {
-    LRTSetErrorFromCppError(error, namesResult.Error());
+    LRTSetErrorFromCPPError(error, namesResult.Error());
     return nil;
   }
 
-  return ConvertStringViewsToObjCArray(namesResult.Value());
+  return LRTStringArrayFromCPPStringViews(namesResult.Value());
 }
 
 - (NSArray<NSString *> *)inputNamesForSignatureKey:(NSString *)signatureKey
                                              error:(NSError **)error {
-  if (!signatureKey) {
-    LRTSetError(error, LRTErrorCodeInvalidArgument, @"signatureKey cannot be nil");
-    return nil;
-  }
-
-  if (!_cppModel) {
-    LRTSetError(error, LRTErrorCodeRuntimeFailure, @"Model is not initialized");
+  if (![self validateSignatureKey:signatureKey error:error]) {
     return nil;
   }
 
   litert::Expected<std::vector<litert::StringView>> namesResult =
-      _cppModel->GetSignatureInputNames(signatureKey.UTF8String);
+      _cppModel->GetSignatureInputNames(LRTCPPStringFromNSString(signatureKey));
   if (!namesResult.HasValue()) {
-    LRTSetErrorFromCppError(error, namesResult.Error());
+    LRTSetErrorFromCPPError(error, namesResult.Error());
     return nil;
   }
 
-  return ConvertStringViewsToObjCArray(namesResult.Value());
+  return LRTStringArrayFromCPPStringViews(namesResult.Value());
 }
 
 - (NSArray<NSString *> *)outputNamesForSignatureIndex:(NSUInteger)signatureIndex
                                                 error:(NSError **)error {
-  if (!_cppModel) {
-    LRTSetError(error, LRTErrorCodeRuntimeFailure, @"Model is not initialized");
-    return nil;
-  }
-
-  if (signatureIndex >= _cppModel->GetNumSignatures()) {
-    LRTSetError(error, LRTErrorCodeInvalidArgument, @"Signature index out of bounds");
+  if (![self validateSignatureIndex:signatureIndex error:error]) {
     return nil;
   }
 
   litert::Expected<std::vector<litert::StringView>> namesResult =
       _cppModel->GetSignatureOutputNames(signatureIndex);
   if (!namesResult.HasValue()) {
-    LRTSetErrorFromCppError(error, namesResult.Error());
+    LRTSetErrorFromCPPError(error, namesResult.Error());
     return nil;
   }
 
-  return ConvertStringViewsToObjCArray(namesResult.Value());
+  return LRTStringArrayFromCPPStringViews(namesResult.Value());
 }
 
 - (NSArray<NSString *> *)outputNamesForSignatureKey:(NSString *)signatureKey
                                               error:(NSError **)error {
-  if (!signatureKey) {
-    LRTSetError(error, LRTErrorCodeInvalidArgument, @"signatureKey cannot be nil");
-    return nil;
-  }
-
-  if (!_cppModel) {
-    LRTSetError(error, LRTErrorCodeRuntimeFailure, @"Model is not initialized");
+  if (![self validateSignatureKey:signatureKey error:error]) {
     return nil;
   }
 
   litert::Expected<std::vector<litert::StringView>> namesResult =
-      _cppModel->GetSignatureOutputNames(signatureKey.UTF8String);
+      _cppModel->GetSignatureOutputNames(LRTCPPStringFromNSString(signatureKey));
   if (!namesResult.HasValue()) {
-    LRTSetErrorFromCppError(error, namesResult.Error());
+    LRTSetErrorFromCPPError(error, namesResult.Error());
     return nil;
   }
 
-  return ConvertStringViewsToObjCArray(namesResult.Value());
+  return LRTStringArrayFromCPPStringViews(namesResult.Value());
+}
+
+- (LRTTensorType *)inputTensorTypeAtIndex:(NSUInteger)inputIndex error:(NSError **)error {
+  return [self inputTensorTypeAtIndex:inputIndex signatureIndex:0 error:error];
+}
+
+- (LRTTensorType *)inputTensorTypeAtIndex:(NSUInteger)inputIndex
+                           signatureIndex:(NSUInteger)signatureIndex
+                                    error:(NSError **)error {
+  if (![self validateSignatureIndex:signatureIndex error:error]) {
+    return nil;
+  }
+
+  litert::Expected<litert::RankedTensorType> tensorTypeResult =
+      _cppModel->GetInputTensorType(signatureIndex, inputIndex);
+  return CreateObjCTensorTypeFromCPPResult(tensorTypeResult, error);
+}
+
+- (LRTTensorType *)inputTensorTypeForName:(NSString *)inputName
+                             signatureKey:(NSString *)signatureKey
+                                    error:(NSError **)error {
+  if (!inputName) {
+    LRTSetError(error, LRTErrorCodeInvalidArgument, @"inputName cannot be nil");
+    return nil;
+  }
+  if (![self validateSignatureKey:signatureKey error:error]) {
+    return nil;
+  }
+
+  litert::Expected<litert::RankedTensorType> tensorTypeResult = _cppModel->GetInputTensorType(
+      LRTCPPStringFromNSString(signatureKey), LRTCPPStringFromNSString(inputName));
+  return CreateObjCTensorTypeFromCPPResult(tensorTypeResult, error);
+}
+
+- (LRTTensorType *)outputTensorTypeAtIndex:(NSUInteger)outputIndex error:(NSError **)error {
+  return [self outputTensorTypeAtIndex:outputIndex signatureIndex:0 error:error];
+}
+
+- (LRTTensorType *)outputTensorTypeAtIndex:(NSUInteger)outputIndex
+                            signatureIndex:(NSUInteger)signatureIndex
+                                     error:(NSError **)error {
+  if (![self validateSignatureIndex:signatureIndex error:error]) {
+    return nil;
+  }
+
+  litert::Expected<litert::RankedTensorType> tensorTypeResult =
+      _cppModel->GetOutputTensorType(signatureIndex, outputIndex);
+  return CreateObjCTensorTypeFromCPPResult(tensorTypeResult, error);
+}
+
+- (LRTTensorType *)outputTensorTypeForName:(NSString *)outputName
+                              signatureKey:(NSString *)signatureKey
+                                     error:(NSError **)error {
+  if (!outputName) {
+    LRTSetError(error, LRTErrorCodeInvalidArgument, @"outputName cannot be nil");
+    return nil;
+  }
+  if (![self validateSignatureKey:signatureKey error:error]) {
+    return nil;
+  }
+
+  litert::Expected<litert::RankedTensorType> tensorTypeResult = _cppModel->GetOutputTensorType(
+      LRTCPPStringFromNSString(signatureKey), LRTCPPStringFromNSString(outputName));
+  return CreateObjCTensorTypeFromCPPResult(tensorTypeResult, error);
 }
 
 - (NSData *)metadataForKey:(NSString *)metadataKey error:(NSError **)error {
@@ -241,9 +284,9 @@ static NSArray<NSString *> *ConvertStringViewsToObjCArray(
   }
 
   litert::Expected<litert::Span<const uint8_t>> metadataResult =
-      _cppModel->Metadata(metadataKey.UTF8String);
+      _cppModel->Metadata(LRTCPPStringFromNSString(metadataKey));
   if (!metadataResult.HasValue()) {
-    LRTSetErrorFromCppError(error, metadataResult.Error());
+    LRTSetErrorFromCPPError(error, metadataResult.Error());
     return nil;
   }
 
@@ -254,6 +297,32 @@ static NSArray<NSString *> *ConvertStringViewsToObjCArray(
 
 - (litert::Model *)cppModel {
   return _cppModel.get();
+}
+
+#pragma mark - Private
+
+- (BOOL)validateSignatureIndex:(NSUInteger)signatureIndex error:(NSError **)error {
+  if (!_cppModel) {
+    LRTSetError(error, LRTErrorCodeRuntimeFailure, @"Model is not initialized");
+    return NO;
+  }
+  if (signatureIndex >= _cppModel->GetNumSignatures()) {
+    LRTSetError(error, LRTErrorCodeInvalidArgument, @"Signature index out of bounds");
+    return NO;
+  }
+  return YES;
+}
+
+- (BOOL)validateSignatureKey:(NSString *)signatureKey error:(NSError **)error {
+  if (signatureKey.length == 0) {
+    LRTSetError(error, LRTErrorCodeInvalidArgument, @"signatureKey cannot be empty");
+    return NO;
+  }
+  if (!_cppModel) {
+    LRTSetError(error, LRTErrorCodeRuntimeFailure, @"Model is not initialized");
+    return NO;
+  }
+  return YES;
 }
 
 @end

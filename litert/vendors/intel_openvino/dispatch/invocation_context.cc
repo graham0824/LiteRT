@@ -33,7 +33,6 @@
 
 #include "openvino/core/any.hpp"
 #include "openvino/runtime/compiled_model.hpp"
-#include "openvino/runtime/properties.hpp"
 #include "openvino/runtime/tensor.hpp"
 #if defined(__ANDROID__)
 #include <unistd.h>
@@ -55,6 +54,7 @@
 #include "litert/vendors/intel_openvino/bytecode_header.h"
 #include "litert/vendors/intel_openvino/compiler/global_graph.h"
 #include "litert/vendors/intel_openvino/dispatch/weight_bank_runtime.h"
+#include "litert/vendors/intel_openvino/openvino_version_info.h"
 
 namespace {
 // This class is copied from the OpenVINO codebase with minor modifications
@@ -290,7 +290,11 @@ LiteRtDispatchInvocationContextT::Create(
           "Requested OpenVINO device is not available on this system");
     }
   }
-  LITERT_LOG(LITERT_INFO, "Using Intel OpenVINO device: %s", device.c_str());
+  const char* partition_name =
+      function_name != nullptr && function_name[0] != '\0' ? function_name
+                                                            : "(unnamed)";
+  LITERT_LOG(LITERT_INFO, "OpenVINO partition '%s' using device: %s",
+             partition_name, device.c_str());
 
   OpenVINOSharedCore::GetInstance()->SetDevice(device);
 
@@ -344,12 +348,31 @@ LiteRtDispatchInvocationContextT::Create(
 
   ov::CompiledModel compiled_model;
   try {
+    litert::openvino::LogOpenVINOVersionInfoOnce("OpenVINO Dispatch",
+                                                 device.c_str());
     if (npu_shared) {
       // Stage the deduplicated pool to a temp file once per model, then hand it
       // to NPUW. The temp file is a byte-for-byte copy of the contiguous pool
-      // span, starting at byte 0, so bin_offset resolves directly.
+      // span, starting at byte 0, so bin_offset resolves directly. When the
+      // model is file-backed (fd >= 0) the bank reads the pool through
+      // short-lived per-chunk mappings of the model file at the pool's absolute
+      // file offset, so the pool is never faulted into the model's long-lived
+      // mapping; otherwise it writes from the in-memory view (logged by the
+      // bank).
+      litert::openvino::PoolSource pool_source;
+      pool_source.data = pool_ptr;
+      pool_source.size = pool_size;
+      if (exec_bytecode_buffer->fd >= 0) {
+        const auto* buf_base =
+            static_cast<const uint8_t*>(exec_bytecode_buffer->base_addr);
+        pool_source.fd = exec_bytecode_buffer->fd;
+        pool_source.file_offset =
+            static_cast<uint64_t>(
+                exec_bytecode_buffer->alloc_base_file_offset) +
+            static_cast<uint64_t>(pool_ptr - buf_base);
+      }
       const std::string bank_path =
-          device_context.NpuBank().EnsureOnDisk(pool_ptr, pool_size);
+          device_context.NpuBank().EnsureOnDisk(pool_source);
       if (bank_path.empty()) {
         return litert::Error(
             kLiteRtStatusErrorRuntimeFailure,
