@@ -18,6 +18,7 @@
 #import "third_party/odml/litert/litert/objc/apis/LRTEnvironment.h"
 #import "third_party/odml/litert/litert/objc/apis/LRTError.h"
 #import "third_party/odml/litert/litert/objc/apis/LRTTensorBuffer.h"
+#import "third_party/odml/litert/litert/objc/apis/LRTTensorBufferRequirements.h"
 
 #include <cstring>
 #include <vector>
@@ -226,6 +227,35 @@
   XCTAssertEqual(buffer.bufferType, LRTTensorBufferTypeHostMemory);
   XCTAssertEqual(buffer.elementType, LRTElementTypeInt32);
   XCTAssertEqualObjects(buffer.dimensions, (@[ @8 ]));
+  LRTTensorType *expectedTensorType = [[LRTTensorType alloc] initWithElementType:LRTElementTypeInt32
+                                                                      dimensions:@[ @8 ]];
+  XCTAssertEqualObjects(buffer.tensorType, expectedTensorType);
+}
+
+- (void)testManagedTensorBufferWithTensorTypeAndRequirements {
+  NSError *error = nil;
+  LRTEnvironment *environment = [LRTEnvironment environmentWithOptions:nil error:&error];
+  XCTAssertNotNil(environment);
+  XCTAssertNil(error);
+
+  LRTTensorType *tensorType = [[LRTTensorType alloc] initWithElementType:LRTElementTypeFloat32
+                                                              dimensions:@[ @2, @4 ]];
+  LRTTensorBufferRequirements *requirements = [[LRTTensorBufferRequirements alloc]
+      initWithSupportedBufferTypes:@[ @(LRTTensorBufferTypeHostMemory) ]
+                        bufferSize:8 * sizeof(float)
+                         alignment:64
+                           strides:@[]];
+
+  LRTTensorBuffer *buffer = [LRTTensorBuffer tensorBufferWithEnvironment:environment
+                                                              tensorType:tensorType
+                                                            requirements:requirements
+                                                                   error:&error];
+  XCTAssertNotNil(buffer);
+  XCTAssertNil(error);
+  XCTAssertEqual(buffer.bufferType, LRTTensorBufferTypeHostMemory);
+  XCTAssertEqualObjects(buffer.tensorType, tensorType);
+  XCTAssertGreaterThanOrEqual(buffer.size, 8 * sizeof(float));
+  XCTAssertTrue([buffer.description containsString:@"LRTTensorBuffer"]);
 }
 
 #pragma mark - Parameter Validation Tests
@@ -365,5 +395,72 @@
 }
 
 #pragma clang diagnostic pop
+
+#pragma mark - LRTTensorBufferRequirements Tests
+
+- (void)testTensorBufferRequirementsInitializationAndDefensiveCopy {
+  NSMutableArray<NSNumber *> *mutableTypes =
+      [NSMutableArray arrayWithArray:@[ @(LRTTensorBufferTypeHostMemory) ]];
+  NSMutableArray<NSNumber *> *mutableStrides = [NSMutableArray arrayWithArray:@[ @4, @1 ]];
+
+  LRTTensorBufferRequirements *requirements =
+      [[LRTTensorBufferRequirements alloc] initWithSupportedBufferTypes:mutableTypes
+                                                             bufferSize:128
+                                                              alignment:64
+                                                                strides:mutableStrides];
+
+  [mutableTypes addObject:@(LRTTensorBufferTypeMetalBuffer)];
+  [mutableStrides addObject:@1];
+
+  XCTAssertEqualObjects(requirements.supportedBufferTypes, (@[ @(LRTTensorBufferTypeHostMemory) ]));
+  XCTAssertEqual(requirements.bufferSize, 128U);
+  XCTAssertEqual(requirements.alignment, 64U);
+  XCTAssertEqualObjects(requirements.strides, (@[ @4, @1 ]));
+}
+
+- (void)testTensorBufferRequirementsEqualityHashAndCopy {
+  LRTTensorBufferRequirements *firstRequirements = [[LRTTensorBufferRequirements alloc]
+      initWithSupportedBufferTypes:@[ @(LRTTensorBufferTypeHostMemory) ]
+                        bufferSize:256
+                         alignment:64
+                           strides:@[ @16, @4, @1 ]];
+  LRTTensorBufferRequirements *matchingRequirements = [[LRTTensorBufferRequirements alloc]
+      initWithSupportedBufferTypes:@[ @(LRTTensorBufferTypeHostMemory) ]
+                        bufferSize:256
+                         alignment:64
+                           strides:@[ @16, @4, @1 ]];
+  LRTTensorBufferRequirements *differentSizeRequirements = [[LRTTensorBufferRequirements alloc]
+      initWithSupportedBufferTypes:@[ @(LRTTensorBufferTypeHostMemory) ]
+                        bufferSize:512
+                         alignment:64
+                           strides:@[ @16, @4, @1 ]];
+  LRTTensorBufferRequirements *permutedStridesRequirements = [[LRTTensorBufferRequirements alloc]
+      initWithSupportedBufferTypes:@[ @(LRTTensorBufferTypeHostMemory) ]
+                        bufferSize:256
+                         alignment:64
+                           strides:@[ @4, @16, @1 ]];
+
+  XCTAssertEqualObjects(firstRequirements, matchingRequirements);
+  XCTAssertEqual(firstRequirements.hash, matchingRequirements.hash);
+  XCTAssertNotEqualObjects(firstRequirements, differentSizeRequirements);
+  XCTAssertNotEqualObjects(firstRequirements, permutedStridesRequirements);
+  XCTAssertNotEqual(firstRequirements.hash, permutedStridesRequirements.hash);
+
+  LRTTensorBufferRequirements *copiedRequirements = [firstRequirements copy];
+  XCTAssertEqualObjects(firstRequirements, copiedRequirements);
+  XCTAssertEqual(firstRequirements.hash, copiedRequirements.hash);
+}
+
+- (void)testTensorBufferRequirementsDescription {
+  LRTTensorBufferRequirements *requirements = [[LRTTensorBufferRequirements alloc]
+      initWithSupportedBufferTypes:@[ @(LRTTensorBufferTypeHostMemory) ]
+                        bufferSize:64
+                         alignment:32
+                           strides:@[]];
+  NSString *description = requirements.description;
+  XCTAssertTrue([description containsString:@"LRTTensorBufferRequirements"]);
+  XCTAssertTrue([description containsString:@"bufferSize=64"]);
+  XCTAssertTrue([description containsString:@"alignment=32"]);
+}
 
 @end
