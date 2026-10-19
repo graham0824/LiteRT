@@ -8,29 +8,25 @@ message(STATUS "Building Qualcomm compiler plugin for host")
 
 # Dependencies (nlohmann_json, googletest, googlebenchmark) are fetched at parent level
 
-# Create compiler plugin shared library
-add_library(qnn_compiler_plugin SHARED
-    qnn_compiler_plugin.cc
+# The graph composer is also exercised directly by qnn_compose_graph_test.
+# Keep its implementation in a static library instead of relying on the
+# plugin shared library: the plugin's version script intentionally hides
+# internal C++ symbols, which would otherwise make that test fail to link.
+add_library(qnn_compiler_core STATIC
     qnn_compose_graph.cc
     graph_mapper.cc
-    transformations/attention_chunk_transformation.cc
-    transformations/entry_embedding_transformation.cc
-    transformations/legalize_int32_ops_transformation.cc
-    transformations/mlp_quant_transformation.cc
-    transformations/orphan_cleanup_transformation.cc
-    transformations/rope_transformation.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../../cc/namespace_heuristics.cc
 )
 
-target_include_directories(qnn_compiler_plugin
+target_include_directories(qnn_compiler_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
     PRIVATE
         ${CMAKE_BINARY_DIR}/flatbuffers/include
 )
 
-target_link_libraries(qnn_compiler_plugin
-    PRIVATE
+target_link_libraries(qnn_compiler_core
+    PUBLIC
         qnn_soc_table
         qnn_tensor_pool
         qnn_miscs
@@ -45,6 +41,29 @@ target_link_libraries(qnn_compiler_plugin
         tensorflow-lite
         absl::log
         absl::check
+)
+
+# Create compiler plugin shared library.
+add_library(qnn_compiler_plugin SHARED
+    qnn_compiler_plugin.cc
+    transformations/attention_chunk_transformation.cc
+    transformations/entry_embedding_transformation.cc
+    transformations/legalize_int32_ops_transformation.cc
+    transformations/mlp_quant_transformation.cc
+    transformations/orphan_cleanup_transformation.cc
+    transformations/rope_transformation.cc
+)
+
+target_include_directories(qnn_compiler_plugin
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+    PRIVATE
+        ${CMAKE_BINARY_DIR}/flatbuffers/include
+)
+
+target_link_libraries(qnn_compiler_plugin
+    PRIVATE
+        qnn_compiler_core
 )
 
 set_target_properties(qnn_compiler_plugin PROPERTIES

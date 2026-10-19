@@ -237,6 +237,7 @@ include_directories(${safeint_SOURCE_DIR})
 # Add ML Drift headers include directory
 OverridableFetchContent_Declare(
   ml_drift
+  URL ${LITERT_TOOLS_DEP}/ml_drift
   GIT_REPOSITORY https://github.com/google-ai-edge/ml-drift.git
   GIT_TAG 1b18771f44c0be3d972847b31a80f6dc3d6964b5
   GIT_PROGRESS TRUE

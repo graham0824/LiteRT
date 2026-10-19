@@ -64,9 +64,7 @@ target_sources(qnn_compose_graph_test
 
 target_link_libraries(qnn_compose_graph_test
     PRIVATE
-        qnn_compiler_plugin
-        qnn_tensor_pool
-        qnn_wrappers
+        qnn_compiler_core
         flatbuffers::flatbuffers
         GTest::gtest_main
 )

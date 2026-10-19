@@ -31,7 +31,7 @@ OverridableFetchContent_Declare(
   URL ${LITERT_TOOLS_DEP}/XNNPACK
 
   # Sync with tensorflow/workspace2.bzl
-  GIT_TAG 0a66ebb5817fce48df605451444dcfc27a5e4ee4
+  GIT_TAG 28d1fc6d908bc4d80920be989177b7eb1a4aebc8
   GIT_PROGRESS TRUE
   LICENSE_URL ${LITERT_TOOLS_DEP}/XNNPACK/LICENSE
   PREFIX "${CMAKE_BINARY_DIR}"
