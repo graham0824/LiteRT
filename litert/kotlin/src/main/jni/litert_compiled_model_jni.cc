@@ -49,6 +49,7 @@
 #include "litert/cc/litert_ranked_tensor_type.h"
 #include "litert/cc/litert_tensor_buffer.h"
 #include "litert/cc/litert_tensor_buffer_requirements.h"
+#include "litert/cc/options/litert_compiler_options.h"
 #include "litert/cc/options/litert_cpu_options.h"
 #include "litert/cc/options/litert_gpu_options.h"
 #include "litert/cc/options/litert_qualcomm_options.h"
@@ -58,6 +59,7 @@
 namespace {
 
 using ::litert::CompiledModel;
+using ::litert::CompilerOptions;
 using ::litert::CpuOptions;
 using ::litert::ElementType;
 using ::litert::Environment;
@@ -492,13 +494,65 @@ Expected<void> PopulateQualcommOptions(JNIEnv* env,
   return {};
 }
 
-Expected<Options> CreateOptions(JNIEnv* env, jintArray accelerators,
-                                jintArray cpu_options_keys,
-                                jobjectArray cpu_options_values,
-                                jintArray gpu_options_keys,
-                                jobjectArray gpu_options_values,
-                                jintArray qualcomm_options_keys,
-                                jobjectArray qualcomm_options_values) {
+Expected<void> PopulateCompilerOptions(
+    JNIEnv* env, CompilerOptions& compiler_options,
+    jobjectArray positional_input_shape_signature_keys,
+    jobjectArray positional_input_shape_dimensions) {
+  const auto num_signature_keys =
+      env->GetArrayLength(positional_input_shape_signature_keys);
+  const auto num_shapes =
+      env->GetArrayLength(positional_input_shape_dimensions);
+  if (num_signature_keys != num_shapes) {
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Input shape signature keys and dimensions must have "
+                      "the same size.");
+  }
+
+  for (jsize i = 0; i < num_shapes; ++i) {
+    auto signature_key = static_cast<jstring>(env->GetObjectArrayElement(
+        positional_input_shape_signature_keys, i));
+    auto dimensions = static_cast<jintArray>(env->GetObjectArrayElement(
+        positional_input_shape_dimensions, i));
+    if (signature_key == nullptr || dimensions == nullptr) {
+      if (signature_key != nullptr) env->DeleteLocalRef(signature_key);
+      if (dimensions != nullptr) env->DeleteLocalRef(dimensions);
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Input shape entries must not be null.");
+    }
+
+    const char* signature_key_chars =
+        env->GetStringUTFChars(signature_key, nullptr);
+    if (signature_key_chars == nullptr) {
+      env->DeleteLocalRef(dimensions);
+      env->DeleteLocalRef(signature_key);
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to read input shape signature key.");
+    }
+
+    const auto rank = env->GetArrayLength(dimensions);
+    std::vector<jint> jni_shape(rank);
+    if (rank > 0) {
+      env->GetIntArrayRegion(dimensions, 0, rank, jni_shape.data());
+    }
+    std::vector<int32_t> shape(jni_shape.begin(), jni_shape.end());
+    auto add_shape_result = compiler_options.AddPositionalInputShape(
+        signature_key_chars, shape);
+
+    env->ReleaseStringUTFChars(signature_key, signature_key_chars);
+    env->DeleteLocalRef(dimensions);
+    env->DeleteLocalRef(signature_key);
+    LITERT_RETURN_IF_ERROR(add_shape_result);
+  }
+  return {};
+}
+
+Expected<Options> CreateOptions(
+    JNIEnv* env, jintArray accelerators, jintArray cpu_options_keys,
+    jobjectArray cpu_options_values, jintArray gpu_options_keys,
+    jobjectArray gpu_options_values, jintArray qualcomm_options_keys,
+    jobjectArray qualcomm_options_values,
+    jobjectArray positional_input_shape_signature_keys,
+    jobjectArray positional_input_shape_dimensions) {
   int accelerators_size = env->GetArrayLength(accelerators);
   AUTO_CLEANUP_JNI_INT_ARRAY(env, accelerators);
   litert::HwAcceleratorSet acceleratorSet =
@@ -546,6 +600,15 @@ Expected<Options> CreateOptions(JNIEnv* env, jintArray accelerators,
         compilation_options.GetOptions<::litert::qualcomm::QualcommOptions>());
     LITERT_RETURN_IF_ERROR(PopulateQualcommOptions(
         env, qualcomm_options, qualcomm_options_keys, qualcomm_options_values));
+  }
+
+  if (env->GetArrayLength(positional_input_shape_signature_keys) > 0 ||
+      env->GetArrayLength(positional_input_shape_dimensions) > 0) {
+    LITERT_ASSIGN_OR_RETURN(auto& compiler_options,
+                            compilation_options.GetCompilerOptions());
+    LITERT_RETURN_IF_ERROR(PopulateCompilerOptions(
+        env, compiler_options, positional_input_shape_signature_keys,
+        positional_input_shape_dimensions));
   }
   return std::move(compilation_options);
 }
@@ -791,7 +854,9 @@ Java_com_google_ai_edge_litert_CompiledModel_nativeCreateFromAsset(
     jstring asset_name, jintArray accelerators, jintArray cpu_options_keys,
     jobjectArray cpu_options_values, jintArray gpu_options_keys,
     jobjectArray gpu_options_values, jintArray qualcomm_options_keys,
-    jobjectArray qualcomm_options_values) {
+    jobjectArray qualcomm_options_values,
+    jobjectArray positional_input_shape_signature_keys,
+    jobjectArray positional_input_shape_dimensions) {
   auto am = AAssetManager_fromJava(env, asset_manager);
   AUTO_CLEANUP_JNI_STRING(env, asset_name);
   LITERT_INTERNAL_CHECK(asset_name_str != nullptr);
@@ -828,7 +893,9 @@ Java_com_google_ai_edge_litert_CompiledModel_nativeCreateFromAsset(
 
   auto compilation_options = CreateOptions(
       env, accelerators, cpu_options_keys, cpu_options_values, gpu_options_keys,
-      gpu_options_values, qualcomm_options_keys, qualcomm_options_values);
+      gpu_options_values, qualcomm_options_keys, qualcomm_options_values,
+      positional_input_shape_signature_keys,
+      positional_input_shape_dimensions);
   if (!compilation_options) {
     LITERT_LOG(LITERT_ERROR, "Failed to create compilation options: %s",
                compilation_options.Error().Message().c_str());
@@ -858,13 +925,17 @@ Java_com_google_ai_edge_litert_CompiledModel_nativeCreateFromFile(
     jintArray accelerators, jintArray cpu_options_keys,
     jobjectArray cpu_options_values, jintArray gpu_options_keys,
     jobjectArray gpu_options_values, jintArray qualcomm_options_keys,
-    jobjectArray qualcomm_options_values) {
+    jobjectArray qualcomm_options_values,
+    jobjectArray positional_input_shape_signature_keys,
+    jobjectArray positional_input_shape_dimensions) {
   auto litert_env = reinterpret_cast<Environment*>(env_handle);
   LITERT_INTERNAL_CHECK(litert_env != nullptr);
 
   auto compilation_options = CreateOptions(
       env, accelerators, cpu_options_keys, cpu_options_values, gpu_options_keys,
-      gpu_options_values, qualcomm_options_keys, qualcomm_options_values);
+      gpu_options_values, qualcomm_options_keys, qualcomm_options_values,
+      positional_input_shape_signature_keys,
+      positional_input_shape_dimensions);
   if (!compilation_options) {
     LITERT_LOG(LITERT_ERROR, "Failed to create compilation options: %s",
                compilation_options.Error().Message().c_str());

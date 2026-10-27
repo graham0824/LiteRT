@@ -359,6 +359,43 @@ private constructor(
     }
   }
 
+  /** Compiler options applied before compiler-plugin partitioning and compilation. */
+  class CompilerOptions {
+    private data class PositionalInputShape(
+      val signatureKey: String,
+      val dimensions: IntArray,
+    )
+
+    private val positionalInputShapes = mutableListOf<PositionalInputShape>()
+
+    /**
+     * Adds a positional input shape override.
+     *
+     * Call once per input in subgraph input order. An empty [signatureKey] targets the default
+     * signature, or the main subgraph when the model has no signatures. An empty [dimensions] array
+     * represents a scalar. Other dimensions must be positive or `-1` to remain dynamic. These
+     * overrides only take effect when a compiler plugin is applied.
+     *
+     * @param dimensions Input tensor dimensions.
+     * @param signatureKey Signature whose subgraph will be refined.
+     * @return This compiler options object.
+     */
+    @JvmOverloads
+    fun addPositionalInputShape(
+      dimensions: IntArray,
+      signatureKey: String = "",
+    ): CompilerOptions {
+      positionalInputShapes.add(PositionalInputShape(signatureKey, dimensions.copyOf()))
+      return this
+    }
+
+    internal fun positionalInputShapeSignatureKeys(): Array<String> =
+      positionalInputShapes.map { it.signatureKey }.toTypedArray()
+
+    internal fun positionalInputShapeDimensions(): Array<IntArray> =
+      positionalInputShapes.map { it.dimensions.copyOf() }.toTypedArray()
+  }
+
   /** Options to specify hardware acceleration for compiling a model. */
   class Options constructor(private val accelerators: Set<Accelerator>) {
 
@@ -369,6 +406,7 @@ private constructor(
     var cpuOptions: CpuOptions? = null
     var gpuOptions: GpuOptions? = null
     var qualcommOptions: QualcommOptions? = null
+    var compilerOptions: CompilerOptions? = null
 
     /**
      * Disables automatically fall back to CPU when the accelerator is not available. The default is
@@ -613,6 +651,10 @@ private constructor(
       val cpuOptionsMap = options.cpuOptions?.toMap() ?: mapOf()
       val gpuOptionsMap = options.gpuOptions?.toMap() ?: mapOf()
       val qualcommOptionsMap = options.qualcommOptions?.toMap() ?: mapOf()
+      val positionalInputShapeSignatureKeys =
+        options.compilerOptions?.positionalInputShapeSignatureKeys() ?: emptyArray()
+      val positionalInputShapeDimensions =
+        options.compilerOptions?.positionalInputShapeDimensions() ?: emptyArray()
       return CompiledModel(
         nativeCreateFromAsset(
           env.handle,
@@ -625,6 +667,8 @@ private constructor(
           gpuOptionsMap.values.toTypedArray(),
           qualcommOptionsMap.keys.map { it.value }.toIntArray(),
           qualcommOptionsMap.values.toTypedArray(),
+          positionalInputShapeSignatureKeys,
+          positionalInputShapeDimensions,
         ),
         env,
         envManaged,
@@ -643,6 +687,10 @@ private constructor(
       val cpuOptionsMap = options.cpuOptions?.toMap() ?: mapOf()
       val gpuOptionsMap = options.gpuOptions?.toMap() ?: mapOf()
       val qualcommOptionsMap = options.qualcommOptions?.toMap() ?: mapOf()
+      val positionalInputShapeSignatureKeys =
+        options.compilerOptions?.positionalInputShapeSignatureKeys() ?: emptyArray()
+      val positionalInputShapeDimensions =
+        options.compilerOptions?.positionalInputShapeDimensions() ?: emptyArray()
       return CompiledModel(
         nativeCreateFromFile(
           env.handle,
@@ -654,6 +702,8 @@ private constructor(
           gpuOptionsMap.values.toTypedArray(),
           qualcommOptionsMap.keys.map { it.value }.toIntArray(),
           qualcommOptionsMap.values.toTypedArray(),
+          positionalInputShapeSignatureKeys,
+          positionalInputShapeDimensions,
         ),
         env,
         envManaged,
@@ -695,6 +745,8 @@ private constructor(
       gpuOptionsValues: Array<String>,
       qualcommOptionsKeys: IntArray,
       qualcommOptionsValues: Array<String>,
+      positionalInputShapeSignatureKeys: Array<String>,
+      positionalInputShapeDimensions: Array<IntArray>,
     ): Long
 
     @JvmStatic
@@ -708,6 +760,8 @@ private constructor(
       gpuOptionsValues: Array<String>,
       qualcommOptionsKeys: IntArray,
       qualcommOptionsValues: Array<String>,
+      positionalInputShapeSignatureKeys: Array<String>,
+      positionalInputShapeDimensions: Array<IntArray>,
     ): Long
 
     @JvmStatic
