@@ -246,8 +246,11 @@ LiteRtDispatchDeviceContextT::GetOrCreateContext(
 
   LITERT_LOG(LITERT_INFO, "Creating new QNN context for bytecode %p (size %zu)",
              bytecode_ptr, bytecode_size);
+  auto context_config_builder = QnnManager::BuildContextConfigs(
+      qnn_manager_.GetOptions(), {QnnManager::ContextConfigUsage::kDispatch});
+  auto context_configs = context_config_builder.GetNullTerminatedConfigs();
   auto context_handle_expected = qnn_manager_.CreateContextHandle(
-      qnn_backend_, QnnManager::DefaultContextConfigs(),
+      qnn_backend_, absl::MakeSpan(context_configs),
       absl::MakeSpan(static_cast<const uint8_t*>(bytecode_ptr), bytecode_size),
       profile_handle);
 

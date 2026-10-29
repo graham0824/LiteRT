@@ -536,8 +536,11 @@ class QualcommOptions : public ConcreteOptionsBase {
     LrtQualcommOptionsSetHtpContextInitAcceleration(options_, enabled);
   }
   bool GetHtpContextInitAcceleration() {
-    bool val;
-    LrtQualcommOptionsGetHtpContextInitAcceleration(options_, &val);
+    bool val = false;
+    if (LrtQualcommOptionsGetHtpContextInitAcceleration(options_, &val) !=
+        kLiteRtStatusOk) {
+      return false;
+    }
     return val;
   }
 

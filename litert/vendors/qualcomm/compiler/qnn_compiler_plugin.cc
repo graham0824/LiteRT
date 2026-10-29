@@ -37,6 +37,7 @@
 #include "absl/strings/str_format.h"  // from @com_google_absl
 #include "absl/strings/str_split.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
+#include "absl/types/span.h"  // from @com_google_absl
 #include "litert/c/internal/litert_logging.h"
 #include "litert/c/internal/litert_logging_helper_with_compiler_context.h"
 #include "litert/c/litert_any.h"
@@ -669,7 +670,8 @@ LiteRtStatus LiteRtCompilerPluginCompile(
     if (context_handle_idx == next_context_handle_idx) {
       // Initialize context.
       LITERT_LOG(LITERT_INFO, "%s", "Creating context handle");
-      auto context_configs = QnnManager::DefaultContextConfigs();
+      QnnManager::ContextConfigBuildOptions context_build_options;
+      context_build_options.usage = QnnManager::ContextConfigUsage::kCompile;
       if (backend_options.GetEnableWeightSharing()) {
         if (backend_options.GetBackendType() !=
             ::qnn::BackendType::kHtpBackend) {
@@ -679,7 +681,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
         }
         if (num_partitions != kDefaultPartitionNum &&
             IsWeightSharingSupported()) {
-          context_configs = QnnManager::WeightSharingContextConfigs();
+          context_build_options.enable_weight_sharing = true;
           LITERT_LOG(LITERT_INFO, "Enable weight sharing feature");
         } else {
           LITERT_LOG(LITERT_WARNING,
@@ -690,14 +692,18 @@ LiteRtStatus LiteRtCompilerPluginCompile(
                  ::qnn::BackendType::kGpuBackend) {
         if (backend_options.GetGpuPerformanceMode() !=
             ::qnn::GpuPerformanceMode::kDefault) {
-          context_configs = QnnManager::GpuPerformanceContextConfigs(
-              backend_options.GetGpuPerformanceMode());
+          context_build_options.gpu_performance_mode =
+              backend_options.GetGpuPerformanceMode();
           LITERT_LOG(LITERT_INFO, "Enable GPU performance mode: %d",
                      static_cast<int>(backend_options.GetGpuPerformanceMode()));
         }
       }
+      auto context_config_builder = QnnManager::BuildContextConfigs(
+          backend_options, context_build_options);
+      auto context_configs = context_config_builder.GetNullTerminatedConfigs();
       auto context_handle = qnn_manager->CreateContextHandle(
-          *qnn_backend, context_configs, backend_options.GetProfiling());
+          *qnn_backend, absl::MakeSpan(context_configs),
+          backend_options.GetProfiling());
       if (!context_handle) {
         LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().data());
         return context_handle.Error().Status();

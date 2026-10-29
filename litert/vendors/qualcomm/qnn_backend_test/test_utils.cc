@@ -67,10 +67,13 @@ void QnnModelTest::SetUpQnnModel(const ::qnn::Options& options,
       ::qnn::CreateBackend((**qnn_manager).Api(), options, soc_info, true);
   ASSERT_TRUE(qnn_backend);
 
-  auto context_configs = QnnManager::DefaultContextConfigs();
-  auto context_handle = (**qnn_manager)
-                            .CreateContextHandle(*qnn_backend, context_configs,
-                                                 options.GetProfiling());
+  auto context_config_builder = QnnManager::BuildContextConfigs(
+      options, {QnnManager::ContextConfigUsage::kCompile});
+  auto context_configs = context_config_builder.GetNullTerminatedConfigs();
+  auto context_handle =
+      (**qnn_manager)
+          .CreateContextHandle(*qnn_backend, absl::MakeSpan(context_configs),
+                               options.GetProfiling());
   ASSERT_TRUE(context_handle) << context_handle.Error();
 
   std::swap(qnn_manager_ptr_, *qnn_manager);

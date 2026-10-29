@@ -40,6 +40,7 @@
 #include "litert/cc/litert_expected.h"
 #include "litert/cc/litert_macros.h"  // IWYU pragma: keep
 #include "litert/vendors/qualcomm/common.h"
+#include "litert/vendors/qualcomm/context_config_builder.h"
 #include "litert/vendors/qualcomm/core/backends/qnn_backend.h"
 #include "litert/vendors/qualcomm/core/common.h"
 #include "litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
@@ -89,10 +90,16 @@ class QnnManager {
       const ::qnn::Options& options,
       std::optional<std::string> shared_library_dir = std::nullopt);
 
-  static absl::Span<const QnnContext_Config_t*> DefaultContextConfigs();
-  static absl::Span<const QnnContext_Config_t*> WeightSharingContextConfigs();
-  static absl::Span<const QnnContext_Config_t*> GpuPerformanceContextConfigs(
-      ::qnn::GpuPerformanceMode performance_mode);
+  enum class ContextConfigUsage { kCompile, kDispatch };
+
+  struct ContextConfigBuildOptions {
+    ContextConfigUsage usage = ContextConfigUsage::kCompile;
+    bool enable_weight_sharing = false;
+    std::optional<::qnn::GpuPerformanceMode> gpu_performance_mode;
+  };
+
+  static ::qnn::ContextConfigBuilder BuildContextConfigs(
+      const ::qnn::Options& options, ContextConfigBuildOptions build_options);
   // Get resolved function pointers for qnn sdk calls. Nullptr if functions
   // have not been resolved yet.
   const QnnApi* Api() const;
