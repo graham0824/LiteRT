@@ -406,6 +406,25 @@ LiteRtStatus LrtQualcommOptionsSetDlcDir(LrtQualcommOptions options,
 LiteRtStatus LrtQualcommOptionsGetDlcDir(LrtQualcommOptions options,
                                          const char** dlc_dir);
 
+// dlc_export_format
+//
+// Controls the encoding/quantization data written into the DLC during IR
+// backend graph finalization. Only meaningful when dlc_dir is set.
+// Defaults to kLiteRtQualcommDlcExportFormatDefault (preserve encodings).
+
+typedef enum LrtQualcommOptionsDlcExportFormat {
+  kLiteRtQualcommDlcExportFormatDefault = 0,
+  kLiteRtQualcommDlcExportFormatStripQuant = 1,
+} LrtQualcommOptionsDlcExportFormat;
+
+LiteRtStatus LrtQualcommOptionsSetDlcExportFormat(
+    LrtQualcommOptions options,
+    LrtQualcommOptionsDlcExportFormat dlc_export_format);
+
+LiteRtStatus LrtQualcommOptionsGetDlcExportFormat(
+    LrtQualcommOptions options,
+    LrtQualcommOptionsDlcExportFormat* dlc_export_format);
+
 LiteRtStatus LrtQualcommOptionsSetGraphTransform(LrtQualcommOptions options,
                                                  const char* graph_transform);
 

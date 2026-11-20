@@ -481,6 +481,20 @@ void AbslStringify(Sink& sink, OpNameFormat v) {
   absl::Format(&sink, "%s(%d)", name, static_cast<int>(v));
 }
 
+template <typename Sink>
+void AbslStringify(Sink& sink, DlcExportFormat v) {
+  absl::string_view name = "Unknown";
+  switch (v) {
+    case DlcExportFormat::kDefault:
+      name = "Default";
+      break;
+    case DlcExportFormat::kStripQuant:
+      name = "StripQuant";
+      break;
+  }
+  absl::Format(&sink, "%s(%d)", name, static_cast<int>(v));
+}
+
 void Options::SetLogLevel(LogLevel log_level) { log_level_ = log_level; }
 
 LogLevel Options::GetLogLevel() const { return log_level_; }
@@ -624,6 +638,14 @@ void Options::SetIrJsonDir(absl::string_view ir_json_dir) {
 absl::string_view Options::GetDlcDir() const { return dlc_dir_; }
 
 void Options::SetDlcDir(absl::string_view dlc_dir) { dlc_dir_ = dlc_dir; }
+
+void Options::SetDlcExportFormat(DlcExportFormat dlc_export_format) {
+  dlc_export_format_ = dlc_export_format;
+}
+
+DlcExportFormat Options::GetDlcExportFormat() const {
+  return dlc_export_format_;
+}
 
 absl::string_view Options::GetGraphTransform() const {
   return graph_transform_;
@@ -846,6 +868,7 @@ std::string Options::Dump() const {
   absl::StrAppend(&out, "[IR]\n");
   field(2, "IrJsonDir", ir_json_dir_);
   field(2, "DlcDir", dlc_dir_);
+  field(2, "DlcExportFormat", dlc_export_format_);
 
   // --- SAVER ---
   absl::StrAppend(&out, "[SAVER]\n");

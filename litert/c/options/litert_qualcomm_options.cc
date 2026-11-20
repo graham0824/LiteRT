@@ -114,6 +114,7 @@ struct LrtQualcommOptionsT {
   std::optional<std::vector<std::int32_t>> dump_tensor_ids;
   std::optional<std::string> ir_json_dir;
   std::optional<std::string> dlc_dir;
+  std::optional<LrtQualcommOptionsDlcExportFormat> dlc_export_format;
   std::optional<std::string> graph_transform;
   std::optional<std::uint32_t> vtcm_size;
   std::optional<std::uint32_t> htp_device_id;
@@ -278,6 +279,12 @@ LiteRtStatus LrtCreateQualcommOptionsFromToml(const char* toml_payload,
         } else if (key == "dlc_dir") {
           status = LrtQualcommOptionsSetDlcDir(parsed_options,
                                                std::string(value).c_str());
+        } else if (key == "dlc_export_format") {
+          auto v = litert::internal::ParseTomlInt(value);
+          if (!v) return litert::ToLiteRtStatus(v.Error().StatusCC());
+          status = LrtQualcommOptionsSetDlcExportFormat(
+              parsed_options,
+              static_cast<LrtQualcommOptionsDlcExportFormat>(*v));
         } else if (key == "graph_transform") {
           status = LrtQualcommOptionsSetGraphTransform(
               parsed_options, std::string(value).c_str());
@@ -512,6 +519,10 @@ LiteRtStatus LrtGetOpaqueQualcommOptionsData(LrtQualcommOptions options,
   }
   if (options->dlc_dir.has_value()) {
     LITERT_RETURN_IF_ERROR(encoder.EncodeString("dlc_dir", *options->dlc_dir));
+  }
+  if (options->dlc_export_format.has_value()) {
+    LITERT_RETURN_IF_ERROR(encoder.EncodeInt(
+        "dlc_export_format", static_cast<int>(*options->dlc_export_format)));
   }
   if (options->graph_transform.has_value()) {
     LITERT_RETURN_IF_ERROR(
@@ -1297,6 +1308,27 @@ LiteRtStatus LrtQualcommOptionsGetDlcDir(LrtQualcommOptions options,
 
   *dlc_dir = options->dlc_dir.has_value() ? options->dlc_dir->c_str() : "";
 
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LrtQualcommOptionsSetDlcExportFormat(
+    LrtQualcommOptions options,
+    LrtQualcommOptionsDlcExportFormat dlc_export_format) {
+  if (options == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  options->dlc_export_format = dlc_export_format;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LrtQualcommOptionsGetDlcExportFormat(
+    LrtQualcommOptions options,
+    LrtQualcommOptionsDlcExportFormat* dlc_export_format) {
+  if (options == nullptr || dlc_export_format == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *dlc_export_format = options->dlc_export_format.value_or(
+      kLiteRtQualcommDlcExportFormatDefault);
   return kLiteRtStatusOk;
 }
 

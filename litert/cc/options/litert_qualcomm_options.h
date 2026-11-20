@@ -507,6 +507,30 @@ class QualcommOptions : public ConcreteOptionsBase {
     return val;
   }
 
+  /// @brief Controls encoding data written into the DLC on IR backend.
+  ///
+  /// `kStripQuant` calls `resetQInfoForAllTensors` before serialization,
+  /// stripping all quantization encodings from the exported DLC.
+  /// Only meaningful when `dlc_dir` is set.
+  enum class DlcExportFormat : int {
+    kDefault = kLiteRtQualcommDlcExportFormatDefault,
+    kStripQuant = kLiteRtQualcommDlcExportFormatStripQuant,
+  };
+
+  void SetDlcExportFormat(DlcExportFormat dlc_export_format) {
+    LrtQualcommOptionsSetDlcExportFormat(
+        options_,
+        static_cast<LrtQualcommOptionsDlcExportFormat>(dlc_export_format));
+  }
+  DlcExportFormat GetDlcExportFormat() {
+    LrtQualcommOptionsDlcExportFormat val;
+    auto status = LrtQualcommOptionsGetDlcExportFormat(options_, &val);
+    if (status == kLiteRtStatusErrorNotFound) {
+      return DlcExportFormat::kDefault;
+    }
+    return static_cast<DlcExportFormat>(val);
+  }
+
   void SetGraphTransform(const std::string& graph_transform) {
     LrtQualcommOptionsSetGraphTransform(options_, graph_transform.c_str());
   }

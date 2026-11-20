@@ -69,6 +69,14 @@ GraphConfigBuilder IrBackend::BuildGraphConfigs(
   custom_config.serializationOption.outputPath = dlc_path.c_str();
   config_builder.AddCustomConfig(custom_config);
 
+  if (options.GetDlcExportFormat() == DlcExportFormat::kStripQuant) {
+    QnnIrGraph_CustomConfig_t export_format_config = QNN_IR_GRAPH_CUSTOM_CONFIG_INIT;
+    export_format_config.option = QNN_IR_GRAPH_CONFIG_OPTION_EXPORT_FORMAT;
+    export_format_config.exportFormatOption.exportFormat =
+        QNN_IR_GRAPH_EXPORT_FORMAT_STRIP_QUANT;
+    config_builder.AddCustomConfig(export_format_config);
+  }
+
   return config_builder;
 }
 }  // namespace qnn

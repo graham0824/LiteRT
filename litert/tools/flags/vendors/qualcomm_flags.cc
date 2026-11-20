@@ -539,6 +539,41 @@ ABSL_FLAG(
     std::string, qualcomm_dlc_dir, "",
     "DLC directory. If provided, you can obtain Qnn graphs in DLC format.");
 
+ABSL_FLAG(litert::qualcomm::QualcommOptions::DlcExportFormat,
+          qualcomm_dlc_export_format,
+          litert::qualcomm::QualcommOptions::DlcExportFormat::kDefault,
+          "DLC export format. Only meaningful when qualcomm_dlc_dir is set. "
+          "Valid settings: \"default\" (preserve encodings), "
+          "\"strip_quant\" (strip all quantization encodings before export).");
+
+namespace litert::qualcomm {
+
+bool AbslParseFlag(absl::string_view text,
+                   QualcommOptions::DlcExportFormat* out, std::string* error) {
+  if (text == "default") {
+    *out = QualcommOptions::DlcExportFormat::kDefault;
+    return true;
+  }
+  if (text == "strip_quant") {
+    *out = QualcommOptions::DlcExportFormat::kStripQuant;
+    return true;
+  }
+  *error = "Unknown dlc_export_format; valid values: default, strip_quant";
+  return false;
+}
+
+std::string AbslUnparseFlag(QualcommOptions::DlcExportFormat value) {
+  switch (value) {
+    case QualcommOptions::DlcExportFormat::kDefault:
+      return "default";
+    case QualcommOptions::DlcExportFormat::kStripQuant:
+      return "strip_quant";
+  }
+  ABSL_CHECK(false) << "Unknown DlcExportFormat: " << static_cast<int>(value);
+}
+
+}  // namespace litert::qualcomm
+
 ABSL_FLAG(std::string, qualcomm_graph_transform, "",
           "Comma-separated list of graph transform options to apply, e.g. "
           "\"option1,option2\".");
@@ -1057,6 +1092,10 @@ Expected<void> UpdateQualcommOptionsFromFlags(QualcommOptions& opts) {
 
   const std::string dlc_dir = absl::GetFlag(FLAGS_qualcomm_dlc_dir);
   opts.SetDlcDir(dlc_dir);
+
+  const auto dlc_export_format =
+      absl::GetFlag(FLAGS_qualcomm_dlc_export_format);
+  opts.SetDlcExportFormat(dlc_export_format);
 
   const std::string graph_transform =
       absl::GetFlag(FLAGS_qualcomm_graph_transform);
